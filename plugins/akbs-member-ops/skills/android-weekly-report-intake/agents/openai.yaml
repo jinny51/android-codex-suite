@@ -1,7 +1,0 @@
-interface:
-  display_name: "Android Weekly Report (Compatibility)"
-  short_description: "Forward legacy weekly reports to AKBS Weekly Report"
-  default_prompt: "Use $android-weekly-report-intake only to forward this legacy request to $akbs-weekly-report."
-
-policy:
-  allow_implicit_invocation: false

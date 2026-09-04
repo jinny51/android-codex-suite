@@ -3,7 +3,7 @@
   "matrix": {
     "path": "compatibility-matrix.json",
     "matrix_id": "akbs2-three-plugin-compatibility-v1",
-    "sha256": "2626a3c4bbae6833fd29d999b54cbca35da9759b118cecb8cb0de76e21136bd0"
+    "sha256": "3bd2351250ab06283b1e166f52e4c2a9b1068b0bc79f600c588c1286738a7808"
   },
   "identity_resolution": {
     "source": "migration-topology.json#/engineering_identity_resolution/semantics",
@@ -33,6 +33,6 @@
     "phase3": "isolated_model_routing_experiment_receipt",
     "phase4": "real_pilot_receipts_for_wsl_macos_gms_modes_and_v1_v2_knowledge_loop",
     "phase5": "per_member_target_only_migration_and_rollback_receipts",
-    "phase6": "per_entry_adoption_zero_and_removal_receipts"
+    "phase6": "new_repository_target_only_and_legacy_repository_receipts"
   }
 }

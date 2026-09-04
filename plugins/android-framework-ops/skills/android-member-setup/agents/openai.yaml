@@ -1,7 +1,0 @@
-interface:
-  display_name: "Android Member Setup"
-  short_description: "Configure member identity and verify client readiness"
-  default_prompt: "Use $android-member-setup to configure or diagnose my Android member profile, plugin freshness, session cache, and AKBS endpoint readiness."
-
-policy:
-  allow_implicit_invocation: true

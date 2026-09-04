@@ -1,7 +1,0 @@
-interface:
-  display_name: "Android Knowledge Intake (Compatibility)"
-  short_description: "Route legacy incoming v1 commands to AKBS Skills"
-  default_prompt: "Use $android-knowledge-intake only to forward a legacy incoming v1 command to the matching canonical AKBS Skill."
-
-policy:
-  allow_implicit_invocation: false

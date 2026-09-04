@@ -1,7 +1,0 @@
-interface:
-  display_name: "Android Daily Report Intake"
-  short_description: "Generate personal daily report incoming packages"
-  default_prompt: "Use $android-daily-report-intake to generate, replace, check, or submit a member personal daily report package through AKBS incoming. Infer Patch/App project work or standalone Document work from explicit or high-confidence evidence, ask only for unresolved scope facts, and do not make curation decisions."
-
-policy:
-  allow_implicit_invocation: true

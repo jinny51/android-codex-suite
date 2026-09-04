@@ -8,6 +8,11 @@ description: "Use when mounting, restoring, diagnosing, or registering an Androi
 Use this single public Skill for WSL/CIFS and macOS/SMB source access. The implementation
 is owned by `android-engineering-ops`; no host plugin is required.
 
+## Remote-Only Source Contract
+
+Mounted source remains the human CRUD and artifact bridge. Codex source, Git, capture,
+and build operations use `android-remote-channel`.
+
 ## Active Install Family
 
 Pure `--help`, host detection, and command listing may run without an installed-family

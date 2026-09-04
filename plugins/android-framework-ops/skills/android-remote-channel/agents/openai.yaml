@@ -1,7 +1,0 @@
-interface:
-  display_name: "Android Remote Channel"
-  short_description: "Reuse remote Android server sessions."
-  default_prompt: "Use $android-remote-channel to check, create, reuse, run commands in, tail logs from, or stop a persistent remote tmux session for an Android build server."
-
-policy:
-  allow_implicit_invocation: true

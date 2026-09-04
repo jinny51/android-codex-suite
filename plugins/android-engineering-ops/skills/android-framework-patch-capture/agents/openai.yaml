@@ -1,4 +1,0 @@
-interface:
-  display_name: "Android Framework Patch Capture (Compatibility)"
-  short_description: "Forward the retired capture ID to Android Patch Capture"
-  default_prompt: "Use $android-framework-patch-capture only as a compatibility entry, then forward unchanged to $android-patch-capture."

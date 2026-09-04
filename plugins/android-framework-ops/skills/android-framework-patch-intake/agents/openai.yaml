@@ -1,7 +1,0 @@
-interface:
-  display_name: "Android Framework Patch Intake"
-  short_description: "Generate Framework patch incoming packages"
-  default_prompt: "Use $android-framework-patch-intake to generate, check, submit, or complete queue information for one validated Android Framework patch package. Keep one patch_package_id across queue and main, treat package_key as source-only, address completion by request_id, and keep patch files immutable."
-
-policy:
-  allow_implicit_invocation: true

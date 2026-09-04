@@ -1,4 +1,0 @@
-interface:
-  display_name: "Jinny Framework Coding (Compatibility)"
-  short_description: "Forward the retired coding ID to the Jinny coding provider"
-  default_prompt: "Use $jinny-framework-coding-standards only as a compatibility entry, then continue with $jinny-android-coding-practices after explicit provider resolution."

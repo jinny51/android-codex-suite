@@ -84,8 +84,8 @@
       "forbidden": ["adoption_unproven_legacy_removal"]
     },
     "phase6": {
-      "purpose": "per_entry_adoption_zero_cleanup",
-      "required": ["per_entry_adoption_zero_receipt", "permanent_v1_read_compatibility", "history_preservation"],
+      "purpose": "new_repository_direct_cutover",
+      "required": ["new_repository_target_only_receipt", "legacy_repository_preserved", "permanent_v1_read_compatibility", "history_preservation"],
       "forbidden": ["history_rewrite", "unproven_bulk_removal"]
     }
   },
@@ -379,7 +379,7 @@
       "kind": "cli_entrypoint_family",
       "intent": "member_setup_search_merge_reports_submit_cli",
       "legacy": ["android_member_setup.py", "android_knowledge_search.py", "android_knowledge_merge_review.py", "android_daily_report_intake.py", "android_weekly_report_intake.py", "android_framework_patch_intake.py", "android_knowledge_intake.py"],
-      "target": ["akbs_member_setup.py", "akbs_knowledge_search.py", "akbs_knowledge_merge_review.py", "akbs_daily_report.py", "akbs_weekly_report.py", "akbs_patch_submit.py", "android_member_setup.py", "android_knowledge_search.py", "android_knowledge_merge_review.py", "android_daily_report_intake.py", "android_weekly_report_intake.py", "android_framework_patch_intake.py", "android_knowledge_intake.py"],
+      "target": ["akbs_member_setup.py", "akbs_knowledge_search.py", "akbs_knowledge_merge_review.py", "akbs_daily_report.py", "akbs_weekly_report.py", "akbs_patch_submit.py"],
       "read": {"current": "legacy argv and state", "migration": "new CLI plus old thin forwarders", "target": "new CLI plus legacy input readers"},
       "write": {"current": "legacy CLI", "migration": "target CLI only in target family", "target": "target CLI only"},
       "default": {"current": {"legacy_current": ["legacy-cli-family"]}, "migration": {"legacy_rollback": ["legacy-cli-family"], "target_candidate": ["target-cli-family"]}, "target": {"target_only": ["target-cli-family"]}},
@@ -408,7 +408,7 @@
       "kind": "cli_entrypoint_family",
       "intent": "workflow_diagnostics_capture_remote_build_cli",
       "legacy": ["android-framework-change-workflow:health_scan_logcat.py", "android-framework-change-workflow:logcat_slice.py", "android-framework-change-workflow:extract_video_frames.py", "android-framework-change-workflow:collect_diagnostics.sh", "android-framework-change-workflow:diagnostic_log_audit.py", "android-framework-patch-capture:capture_framework_patch.py", "android-framework-patch-capture:capture_remote_snapshot.py", "android-remote-channel:remote-channel.sh", "android-remote-build-deploy:resolve_remote_mapping.py", "android-remote-build-deploy:remote-build-v2.py", "android-remote-build-deploy:push_artifacts.py"],
-      "target": ["android-change-workflow:android_change_controller.py", "android-change-workflow:resolve_android_practices.py", "android-change-workflow:health_scan_logcat.py", "android-change-workflow:logcat_slice.py", "android-change-workflow:extract_video_frames.py", "android-change-workflow:collect_diagnostics.sh", "android-change-workflow:diagnostic_log_audit.py", "android-patch-capture:capture_android_patch.py", "android-patch-capture:capture_remote_snapshot.py", "android-patch-capture:read_legacy_capture.py", "android-framework-patch-capture:capture_framework_patch.py", "android-framework-patch-capture:capture_remote_snapshot.py", "android-remote-channel:remote-channel.sh", "android-remote-build-deploy:resolve_remote_mapping.py", "android-remote-build-deploy:remote-build-v2.py", "android-remote-build-deploy:push_artifacts.py"],
+      "target": ["android-change-workflow:android_change_controller.py", "android-change-workflow:resolve_android_practices.py", "android-change-workflow:health_scan_logcat.py", "android-change-workflow:logcat_slice.py", "android-change-workflow:extract_video_frames.py", "android-change-workflow:collect_diagnostics.sh", "android-change-workflow:diagnostic_log_audit.py", "android-patch-capture:capture_android_patch.py", "android-patch-capture:capture_remote_snapshot.py", "android-patch-capture:read_legacy_capture.py", "android-remote-channel:remote-channel.sh", "android-remote-build-deploy:resolve_remote_mapping.py", "android-remote-build-deploy:remote-build-v2.py", "android-remote-build-deploy:push_artifacts.py"],
       "read": {"current": "legacy command state", "migration": "target commands read legacy state", "target": "target commands read legacy state"},
       "write": {"current": "legacy owner", "migration": "selected install family only", "target": "engineering plugin only"},
       "default": {"current": {"legacy_current": ["legacy-engineering-cli"]}, "migration": {"legacy_rollback": ["legacy-engineering-cli"], "target_candidate": ["target-engineering-cli"]}, "target": {"target_only": ["target-engineering-cli"]}},
@@ -713,7 +713,7 @@
       "kind": "installed_cache_identity",
       "intent": "codex_plugin_install_and_rollback_identity",
       "legacy": ["android-framework-ops@android-framework-codex-suite", "android-wsl-ops@android-framework-codex-suite", "android-mac-ops@android-framework-codex-suite", "jinny-android-practices@android-framework-codex-suite"],
-      "target": ["akbs-member-ops@android-framework-codex-suite", "android-engineering-ops@android-framework-codex-suite", "jinny-android-practices@android-framework-codex-suite"],
+      "target": ["akbs-member-ops@android-codex-suite", "android-engineering-ops@android-codex-suite", "jinny-android-practices@android-codex-suite"],
       "read": {"current": "record exact active installed versions and hashes from Codex plugin inventory", "migration": "detect either active install family and reject mixed; historical cache is evidence only", "target": "record active target source commit versions and hashes"},
       "write": {"current": "Codex plugin CLI only", "migration": "ordered remove then add", "target": "Codex plugin CLI only"},
       "default": {"current": {"legacy_current": ["legacy-install-family"]}, "migration": {"legacy_rollback": ["legacy-install-family"], "target_candidate": ["target-install-family"]}, "target": {"target_only": ["target-install-family"]}},
@@ -736,9 +736,9 @@
       "legacy": ["android-framework-ops", "android-wsl-ops", "android-mac-ops", "jinny-android-practices"],
       "target": ["akbs-member-ops", "android-engineering-ops", "jinny-android-practices"],
       "read": {"current": "current v1 marketplace", "migration": "catalog may declare target canary plus legacy rollback", "target": "target entries; legacy exact release remains recoverable"},
-      "write": {"current": "unchanged in phase0", "migration": "add entries only with publish authority", "target": "remove legacy only after adoption zero"},
+      "write": {"current": "frozen legacy repository", "migration": "candidate history only", "target": "three entries in the new repository only"},
       "default": {"current": {"legacy_current": ["android-framework-ops"]}, "migration": {"legacy_rollback": ["android-framework-ops"], "target_candidate": ["role-selected-target"]}, "target": {"target_only": ["role-selected-target"]}},
-      "fallback": {"allowed": true, "mode": "repository_name_unchanged_and_exact_release", "fail_closed_when": ["github_repo_rename_assumed", "publication_not_authorized"]},
+      "fallback": {"allowed": true, "mode": "frozen_legacy_repository", "fail_closed_when": ["new_repository_publication_not_verified", "legacy_history_rewritten"]},
       "activation": {
         "materialization_phase": "phase2",
         "real_activation_phase": "phase5",
@@ -755,7 +755,7 @@
         "forbidden_coinstall": ["legacy_install_family", "target_install_family"]
       },
       "deprecation": {"starts": "after_canary_and_pilot", "behavior": "legacy entries marked replacement", "notice_required": true},
-      "removal": {"gates": ["per_entry_adoption_zero", "rollback_drill_passed"], "legacy_reader_retention": "exact_release_metadata_retained", "history_rewrite": false},
+      "removal": {"gates": ["new_repository_target_only_receipt", "legacy_repository_preserved"], "legacy_reader_retention": "exact_release_metadata_retained", "history_rewrite": false},
       "test": {"required_ids": ["legacy-rollback-unchanged", "canary-add", "target-only"], "negative_ids": ["rename-without-authority", "delete-legacy-before-adoption-zero"]}
     }
   ]

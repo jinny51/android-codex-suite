@@ -350,7 +350,7 @@ def install_plugin_family(
     *,
     inventory_dir_name: str,
 ) -> dict[str, Path]:
-    marketplace = "android-framework-codex-suite"
+    marketplace = "android-codex-suite"
     runtimes: dict[str, Path] = {}
     installed: list[dict[str, Any]] = []
     for plugin_name in plugin_names:
@@ -459,52 +459,6 @@ def write_config(root: Path) -> tuple[dict[str, str], dict[str, Path]]:
     return env, runtimes
 
 
-def write_legacy_capture_config(root: Path) -> tuple[dict[str, str], Path]:
-    fixture_root = root / "legacy-capture-runtime"
-    codex_home = fixture_root / "codex-home"
-    config_dir = codex_home / "report"
-    config_dir.mkdir(parents=True)
-    (config_dir / "config.toml").write_text(
-        textwrap.dedent(
-            f"""
-            default_profile = "wick"
-            incoming_schema_version = "1"
-
-            [paths]
-            out_dir = "{(codex_home / 'artifacts/android-knowledge-intake').as_posix()}"
-
-            [profiles.wick]
-            member_alias = "wick"
-            member_name = "刘杰钊"
-            role = "member"
-            allowed_modes = ["daily", "weekly", "patch"]
-            knowledge_repo_worktree = "{(fixture_root / 'knowledge').as_posix()}"
-            git_user_name = "刘杰钊"
-            git_user_email = "wick@example.invalid"
-            synthetic_data = true
-            synthetic_item_count = "2"
-            """
-        ).strip()
-        + "\n",
-        encoding="utf-8",
-    )
-    runtimes = install_plugin_family(
-        fixture_root,
-        codex_home,
-        ("android-framework-ops",),
-        inventory_dir_name="legacy-active-plugin-inventory",
-    )
-    env = os.environ.copy()
-    env["CODEX_HOME"] = str(codex_home)
-    env["CODEX_REPORT_SKIP_PLUGIN_UPDATE_CHECK"] = "1"
-    env["PATH"] = f"{runtimes['inventory_bin']}{os.pathsep}{env['PATH']}"
-    script = (
-        runtimes["android-framework-ops"]
-        / "skills/android-framework-patch-capture/scripts/capture_framework_patch.py"
-    )
-    return env, script
-
-
 def init_framework_source(root: Path) -> Path:
     source_root = root / "android-source"
     source = source_root / "frameworks/base/packages/SystemUI/src/com/android/systemui/volume/VolumeDialogImpl.java"
@@ -539,28 +493,52 @@ def generate_real_packages(
     daily = run_json(common + ["daily", "--date", "2026-07-11", "--run-id", "20260711-090000-daily", "--prepare"], REPO_ROOT, env)
     weekly = run_json(common + ["weekly", "--date", "2026-07-11", "--run-id", "20260711-100000-weekly", "--prepare"], REPO_ROOT, env)
     source_root = init_framework_source(root)
-    legacy_env, capture_script = write_legacy_capture_config(root)
+    patch_artifact = root / "historical-framework-change.patch"
+    patch_artifact.write_bytes(
+        subprocess.run(
+            ["git", "diff", "--binary", "--", "frameworks/base"],
+            cwd=source_root,
+            check=True,
+            stdout=subprocess.PIPE,
+        ).stdout
+    )
+    capture_script = (
+        runtimes["android-engineering-ops"]
+        / "skills/android-patch-capture/scripts/capture_android_patch.py"
+    )
     capture = run_json(
         [
             sys.executable,
             str(capture_script),
-            "--source-root",
-            str(source_root),
+            "--patch-artifact",
+            str(patch_artifact),
+            "--patch-repo-path",
+            ".",
             "--out-dir",
             str(
-                Path(legacy_env["CODEX_HOME"])
-                / "artifacts/android-framework-patch-capture/packages"
+                Path(env["CODEX_HOME"])
+                / "artifacts/android-patch-capture/packages"
             ),
             "--run-id",
             "20260711-110000-patch",
             "--platform",
             "mtk15",
-            "--feature",
+            "--component-layer",
+            "platform",
+            "--component-type",
+            "framework",
+            "--component-partition",
+            "system",
+            "--component-ownership",
+            "aosp",
+            "--change-id",
             "incoming-contract-gate",
             "--summary",
             "incoming v1 跨仓合同门禁",
             "--workflow-contract",
             "manual_import",
+            "--implementation-origin",
+            "historical",
             "--project",
             "TVE8402M",
             "--status",
@@ -577,7 +555,7 @@ def generate_real_packages(
             "未发现可直接复用补丁",
         ],
         source_root,
-        legacy_env,
+        env,
     )
     target_capture = (
         Path(env["CODEX_HOME"])
@@ -586,6 +564,21 @@ def generate_real_packages(
     )
     target_capture.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(Path(capture["package"]), target_capture)
+    legacy_manifest_path = target_capture / "manifest.json"
+    legacy_manifest = load_json(legacy_manifest_path)
+    legacy_manifest["package_type"] = "framework_feature_patch"
+    legacy_manifest["change_domain"] = "framework"
+    legacy_readme_path = target_capture / str(legacy_manifest["readme"])
+    legacy_readme_path.write_text(
+        legacy_readme_path.read_text(encoding="utf-8").replace(
+            "## 变更描述", "## 功能描述", 1
+        ),
+        encoding="utf-8",
+    )
+    legacy_manifest_path.write_text(
+        json.dumps(legacy_manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     patch = run_json(
         common
         + [

@@ -1,6 +1,6 @@
 # Android Engineering Ops
 
-`android-engineering-ops` 2.0.0 是可独立安装的 Android 工程核心。它不依赖
+`android-engineering-ops` 2.0.1 是可独立安装的 Android 工程核心。它不依赖
 `akbs-member-ops` 或任何 practices provider；未配置扩展时始终使用 core-direct。
 
 | Skill | 职责 |
@@ -11,8 +11,6 @@
 | `android-remote-channel` | 远端 source/build 命令、锁、队列和恢复 |
 | `android-remote-build-deploy` | 受控 build、artifact 校验和本地 adb 交付 |
 | `android-patch-capture` | 七层 component 标注的本地 `android_change_capture` 和 effective status |
-| `android-framework-change-workflow` | 迁移期薄兼容入口，转交 `android-change-workflow` |
-| `android-framework-patch-capture` | 迁移期薄兼容入口，转交 `android-patch-capture` |
 
 ## Optional practices provider
 
@@ -33,7 +31,7 @@ CLI 不可用、active identity 不唯一、路径含 symlink、读取不稳定�
 ```toml
 [extension]
 mode = "jinny"
-provider_version = "2.0.0"
+provider_version = "2.0.1"
 provider_manifest_sha256 = "<64 lowercase hex>"
 ```
 

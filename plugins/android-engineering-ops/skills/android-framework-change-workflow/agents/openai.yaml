@@ -1,4 +1,0 @@
-interface:
-  display_name: "Android Framework Workflow (Compatibility)"
-  short_description: "Forward the retired workflow ID to Android Change Workflow"
-  default_prompt: "Use $android-framework-change-workflow only as a compatibility entry, then continue the same request with $android-change-workflow."

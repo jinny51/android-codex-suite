@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the AKBS 2 migration catalog, rollback release, and contracts."""
+"""Validate the target-only Android Codex Suite and its compatibility contracts."""
 
 from __future__ import annotations
 
@@ -42,9 +42,9 @@ TARGET_PLUGINS = {
     ),
 }
 TARGET_PLUGIN_VERSIONS = {
-    "akbs-member-ops": "2.0.0",
-    "android-engineering-ops": "2.0.0",
-    "jinny-android-practices": "2.0.0",
+    "akbs-member-ops": "2.0.1",
+    "android-engineering-ops": "2.0.1",
+    "jinny-android-practices": "2.0.1",
 }
 MIGRATION_ALIASES = {
     "akbs-member-ops": (
@@ -66,7 +66,7 @@ MIGRATION_SOURCE_PLUGINS = (*MIGRATION_MARKETPLACE, "codex-workspace-care")
 TARGET_MARKETPLACE = (
     "akbs-member-ops", "android-engineering-ops", "jinny-android-practices",
 )
-TARGET_SOURCE_PLUGINS = (*TARGET_MARKETPLACE, "codex-workspace-care")
+TARGET_SOURCE_PLUGINS = TARGET_MARKETPLACE
 CURRENT_COMPATIBILITY = {
     "android-framework-ops": (
         "1.0.169", "ac7b33d205a3408005b1857480595e0386be53cdeb817f35f4933f1e95269dac",
@@ -163,10 +163,6 @@ CLI_ENTRYPOINT_BINDINGS = {
             "akbs_member_setup.py", "akbs_knowledge_search.py",
             "akbs_knowledge_merge_review.py", "akbs_daily_report.py",
             "akbs_weekly_report.py", "akbs_patch_submit.py",
-            "android_member_setup.py", "android_knowledge_search.py",
-            "android_knowledge_merge_review.py", "android_daily_report_intake.py",
-            "android_weekly_report_intake.py", "android_framework_patch_intake.py",
-            "android_knowledge_intake.py",
         ),
     },
     "cli.android-engineering": {
@@ -194,8 +190,6 @@ CLI_ENTRYPOINT_BINDINGS = {
             "android-patch-capture:capture_android_patch.py",
             "android-patch-capture:capture_remote_snapshot.py",
             "android-patch-capture:read_legacy_capture.py",
-            "android-framework-patch-capture:capture_framework_patch.py",
-            "android-framework-patch-capture:capture_remote_snapshot.py",
             "android-remote-channel:remote-channel.sh",
             "android-remote-build-deploy:resolve_remote_mapping.py",
             "android-remote-build-deploy:remote-build-v2.py",
@@ -236,7 +230,7 @@ SURFACE_PHASE_BINDINGS = {
     "cache.legacy-installations": ("phase5", "phase5"),
     "marketplace.entries": ("phase2", "phase5"),
 }
-PHASE_CONTRACT_SHA256 = "73a5e71e880d4786fc278dd558d08cd31b15d280652e8a5830e360c8734326f1"
+PHASE_CONTRACT_SHA256 = "0c7f34e467f59e69d49d3ee74f3a6bd3fda96c054fd3420a8ba89afb7c8a4f84"
 ENGINEERING_IDENTITY_RESOLUTION_SHA256 = (
     "a51a3d17279c26c04d5ba23f7e8fe5ead5964687219df231a7be99012556ab87"
 )
@@ -349,7 +343,7 @@ SURFACE_REMOVAL_BINDINGS = {
     "package.framework-change-v1": ("v1_read_is_permanent",),
     "package.android-change-v2": ("separate_contract_revision",),
     "cache.legacy-installations": ("member_target_only_receipt", "rollback_available"),
-    "marketplace.entries": ("per_entry_adoption_zero", "rollback_drill_passed"),
+    "marketplace.entries": ("new_repository_target_only_receipt", "legacy_repository_preserved"),
 }
 
 
@@ -496,8 +490,8 @@ def validate_migration_plugin_layout(root: Path, topology: dict[str, Any]) -> No
         != "jinny-android-coding-practices"
         or provider["capabilities"]["execution"].get("skill_id")
         != "jinny-android-execution-policy"
-        or provider["capabilities"]["coding"].get("skill_version") != "2.0.0"
-        or provider["capabilities"]["execution"].get("skill_version") != "2.0.0"
+        or provider["capabilities"]["coding"].get("skill_version") != "2.0.1"
+        or provider["capabilities"]["execution"].get("skill_version") != "2.0.1"
         or provider.get("compatible_core_contracts") != ["android-engineering-ops-v1"]
         or provider.get("fallback") != {
             "capability_absent": "core",
@@ -545,6 +539,63 @@ def validate_migration_plugin_layout(root: Path, topology: dict[str, Any]) -> No
                 or row.get("git_tree_oid") != expected_tree_oid
             ):
                 raise TopologyError(f"legacy rollback catalog differs: {plugin}")
+
+
+def validate_target_plugin_layout(root: Path, topology: dict[str, Any]) -> None:
+    target = _state_map(topology)["target"]
+    target_rows = {row["id"]: row for row in target["plugins"]}
+    repository_url = "https://github.com/jinny51/android-codex-suite"
+    for plugin, canonical_skills in TARGET_PLUGINS.items():
+        metadata = plugin_metadata(root, plugin)
+        if metadata.get("name") != plugin:
+            raise TopologyError(f"plugin manifest name differs: {plugin}")
+        if metadata.get("version") != TARGET_PLUGIN_VERSIONS[plugin]:
+            raise TopologyError(f"plugin manifest version differs: {plugin}")
+        if (
+            metadata.get("homepage") != repository_url
+            or metadata.get("repository") != repository_url
+        ):
+            raise TopologyError(f"plugin repository identity differs: {plugin}")
+        if plugin == "jinny-android-practices" and "Write" in (
+            metadata.get("interface", {}).get("capabilities") or []
+        ):
+            raise TopologyError("decision-only Jinny provider must not advertise Write")
+        actual_skills = manifest_skills(root, plugin)
+        if actual_skills != list(canonical_skills):
+            raise TopologyError(f"target manifest skills mismatch for {plugin}")
+        actual_dirs = sorted(
+            path.name for path in (root / "plugins" / plugin / "skills").iterdir()
+            if path.is_dir()
+        )
+        if actual_dirs != sorted(canonical_skills):
+            raise TopologyError(f"target Skill directories mismatch for {plugin}")
+        for skill in canonical_skills:
+            _validate_skill_surface(root, plugin, skill)
+        row = target_rows.get(plugin) or {}
+        if row.get("version") != metadata["version"]:
+            raise TopologyError(f"target topology version differs: {plugin}")
+
+    migration = _state_map(topology)["migration"]
+    provider_rel = migration["provider_discovery"]["manifest_relative_path"]
+    provider = load_json(
+        root / "plugins" / "jinny-android-practices" / provider_rel
+    )
+    if (
+        provider.get("schema") != "android-practices-provider-v1"
+        or provider.get("provider_id") != "jinny-android-practices"
+        or provider.get("provider_version")
+        != TARGET_PLUGIN_VERSIONS["jinny-android-practices"]
+        or set((provider.get("capabilities") or {})) != {"coding", "execution"}
+        or provider["capabilities"]["coding"].get("skill_id")
+        != "jinny-android-coding-practices"
+        or provider["capabilities"]["execution"].get("skill_id")
+        != "jinny-android-execution-policy"
+        or provider["capabilities"]["coding"].get("skill_version") != "2.0.1"
+        or provider["capabilities"]["execution"].get("skill_version") != "2.0.1"
+        or provider.get("compatible_core_contracts") != ["android-engineering-ops-v1"]
+        or provider.get("authority", {}).get("decision_only") is not True
+    ):
+        raise TopologyError("Jinny target provider manifest differs")
 
 
 def validate_marketplace_entries(marketplace: dict[str, Any], expected: tuple[str, ...]) -> None:
@@ -731,10 +782,10 @@ def _validate_phase_lifecycle_contract(matrix: dict[str, Any]) -> None:
     if "per_member_target_only_receipt" not in phases["phase5"]["required"]:
         raise TopologyError("Phase 5 lacks per-member target-only receipts")
     if not {
-        "per_entry_adoption_zero_receipt", "permanent_v1_read_compatibility",
-        "history_preservation",
+        "new_repository_target_only_receipt", "legacy_repository_preserved",
+        "permanent_v1_read_compatibility", "history_preservation",
     }.issubset(phases["phase6"]["required"]):
-        raise TopologyError("Phase 6 cleanup proof differs")
+        raise TopologyError("Phase 6 direct-cutover proof differs")
 
 
 def _validate_engineering_identity_resolution(topology: dict[str, Any]) -> None:
@@ -781,22 +832,22 @@ def validate_contract_documents(
         raise TopologyError("migration topology schema is invalid")
     if topology.get("contract_id") != "akbs2-three-plugin-topology-v1":
         raise TopologyError("migration topology contract ID is invalid")
-    if topology.get("phase") != "phase2_migration_materialized":
-        raise TopologyError("migration topology phase is not materialized Phase 2")
+    if topology.get("phase") != "phase6_direct_cutover_complete":
+        raise TopologyError("topology phase is not the completed direct cutover")
     if topology.get("architecture_binding") != ARCHITECTURE_BINDING:
         raise TopologyError("migration topology architecture binding differs")
     if tuple(topology.get("state_order") or ()) != STATES:
         raise TopologyError("migration topology state order differs")
     expected_policy = {
-        "default_state": "migration",
-        "materialized_states": ["migration"],
-        "declaration_only_states": ["target"],
+        "default_state": "target",
+        "materialized_states": ["target"],
+        "declaration_only_states": ["current", "migration"],
         "current_authority": "contracts/plugin-topology/v1/active-topology.json",
         "current_authority_sha256": current_sha256,
         "undeclared_mixed_behavior": "reject",
     }
     if topology.get("physical_policy") != expected_policy:
-        raise TopologyError("Phase 2 physical topology policy differs")
+        raise TopologyError("target physical topology policy differs")
     states = _state_map(topology)
     if topology.get("system_identity") != {
         "brand": "AKBS",
@@ -804,6 +855,14 @@ def validate_contract_documents(
         "rejected_expression": "Android Framework 知识库",
     }:
         raise TopologyError("AKBS system identity differs")
+    if topology.get("repository_identity") != {
+        "legacy": "jinny51/android-framework-codex-suite",
+        "target": "jinny51/android-codex-suite",
+        "strategy": "new_repository",
+        "legacy_role": "frozen_1.x_reference",
+        "history_rewrite": False,
+    }:
+        raise TopologyError("repository cutover identity differs")
     _validate_engineering_identity_resolution(topology)
     current_plugins = [row["id"] for row in current.get("plugins", [])]
     current_marketplace = [row["id"] for row in current.get("plugins", []) if row.get("marketplace") is True]
@@ -819,8 +878,8 @@ def validate_contract_documents(
         raise TopologyError("migration source plugin order differs")
     if tuple(states["migration"].get("marketplace_plugins") or ()) != MIGRATION_MARKETPLACE:
         raise TopologyError("migration marketplace plugin order differs")
-    if states["migration"].get("mode") != "physical_default":
-        raise TopologyError("migration fixture mode differs")
+    if states["migration"].get("mode") != "historical_candidate":
+        raise TopologyError("migration history mode differs")
     compatibility_entries = {
         item["id"]: item["mode"]
         for item in states["migration"].get("compatibility_source_entries", [])
@@ -949,9 +1008,9 @@ def validate_contract_documents(
     if {key: target_rows[key] for key in TARGET_PLUGINS} != TARGET_PLUGINS:
         raise TopologyError("target fixture differs from the reviewed three-plugin baseline")
     if (
-        states["target"].get("mode") != "declaration_fixture"
+        states["target"].get("mode") != "physical_default"
         or states["target"].get("source_plugins")
-        != ["akbs-member-ops", "android-engineering-ops", "jinny-android-practices", "codex-workspace-care"]
+        != ["akbs-member-ops", "android-engineering-ops", "jinny-android-practices"]
         or states["target"].get("marketplace_plugins")
         != ["akbs-member-ops", "android-engineering-ops", "jinny-android-practices"]
     ):
@@ -963,13 +1022,8 @@ def validate_contract_documents(
         "akbs-member-ops": "akbs_member_client",
         "android-engineering-ops": "android_engineering_controller_and_tools",
         "jinny-android-practices": "optional_practices_provider",
-        "codex-workspace-care": "independent_source",
     }:
         raise TopologyError("target plugin roles differ")
-    if target_rows.get("codex-workspace-care") != (
-        "codex-chat-history-cleaner", "codex-chat-history-context-extractor",
-    ):
-        raise TopologyError("codex-workspace-care is not preserved independently")
     families = states["migration"].get("installation_families") or {}
     ordered_cutover = families.get("ordered_cutover") or {}
     if (
@@ -1296,7 +1350,7 @@ def validate_compatibility_test_map(root: Path, matrix: dict[str, Any]) -> None:
         "phase3": "isolated_model_routing_experiment_receipt",
         "phase4": "real_pilot_receipts_for_wsl_macos_gms_modes_and_v1_v2_knowledge_loop",
         "phase5": "per_member_target_only_migration_and_rollback_receipts",
-        "phase6": "per_entry_adoption_zero_and_removal_receipts",
+        "phase6": "new_repository_target_only_and_legacy_repository_receipts",
     }:
         raise TopologyError("compatibility proof requirements differ")
     test_file = root / "tests/test_phase2_migration_topology.py"
@@ -2365,37 +2419,29 @@ def validate_repository(root: Path = ROOT) -> None:
         validate_packaged_contract_parity(root)
     elif state == "target":
         validate_marketplace_entries(marketplace, TARGET_MARKETPLACE)
+        validate_target_plugin_layout(root, topology)
+        validate_packaged_contract_parity(root)
     else:
         validate_marketplace_entries(
             marketplace,
             tuple(row["id"] for row in current["plugins"] if row.get("marketplace") is True),
         )
-    for row in current["plugins"]:
-        plugin = row["id"]
-        if plugin == "jinny-android-practices":
-            continue
-        plugin_root = root / "plugins" / plugin
-        if not plugin_root.is_dir():
-            raise TopologyError(f"declared plugin source is missing: {plugin}")
-        if row.get("role") == "independent_source":
-            continue
-        actual_skills = manifest_skills(root, plugin)
-        if actual_skills != row["skills"]:
-            raise TopologyError(f"manifest skills mismatch for {plugin}")
-        for skill in actual_skills:
-            if not (plugin_root / "skills" / skill / "SKILL.md").is_file():
-                raise TopologyError(f"declared Skill is missing: {plugin}:{skill}")
-    core = root / "plugins/android-framework-ops"
-    if (core / "skills/android-source-access").exists():
-        raise TopologyError("core must not expose a third public android-source-access Skill")
-    if not (core / "internal/android-source-access/scripts/android_source_access.py").is_file():
-        raise TopologyError("core internal source-access dispatcher is missing")
-    for plugin in ("android-wsl-ops", "android-mac-ops"):
-        scripts = root / "plugins" / plugin / "skills/android-source-access/scripts"
-        if not (scripts / "_core_source_access.py").is_file():
-            raise TopologyError(f"source-access locator is missing: {plugin}")
-        if not (scripts / "_platform_shim.sh").is_file():
-            raise TopologyError(f"source-access shim is missing: {plugin}")
+    if state != "target":
+        for row in current["plugins"]:
+            plugin = row["id"]
+            if plugin == "jinny-android-practices":
+                continue
+            plugin_root = root / "plugins" / plugin
+            if not plugin_root.is_dir():
+                raise TopologyError(f"declared plugin source is missing: {plugin}")
+            if row.get("role") == "independent_source":
+                continue
+            actual_skills = manifest_skills(root, plugin)
+            if actual_skills != row["skills"]:
+                raise TopologyError(f"manifest skills mismatch for {plugin}")
+            for skill in actual_skills:
+                if not (plugin_root / "skills" / skill / "SKILL.md").is_file():
+                    raise TopologyError(f"declared Skill is missing: {plugin}:{skill}")
     validate_phase0_schema_documents(root)
 
 
@@ -2405,7 +2451,7 @@ def main() -> int:
     except (OSError, json.JSONDecodeError, TopologyError) as error:
         raise SystemExit(str(error)) from error
     print("Active plugin topology validation passed")
-    print("AKBS 2 Phase 2 migration catalog validation passed")
+    print("Android Codex Suite target-only topology validation passed")
     return 0
 
 

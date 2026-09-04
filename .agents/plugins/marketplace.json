@@ -1,5 +1,5 @@
 {
-  "name": "android-framework-codex-suite",
+  "name": "android-codex-suite",
   "interface": {
     "displayName": "Android Knowledge Base & Engineering Suite"
   },
@@ -33,42 +33,6 @@
       "source": {
         "source": "local",
         "path": "./plugins/jinny-android-practices"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Coding"
-    },
-    {
-      "name": "android-framework-ops",
-      "source": {
-        "source": "local",
-        "path": "./plugins/android-framework-ops"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Coding"
-    },
-    {
-      "name": "android-wsl-ops",
-      "source": {
-        "source": "local",
-        "path": "./plugins/android-wsl-ops"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Coding"
-    },
-    {
-      "name": "android-mac-ops",
-      "source": {
-        "source": "local",
-        "path": "./plugins/android-mac-ops"
       },
       "policy": {
         "installation": "AVAILABLE",

@@ -22,7 +22,7 @@ from typing import Any, Mapping
 
 TARGET_PLUGIN = "android-engineering-ops"
 OPTIONAL_PROVIDER = "jinny-android-practices"
-OFFICIAL_MARKETPLACE = "android-framework-codex-suite"
+OFFICIAL_MARKETPLACE = "android-codex-suite"
 LEGACY_FAMILY = frozenset({"android-framework-ops", "android-wsl-ops", "android-mac-ops"})
 PLUGIN_VERSION_RE = re.compile(r"^[0-9]+(?:\.[0-9]+){1,3}(?:[-+][0-9A-Za-z.-]+)?$")
 CORE_PROVIDER_CONTRACT = "android-engineering-ops-v1"

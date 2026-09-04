@@ -270,7 +270,7 @@ def test_assignment_replay_and_provider_substitution_are_rejected() -> None:
         "profile_source": "provider",
         "worker_profile_id": "provider-worker",
         "provider_id": "acme-android-practices",
-        "provider_version": "2.0.0",
+        "provider_version": "2.0.1",
         "provider_manifest_sha256": "9" * 64,
     }
     with pytest.raises(ControllerValidationError, match="cannot assign provider"):

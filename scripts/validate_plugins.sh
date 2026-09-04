@@ -17,24 +17,21 @@ if [[ ! -f "$validator" ]]; then
   exit 1
 fi
 
-for plugin in akbs-member-ops android-engineering-ops jinny-android-practices android-framework-ops android-wsl-ops android-mac-ops codex-workspace-care; do
+for plugin in akbs-member-ops android-engineering-ops jinny-android-practices; do
   python3 "$validator" "$repo_root/plugins/$plugin"
 done
 
 "$repo_root/scripts/validate_skill_layout.sh"
 python3 "$repo_root/scripts/validate_active_plugin_topology.py"
 
-# Legacy rollback and target plugins deliberately cannot be coinstalled.  Some of
-# their private Python package names are therefore identical as well.  Validate the
-# repository-level contracts together, then run each plugin test tree in a fresh
-# interpreter so the aggregate gate mirrors the declared install-family isolation.
+# Validate repository contracts together, then run each plugin test tree in a
+# fresh interpreter to avoid cross-plugin Python import state.
 python3 -m pytest --import-mode=importlib --capture=no "$repo_root"/tests/test_*.py
 for plugin_tests in "$repo_root"/tests/plugins/*; do
   [[ -d "$plugin_tests" ]] || continue
   python3 -m pytest --import-mode=importlib --capture=no "$plugin_tests"
 done
 
-python3 "$repo_root/plugins/codex-workspace-care/skills/codex-chat-history-context-extractor/scripts/self_test_extract_codex_context.py"
 python3 "$repo_root/scripts/test_validator_cleanup.py"
 
 python3 "$repo_root/scripts/validate_incoming_contract_gate.py" --mode client-only

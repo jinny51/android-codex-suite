@@ -21,7 +21,7 @@ python3 "scripts/akbs_member_setup.py" doctor \
 ```
 
 Doctor 以 `codex plugin list --json` 为 active-install 权威，并要求唯一启用的
-`akbs-member-ops@android-framework-codex-suite` 条目把绝对 marketplace
+`akbs-member-ops@android-codex-suite` 条目把绝对 marketplace
 `source.path` 绑定到当前进程的精确 versioned Codex cache。两个目录应不同，但两边
 直接 `.codex-plugin/plugin.json` 的字节、name/version 与完整发布内容及
 regular-file executable-bit 的规范化树 hash 必须一致；仅排除 `__pycache__`
@@ -31,7 +31,7 @@ checkout 只能作为开发证据。
 
 首次配置读取共享内核中的唯一
 `plugins/akbs-member-ops/internal/incoming-v1/references/member-setup-prompt.md`，避免维护两套身份和 endpoint 规则。
-旧 `android-knowledge-intake doctor` 命令继续可用。
+现行入口统一为 `akbs-member-setup doctor`。
 
 只要 `$CODEX_HOME/akbs-member-ops.toml` 存在，它就是唯一 AKBS 配置权威；此时不探测、
 不解析、也不为冲突检查读取任何旧成员/搜索/报告配置。仅当 target 文件缺失时才读取旧配置。

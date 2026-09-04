@@ -230,7 +230,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
         root: Path,
         *,
         version: str = "2.0.0",
-        marketplace: str = "android-framework-codex-suite",
+        marketplace: str = "android-codex-suite",
         plugin_id: str | None = None,
     ) -> dict[str, object]:
         return {
@@ -255,7 +255,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
             codex_home
             / "plugins"
             / "cache"
-            / "android-framework-codex-suite"
+            / "android-codex-suite"
             / "akbs-member-ops"
             / version
         )
@@ -269,7 +269,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
                 home
                 / ".tmp"
                 / "marketplaces"
-                / "android-framework-codex-suite"
+                / "android-codex-suite"
                 / "plugins"
                 / "akbs-member-ops"
             )
@@ -298,7 +298,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
                 codex_home
                 / ".tmp"
                 / "marketplaces"
-                / "android-framework-codex-suite"
+                / "android-codex-suite"
                 / "plugins"
                 / "akbs-member-ops"
             )
@@ -334,7 +334,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
                 / "codex"
                 / ".tmp"
                 / "marketplaces"
-                / "android-framework-codex-suite"
+                / "android-codex-suite"
                 / "plugins"
                 / "akbs-member-ops"
             )
@@ -395,7 +395,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
                 codex_home
                 / ".tmp"
                 / "marketplaces"
-                / "android-framework-codex-suite"
+                / "android-codex-suite"
                 / "plugins"
                 / "akbs-member-ops"
             )
@@ -443,7 +443,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
                 codex_home
                 / ".tmp"
                 / "marketplaces"
-                / "android-framework-codex-suite"
+                / "android-codex-suite"
                 / "plugins"
                 / "akbs-member-ops"
             )
@@ -505,7 +505,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
                 codex_home
                 / ".tmp"
                 / "marketplaces"
-                / "android-framework-codex-suite"
+                / "android-codex-suite"
                 / "plugins"
                 / "akbs-member-ops"
             )
@@ -539,7 +539,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
                 codex_home
                 / ".tmp"
                 / "marketplaces"
-                / "android-framework-codex-suite"
+                / "android-codex-suite"
                 / "plugins"
                 / "akbs-member-ops"
             )
@@ -648,7 +648,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
         self.assertTrue(family["blocking"])
         self.assertFalse(metadata["installed_plugin_active"])
         self.assertNotIn("installed_plugin_version", metadata)
-        self.assertEqual(metadata["execution_plugin_version"], "2.0.0")
+        self.assertEqual(metadata["execution_plugin_version"], "2.0.1")
 
     def test_cli_unavailable_falls_back_to_execution_root_not_history(self) -> None:
         with tempfile.TemporaryDirectory() as temporary, mock.patch.dict(
@@ -659,7 +659,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
         self.assertFalse(result["installed_plugin_active"])
         self.assertEqual(result["installed_plugin_authority"], "current_execution_plugin_root_fallback")
         self.assertNotIn("installed_plugin_version", result)
-        self.assertEqual(result["execution_plugin_version"], "2.0.0")
+        self.assertEqual(result["execution_plugin_version"], "2.0.1")
 
     def test_unavailable_or_malformed_active_inventory_is_blocking(self) -> None:
         cases = (

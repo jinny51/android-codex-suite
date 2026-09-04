@@ -334,12 +334,12 @@ def test_migration_and_target_are_both_recognized_without_allowing_mixed_state()
         set(module.MIGRATION_SOURCE_PLUGINS),
         set(module.MIGRATION_MARKETPLACE),
         topology,
+        require_materialized=False,
     ) == "migration"
     assert module.validate_materialized_plugin_ids(
         set(module.TARGET_SOURCE_PLUGINS),
         set(module.TARGET_MARKETPLACE),
         topology,
-        require_materialized=False,
     ) == "target"
     with pytest.raises(module.TopologyError, match="undeclared mixed"):
         module.validate_materialized_plugin_ids(
@@ -353,14 +353,14 @@ def test_migration_and_target_are_both_recognized_without_allowing_mixed_state()
 def test_marketplace_order_is_a_contract_not_a_set() -> None:
     module = validator_module()
     marketplace = load(ROOT / ".agents/plugins/marketplace.json")
-    module.validate_marketplace_entries(marketplace, module.MIGRATION_MARKETPLACE)
+    module.validate_marketplace_entries(marketplace, module.TARGET_MARKETPLACE)
     swapped = copy.deepcopy(marketplace)
     swapped["plugins"][0], swapped["plugins"][1] = (
         swapped["plugins"][1],
         swapped["plugins"][0],
     )
     with pytest.raises(module.TopologyError, match="order or identity"):
-        module.validate_marketplace_entries(swapped, module.MIGRATION_MARKETPLACE)
+        module.validate_marketplace_entries(swapped, module.TARGET_MARKETPLACE)
 
 
 def test_legacy_rollback_release_is_commit_version_and_hash_bound() -> None:
@@ -403,7 +403,7 @@ def test_current_compatibility_source_is_separate_from_frozen_rollback() -> None
     assert {row["mode"] for row in rollback_rows.values()} == {
         "immutable_release_catalog_entry"
     }
-    assert "physical_compatibility_source_is_separate_from_frozen_rollback_release" in (
+    assert "legacy_release_is_preserved_in_separate_legacy_repository_current_branch" in (
         topology["invariants"]
     )
 

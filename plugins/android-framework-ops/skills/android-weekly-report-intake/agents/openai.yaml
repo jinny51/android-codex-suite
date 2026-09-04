@@ -1,7 +1,0 @@
-interface:
-  display_name: "Android Weekly Report Intake"
-  short_description: "Generate fact-grounded personal weekly reports"
-  default_prompt: "Use $android-weekly-report-intake to generate, replace, check, or submit a member personal weekly report package through AKBS incoming. Preserve Patch/App project scopes and standalone Document scopes from current effective daily reports, apply the previous weekly ledger and replacement chains, and use sessions only as supplementary evidence; do not generate administrator summaries."
-
-policy:
-  allow_implicit_invocation: true

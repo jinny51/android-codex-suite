@@ -69,7 +69,7 @@ def test_active_topology_validator_passes_the_repository() -> None:
     )
     assert result.returncode == 0, result.stderr or result.stdout
     assert "Active plugin topology validation passed" in result.stdout
-    assert "Phase 2 migration catalog validation passed" in result.stdout
+    assert "Android Codex Suite target-only topology validation passed" in result.stdout
 
 
 def test_active_contract_loader_rejects_ambiguous_json(tmp_path: Path) -> None:
@@ -84,7 +84,7 @@ def test_active_contract_loader_rejects_ambiguous_json(tmp_path: Path) -> None:
         module.load_json(nonfinite)
 
 
-def test_phase2_migration_is_the_only_materialized_state() -> None:
+def test_target_is_the_only_materialized_state() -> None:
     topology = load(TOPOLOGY)
     assert topology["architecture_binding"] == {
         "baseline_id": "akbs-2-architecture-baseline-v1",
@@ -95,9 +95,9 @@ def test_phase2_migration_is_the_only_materialized_state() -> None:
         "plugin_source_baseline": "c0840685911ef7e19dba3893e014a257727c54b6",
     }
     assert topology["physical_policy"] == {
-        "default_state": "migration",
-        "materialized_states": ["migration"],
-        "declaration_only_states": ["target"],
+        "default_state": "target",
+        "materialized_states": ["target"],
+        "declaration_only_states": ["current", "migration"],
         "current_authority": "contracts/plugin-topology/v1/active-topology.json",
         "current_authority_sha256": current_sha256(),
         "undeclared_mixed_behavior": "reject",
@@ -153,7 +153,11 @@ def test_target_fixture_matches_reviewed_three_plugin_baseline() -> None:
         "jinny-android-coding-practices",
         "jinny-android-execution-policy",
     ]
-    assert plugins["codex-workspace-care"]["marketplace"] is False
+    assert set(plugins) == {
+        "akbs-member-ops",
+        "android-engineering-ops",
+        "jinny-android-practices",
+    }
 
 
 def test_migration_catalog_coexistence_is_not_install_coexistence() -> None:

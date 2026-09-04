@@ -1,6 +1,6 @@
 # Jinny Android Practices
 
-`jinny-android-practices` 2.0.0 是 `android-practices-provider-v1` 的可选实现。
+`jinny-android-practices` 2.0.1 是 `android-practices-provider-v1` 的可选实现。
 只有 `android-engineering-ops` 的 extension 配置显式选择它时才生效；安装本插件本身
 不会改变 core-direct 默认行为。
 
@@ -8,7 +8,6 @@
 | --- | --- |
 | `jinny-android-coding-practices` | 返回不放宽 `android-change-policy` 的 coding 决策 |
 | `jinny-android-execution-policy` | 返回受 controller rollout ceiling 约束的 worker profile 决策 |
-| `jinny-framework-coding-standards` | 迁移期薄 wrapper，转交 coding canonical Skill |
 
 Provider manifest 固定在：
 
@@ -16,7 +15,7 @@ Provider manifest 固定在：
 contracts/android-practices-provider/v1/provider.json
 ```
 
-Jinny mode 配置只含 `mode`、`provider_version=2.0.0` 和文件 SHA-256；插件名与
+Jinny mode 配置只含 `mode`、`provider_version=2.0.1` 和文件 SHA-256；插件名与
 Provider ID 固定为 `jinny-android-practices`。Core 从 `codex plugin list --json` 的
 active installed+enabled inventory 取得物理根，再验证固定相对路径、plugin manifest
 和 provider manifest；不扫描缓存最高版本、插件描述或 Skill catalog 猜测 provider。

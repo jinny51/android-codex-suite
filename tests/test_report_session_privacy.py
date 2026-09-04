@@ -12,9 +12,9 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PLUGIN_ROOT = REPO_ROOT / "plugins" / "android-framework-ops"
+PLUGIN_ROOT = REPO_ROOT / "plugins" / "akbs-member-ops"
 PLUGIN_LIB = PLUGIN_ROOT / "lib"
-INTAKE_SCRIPTS = PLUGIN_ROOT / "skills" / "android-knowledge-intake" / "scripts"
+INTAKE_SCRIPTS = PLUGIN_ROOT / "internal" / "incoming-v1" / "scripts"
 for path in (PLUGIN_LIB, INTAKE_SCRIPTS):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))

@@ -36,7 +36,7 @@ python3 "scripts/akbs_member_setup.py" doctor \
 ```
 
 Doctor treats `codex plugin list --json` as active-install authority. It requires
-one enabled `akbs-member-ops@android-framework-codex-suite` row and binds its
+one enabled `akbs-member-ops@android-codex-suite` row and binds its
 absolute marketplace `source.path` to this process's exact versioned Codex cache.
 The two roots are expected to differ, while their direct manifest bytes,
 name/version identity, and full publication content plus normalized
@@ -49,8 +49,8 @@ installed active plugin.
 
 The member profile supplies `member_alias`; do not derive it from Git author, invent an
 alias, or ask ordinary members to configure server tokens, cookies, roles, database
-paths, or client-IP headers. `android-knowledge-intake` remains only a deprecated
-compatibility entry; the implementation is the plugin-internal incoming v1 kernel.
+paths, or client-IP headers. Incoming v1 support is an internal data-compatibility
+kernel, not a public legacy Skill.
 
 If `$CODEX_HOME/akbs-member-ops.toml` is present, it is the sole AKBS config
 authority: do not discover or read any legacy member/search/report config, even

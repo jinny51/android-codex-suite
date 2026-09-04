@@ -21,9 +21,9 @@ def installed_engineering_family(
     """Materialize the same source/cache split produced by `codex plugin add`."""
     root = tmp_path_factory.mktemp("installed-engineering-family")
     home = root / "codex-home"
-    marketplace = "android-framework-codex-suite"
+    marketplace = "android-codex-suite"
     source = home / ".tmp/marketplaces" / marketplace / "plugins/android-engineering-ops"
-    runtime = home / "plugins/cache" / marketplace / "android-engineering-ops/2.0.0"
+    runtime = home / "plugins/cache" / marketplace / "android-engineering-ops/2.0.1"
     for target in (source, runtime):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(
@@ -38,10 +38,10 @@ def installed_engineering_family(
     payload = {
         "installed": [
             {
-                "pluginId": "android-engineering-ops@android-framework-codex-suite",
+                "pluginId": "android-engineering-ops@android-codex-suite",
                 "name": "android-engineering-ops",
                 "marketplaceName": marketplace,
-                "version": "2.0.0",
+                "version": "2.0.1",
                 "installed": True,
                 "enabled": True,
                 "source": {"source": "local", "path": str(source)},

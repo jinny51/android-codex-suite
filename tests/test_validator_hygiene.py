@@ -35,16 +35,8 @@ def test_current_plugin_validator_inventory_is_explicit() -> None:
         Path("scripts/validate_skill_layout.sh"),
         Path("scripts/test_validator_cleanup.py"),
         Path(
-            "plugins/android-framework-ops/skills/android-knowledge-intake/"
-            "scripts/akbs_intake/doctor.py"
-        ),
-        Path(
             "plugins/akbs-member-ops/internal/incoming-v1/"
             "scripts/akbs_intake/doctor.py"
-        ),
-        Path(
-            "plugins/codex-workspace-care/skills/codex-chat-history-context-extractor/"
-            "scripts/self_test_extract_codex_context.py"
         ),
     }
 
@@ -108,12 +100,7 @@ def test_python_validator_components_use_parent_or_finally_cleanup() -> None:
     assert "akbs_validation_output_init" in incoming
     assert "mktemp -d /tmp" not in incoming
 
-    self_test_relative = (
-        "plugins/codex-workspace-care/skills/codex-chat-history-context-extractor/"
-        "scripts/self_test_extract_codex_context.py"
-    )
     aggregate = (REPO_ROOT / "scripts/validate_plugins.sh").read_text(encoding="utf-8")
-    assert self_test_relative in aggregate
     assert "validator_cleanup_install" in aggregate
     assert "validate_incoming_contract_gate.py\" --mode client-only" in aggregate
     assert "--mode remote-pilot" not in aggregate
@@ -123,8 +110,6 @@ def test_python_validator_components_use_parent_or_finally_cleanup() -> None:
 
 def test_doctors_are_read_only_and_shared_guard_copies_are_declared() -> None:
     doctors = (
-        REPO_ROOT
-        / "plugins/android-framework-ops/skills/android-knowledge-intake/scripts/akbs_intake/doctor.py",
         REPO_ROOT
         / "plugins/akbs-member-ops/internal/incoming-v1/scripts/akbs_intake/doctor.py",
     )

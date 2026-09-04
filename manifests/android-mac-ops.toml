@@ -1,6 +1,0 @@
-# macOS platform layer skills for Android engineering.
-
-[[skills]]
-name = "android-source-access"
-category = "macOS Source Access"
-summary = "提供 macOS 公开入口，并薄转发到 android-framework-ops 内唯一的自动主机识别、SMB 和 Keychain 实现"

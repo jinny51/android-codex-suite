@@ -1,7 +1,0 @@
-interface:
-  display_name: "Android macOS Source Access"
-  short_description: "Samba/SMB mount Android server source trees on macOS."
-  default_prompt: "Use $android-source-access to discover, mount, or restore Android remote build server Samba shares on macOS. Handles share discovery, project detection from mounted trees, and registry management."
-
-policy:
-  allow_implicit_invocation: true

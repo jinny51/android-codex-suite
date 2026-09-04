@@ -1,6 +1,0 @@
-# WSL platform layer skills for Android engineering.
-
-[[skills]]
-name = "android-source-access"
-category = "WSL Source Access"
-summary = "提供 WSL 公开入口，并薄转发到 android-framework-ops 内唯一的自动主机识别和 CIFS/Samba 实现"

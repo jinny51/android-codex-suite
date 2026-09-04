@@ -1,7 +1,0 @@
-interface:
-  display_name: "Framework Patch Intake (Compatibility)"
-  short_description: "Forward legacy patch intake to AKBS Patch Submit"
-  default_prompt: "Use $android-framework-patch-intake only to forward this legacy request to $akbs-patch-submit."
-
-policy:
-  allow_implicit_invocation: false

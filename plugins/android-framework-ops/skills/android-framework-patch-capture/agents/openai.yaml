@@ -1,4 +1,0 @@
-interface:
-  display_name: "Android Patch Capture"
-  short_description: "Package one Android feature into README, patches, and evidence"
-  default_prompt: "Use $android-framework-patch-capture to turn an existing Android change into one domain-labelled local README, repository-level patches, and evidence; submit only validated Framework captures."

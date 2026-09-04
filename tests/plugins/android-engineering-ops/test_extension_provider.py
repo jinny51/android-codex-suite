@@ -36,8 +36,8 @@ def inventory(
     root: Path = JINNY,
     enabled: bool = True,
     name: str = "jinny-android-practices",
-    version: str = "2.0.0",
-    marketplace: str = "android-framework-codex-suite",
+    version: str = "2.0.1",
+    marketplace: str = "android-codex-suite",
     plugin_id: str | None = None,
 ) -> dict:
     return {
@@ -61,11 +61,11 @@ def installed_inventory(
     plugin_root: Path = JINNY,
     enabled: bool = True,
     name: str = "jinny-android-practices",
-    version: str = "2.0.0",
+    version: str = "2.0.1",
     plugin_id: str | None = None,
 ) -> dict:
     marketplace = (
-        "android-framework-codex-suite"
+        "android-codex-suite"
         if name == "jinny-android-practices"
         else "test-marketplace"
     )
@@ -96,7 +96,7 @@ def write_config(path: Path, body: str) -> None:
 def jinny_body() -> str:
     return (
         'mode = "jinny"\n'
-        'provider_version = "2.0.0"\n'
+        'provider_version = "2.0.1"\n'
         f'provider_manifest_sha256 = "{PROVIDER_SHA}"\n'
     )
 
@@ -150,11 +150,11 @@ def test_project_config_precedes_user_and_binds_active_inventory(tmp_path: Path)
     assert resolution.mode == "jinny"
     assert (
         resolution.active_plugin_id
-        == "jinny-android-practices@android-framework-codex-suite"
+        == "jinny-android-practices@android-codex-suite"
     )
     assert resolution.provider_manifest_path == (
         tmp_path
-        / "home/plugins/cache/android-framework-codex-suite/jinny-android-practices/2.0.0"
+        / "home/plugins/cache/android-codex-suite/jinny-android-practices/2.0.1"
         / "contracts/android-practices-provider/v1/provider.json"
     )
     assert resolution.active_plugin_source_root != resolution.active_plugin_root
@@ -221,13 +221,13 @@ def test_frozen_toml_subset_rejects_duplicate_or_malformed_input(
 @pytest.mark.parametrize(
     "body",
     [
-        'mode = "none"\nprovider_version = "2.0.0"\n',
+        'mode = "none"\nprovider_version = "2.0.1"\n',
         jinny_body() + 'provider_id = "jinny-android-practices"\n',
         jinny_body() + 'plugin_id = "jinny-android-practices@test"\n',
         jinny_body() + f'provider_manifest_path = "{PROVIDER_PATH}"\n',
         (
             'mode = "custom"\nplugin_name = "custom-plugin"\n'
-            'provider_version = "2.0.0"\n'
+            'provider_version = "2.0.1"\n'
             f'provider_manifest_sha256 = "{PROVIDER_SHA}"\n'
         ),
     ],
@@ -266,7 +266,7 @@ def test_inventory_root_symlink_is_rejected_before_provider_read(tmp_path: Path)
     link.symlink_to(JINNY, target_is_directory=True)
     runtime = (
         tmp_path
-        / "home/plugins/cache/android-framework-codex-suite/jinny-android-practices/2.0.0"
+        / "home/plugins/cache/android-codex-suite/jinny-android-practices/2.0.1"
     )
     runtime.parent.mkdir(parents=True)
     shutil.copytree(JINNY, runtime)
@@ -297,7 +297,7 @@ def test_runtime_cache_content_hash_and_inventory_identity_fail_closed(tmp_path:
     selected = installed_inventory(tmp_path)
     runtime_skill = (
         tmp_path
-        / "home/plugins/cache/android-framework-codex-suite/jinny-android-practices/2.0.0"
+        / "home/plugins/cache/android-codex-suite/jinny-android-practices/2.0.1"
         / "skills/jinny-android-coding-practices/SKILL.md"
     )
     runtime_skill.write_bytes(runtime_skill.read_bytes() + b"\nchanged\n")
@@ -307,7 +307,7 @@ def test_runtime_cache_content_hash_and_inventory_identity_fail_closed(tmp_path:
             codex_home=tmp_path / "home",
             inventory=selected,
         )
-    selected["installed"][0]["pluginId"] = "wrong@android-framework-codex-suite"
+    selected["installed"][0]["pluginId"] = "wrong@android-codex-suite"
     with pytest.raises(ProviderValidationError, match="supported installed source"):
         resolve_extension(
             project_root=tmp_path,
@@ -329,10 +329,10 @@ def test_duplicate_inventory_and_symlinked_runtime_cache_are_rejected(tmp_path: 
 
     other = tmp_path / "symlink-case"
     write_config(other / ".codex/android-engineering.toml", jinny_body())
-    source = other / "home/.tmp/marketplaces/android-framework-codex-suite/plugins/jinny-android-practices"
+    source = other / "home/.tmp/marketplaces/android-codex-suite/plugins/jinny-android-practices"
     source.parent.mkdir(parents=True)
     shutil.copytree(JINNY, source)
-    runtime = other / "home/plugins/cache/android-framework-codex-suite/jinny-android-practices/2.0.0"
+    runtime = other / "home/plugins/cache/android-codex-suite/jinny-android-practices/2.0.1"
     runtime.parent.mkdir(parents=True)
     runtime.symlink_to(JINNY, target_is_directory=True)
     with pytest.raises(ProviderValidationError, match="contains a symlink"):
@@ -425,7 +425,7 @@ def test_custom_mode_separates_inventory_plugin_name_from_provider_id(tmp_path: 
             'mode = "custom"\n'
             'plugin_name = "custom-provider-plugin"\n'
             'provider_id = "acme-android-practices"\n'
-            'provider_version = "2.0.0"\n'
+            'provider_version = "2.0.1"\n'
             f'provider_manifest_sha256 = "{digest}"\n'
         ),
     )

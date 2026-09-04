@@ -16,7 +16,7 @@ INSTALLED_RUNTIME_ENTRYPOINTS = ("RUNTIME_ENTRYPOINT",)
 def test_source_and_runtime_fixture_boundaries_are_explicit() -> None:
     expected_runtime = (
         Path(os.environ["CODEX_HOME"])
-        / "plugins/cache/android-framework-codex-suite/android-engineering-ops/2.0.0"
+        / "plugins/cache/android-codex-suite/android-engineering-ops/2.0.1"
     )
     assert PLUGIN_SOURCE == ROOT / "plugins/android-engineering-ops"
     assert RUNTIME_ENTRYPOINT == (

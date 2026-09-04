@@ -1,6 +1,6 @@
 # AKBS Member Ops
 
-Standalone AKBS member plugin, version 2.0.0. It owns member setup, knowledge
+Standalone AKBS member plugin, version 2.0.1. It owns member setup, knowledge
 search and merge review, personal daily/weekly reports, and Android change
 package handling without depending on the engineering or optional practices
 plugins at runtime.
@@ -13,13 +13,6 @@ plugins at runtime.
 - `akbs-daily-report`
 - `akbs-weekly-report`
 - `akbs-patch-submit`
-
-Seven deprecated Skill IDs remain thin migration wrappers only:
-`android-member-setup`, `android-knowledge-search`,
-`android-knowledge-merge-review`, `android-daily-report-intake`,
-`android-weekly-report-intake`, `android-framework-patch-intake`, and
-`android-knowledge-intake`. Each wrapper prints its replacement and delegates;
-it contains no second builder, validator, writer, or incoming kernel.
 
 ## Configuration and artifacts
 
@@ -83,7 +76,7 @@ also match the selected generation (`1.0.3` rollback versus `2.x` target).
 An unavailable or malformed active inventory blocks every business action; only
 help and side-effect-free static diagnostics remain available.
 The active `akbs-member-ops` row must bind the exact published
-`akbs-member-ops@android-framework-codex-suite` identity and version to two
+`akbs-member-ops@android-codex-suite` identity and version to two
 distinct roots: its absolute local marketplace `source.path` and this process's
 exact versioned Codex cache root. Both direct manifests must have the same bytes,
 name, and version, and both publication trees must have the same content plus
@@ -92,6 +85,3 @@ only `__pycache__` directories and `.pyc` runtime cache files are excluded.
 Missing fields, symlinks, malformed versions, source/cache/manifest/content
 mismatch, or an execution checkout fails closed. Another active installation
 cannot lend its identity to this process.
-
-`codex-workspace-care` remains an independent plugin and is not bundled,
-depended on, or invoked by this plugin.

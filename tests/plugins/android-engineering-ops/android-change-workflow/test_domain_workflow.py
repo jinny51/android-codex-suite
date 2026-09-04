@@ -80,7 +80,7 @@ def test_source_authority_and_build_routes_cover_remote_and_local_projects() -> 
     assert "not a generic Gradle" in build_deploy
 
 
-def test_manifest_publishes_six_canonical_skills_and_two_wrappers() -> None:
+def test_manifest_publishes_six_canonical_skills() -> None:
     manifest = (ROOT / "manifests/android-engineering-ops.toml").read_text(
         encoding="utf-8"
     )
@@ -91,6 +91,4 @@ def test_manifest_publishes_six_canonical_skills_and_two_wrappers() -> None:
         'name = "android-remote-channel"',
         'name = "android-remote-build-deploy"',
         'name = "android-patch-capture"',
-        'name = "android-framework-change-workflow"',
-        'name = "android-framework-patch-capture"',
     ]

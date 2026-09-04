@@ -82,7 +82,7 @@ def test_provider_manifest_has_exact_durable_profiles_and_no_authority() -> None
 
 def test_plugin_metadata_is_neutral_read_only_interface() -> None:
     plugin = json.loads((PLUGIN / ".codex-plugin/plugin.json").read_text(encoding="utf-8"))
-    assert plugin["version"] == "2.0.0"
+    assert plugin["version"] == "2.0.1"
     assert plugin["author"]["name"] == "Jinny Android Team"
     assert plugin["interface"]["developerName"] == "Jinny Android Team"
     assert plugin["interface"]["capabilities"] == ["Interactive", "Read"]
@@ -269,10 +269,6 @@ def test_execution_routes_by_shape_risk_judgment_and_side_effect() -> None:
     assert "accept_gate" not in serialized
 
 
-def test_legacy_skill_is_a_thin_wrapper_only() -> None:
+def test_legacy_skill_wrapper_is_absent() -> None:
     wrapper = PLUGIN / "skills/jinny-framework-coding-standards"
-    assert sorted(path.name for path in wrapper.iterdir()) == ["SKILL.md", "agents"]
-    text = (wrapper / "SKILL.md").read_text(encoding="utf-8")
-    assert "migration-only thin wrapper" in text
-    assert "jinny-android-coding-practices" in text
-    assert "worker_profiles" not in text
+    assert not wrapper.exists()

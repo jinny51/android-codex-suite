@@ -4,6 +4,6 @@
 
 把既有 Android 变更封装为 `$CODEX_HOME/artifacts/android-patch-capture/packages` 下的本地不可变材料。新包记录 `components[]`（application/platform/native/hal/kernel/device/build layer 与独立 type/partition/ownership）、`primary_component_id`，以及每个 repository/patch 的显式 `component_ids[]`；不从路径猜 layer。capture 只能保留或降级声明状态，不能把 draft/candidate 升为 validated。
 
-读取 snapshot/patch/package/identity/evidence 或写入材料前必须通过 target-only install-family gate；canonical 与兼容入口都必须从 inventory 绑定的目标 cache 执行。
+读取 snapshot/patch/package/identity/evidence 或写入材料前必须通过 target-only install-family gate；入口必须从 inventory 绑定的目标 cache 执行。
 
 旧 `android-framework-patch-capture` 包只读检查并规范显示为 platform/framework（未知 facet 为 null），不复制或改写历史。任何 layer 的 validated 新包可交 `akbs-patch-submit` 做严格 v2 本地检查和 byte-preserving prepare；新 manifest 明确 v2 writer 关闭，此时网络提交 capability-gated 且零副作用，不回落 v1。

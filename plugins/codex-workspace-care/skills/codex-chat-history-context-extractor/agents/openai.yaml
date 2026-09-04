@@ -1,7 +1,0 @@
-interface:
-  display_name: "Codex Chat History Context Extractor"
-  short_description: "Create compacted handoff context from old Codex chats"
-  default_prompt: "Use $codex-chat-history-context-extractor to inspect local Codex chat history read-only and generate a handoff context so a new Codex conversation can continue as if the previous one had been compacted."
-
-policy:
-  allow_implicit_invocation: true

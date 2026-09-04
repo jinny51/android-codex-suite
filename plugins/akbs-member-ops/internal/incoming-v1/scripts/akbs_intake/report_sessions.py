@@ -185,7 +185,15 @@ def is_noise_session(work: SessionWork) -> bool:
     if NOISE_TEXT_RE.search(text):
         return True
     normalized = work.cwd.replace("\\", "/").lower()
-    if any(part in normalized for part in ("/.codex/", "/documents/codex/worktrees/knowledge-", "/android-framework-codex-suite/")):
+    if any(
+        part in normalized
+        for part in (
+            "/.codex/",
+            "/documents/codex/worktrees/knowledge-",
+            "/android-codex-suite/",
+            "/android-codex-suite/",
+        )
+    ):
         return True
     return False
 

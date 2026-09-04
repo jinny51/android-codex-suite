@@ -15,15 +15,15 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PLUGIN_ROOT = REPO_ROOT / "plugins" / "android-framework-ops"
+PLUGIN_ROOT = REPO_ROOT / "plugins" / "akbs-member-ops"
 PLUGIN_LIB = PLUGIN_ROOT / "lib"
-INTAKE_SCRIPTS = PLUGIN_ROOT / "skills" / "android-knowledge-intake" / "scripts"
+INTAKE_SCRIPTS = PLUGIN_ROOT / "internal" / "incoming-v1" / "scripts"
 SCRIPTS_ROOT = REPO_ROOT / "scripts"
 for path in (PLUGIN_LIB, INTAKE_SCRIPTS, SCRIPTS_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from android_framework_ops.http_client import (  # noqa: E402
+from akbs_member_ops.http_client import (  # noqa: E402
     HttpClientFailure,
     HttpErrorKind,
     error_contract_sha256,
@@ -76,8 +76,8 @@ def test_vendored_error_schema_and_incoming_pin_are_exact() -> None:
     public = json.loads(
         (
             PLUGIN_ROOT
-            / "skills"
-            / "android-knowledge-intake"
+            / "internal"
+            / "incoming-v1"
             / "references"
             / "incoming-public-contract-v1.json"
         ).read_text(encoding="utf-8")
@@ -225,8 +225,8 @@ def make_synthetic_system_root(root: Path) -> Path:
     incoming_root.mkdir(parents=True)
     shutil.copy2(
         PLUGIN_ROOT
-        / "skills"
-        / "android-knowledge-intake"
+        / "internal"
+        / "incoming-v1"
         / "references"
         / "incoming-public-contract-v1.json",
         incoming_root / "public-contract.json",
@@ -238,7 +238,7 @@ def make_synthetic_system_root(root: Path) -> Path:
     evaluator_root = system_root / "akbs_active" / "upload_domains"
     evaluator_root.mkdir(parents=True)
     shutil.copy2(
-        PLUGIN_ROOT / "lib" / "android_framework_ops" / "verification_acceptance.py",
+        PLUGIN_ROOT / "lib" / "akbs_member_ops" / "verification_acceptance.py",
         evaluator_root,
     )
     error_root = system_root / "contracts" / "http"

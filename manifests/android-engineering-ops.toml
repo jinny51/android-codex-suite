@@ -1,4 +1,4 @@
-# Standalone Android engineering core and migration-only compatibility Skills.
+# Standalone Android engineering core.
 
 [[skills]]
 name = "android-change-policy"
@@ -29,13 +29,3 @@ summary = "执行受控远端构建、artifact 校验、检查点和本地 adb �
 name = "android-patch-capture"
 category = "Android Workflow"
 summary = "生成七层 component 标注的 android_change_capture，并仅确认或降级 effective status"
-
-[[skills]]
-name = "android-framework-change-workflow"
-category = "Compatibility"
-summary = "迁移期薄入口；将旧 Skill 意图转交 android-change-workflow"
-
-[[skills]]
-name = "android-framework-patch-capture"
-category = "Compatibility"
-summary = "迁移期薄入口；将旧 Skill 和 CLI 转交 android-patch-capture"

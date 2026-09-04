@@ -1,7 +1,0 @@
-interface:
-  display_name: "Android Member Setup (Compatibility)"
-  short_description: "Forward legacy setup requests to AKBS Member Setup"
-  default_prompt: "Use $android-member-setup only to forward this legacy request to $akbs-member-setup."
-
-policy:
-  allow_implicit_invocation: false

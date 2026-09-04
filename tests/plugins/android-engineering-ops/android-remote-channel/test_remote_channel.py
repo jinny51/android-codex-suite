@@ -716,7 +716,7 @@ class RemoteChannelV2Tests(unittest.TestCase):
             )
             upgraded_cache = (
                 upgraded_home
-                / "plugins/cache/android-framework-codex-suite/android-engineering-ops/2.0.1"
+                / "plugins/cache/android-codex-suite/android-engineering-ops/2.0.1"
             )
             for upgraded_plugin in (upgraded_source, upgraded_cache):
                 upgraded_plugin.parent.mkdir(parents=True, exist_ok=True)
@@ -754,10 +754,10 @@ class RemoteChannelV2Tests(unittest.TestCase):
                 "installed": [
                     {
                         "pluginId": (
-                            "android-engineering-ops@android-framework-codex-suite"
+                            "android-engineering-ops@android-codex-suite"
                         ),
                         "name": "android-engineering-ops",
-                        "marketplaceName": "android-framework-codex-suite",
+                        "marketplaceName": "android-codex-suite",
                         "version": "2.0.1",
                         "installed": True,
                         "enabled": True,

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Android Remote Build Deploy"
-  short_description: "Shared remote Android build, artifact delivery, and adb evidence for WSL and macOS"
-  default_prompt: "Use $android-remote-build-deploy after $android-source-access has mounted the project and registered its remote mapping. Build on the remote Linux source tree, deliver artifacts with local adb, record evidence, and return control to $android-framework-change-workflow for final verification."

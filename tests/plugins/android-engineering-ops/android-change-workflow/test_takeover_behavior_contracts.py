@@ -76,15 +76,8 @@ def test_canonical_capture_and_submit_never_fall_back_to_v1() -> None:
     assert "Framework-only" not in capture
 
 
-def test_compatibility_wrappers_have_no_controller_or_capture_implementation() -> None:
+def test_legacy_skill_wrappers_are_absent_from_target_plugin() -> None:
     workflow_wrapper = PLUGIN / "skills/android-framework-change-workflow"
     capture_wrapper = PLUGIN / "skills/android-framework-patch-capture"
-    assert sorted(path.name for path in workflow_wrapper.iterdir()) == ["SKILL.md", "agents"]
-    assert not (capture_wrapper / "references").exists()
-    scripts = capture_wrapper / "scripts"
-    assert {path.name for path in scripts.iterdir()} == {
-        "capture_framework_patch.py", "capture_remote_snapshot.py"
-    }
-    text = (capture_wrapper / "SKILL.md").read_text(encoding="utf-8")
-    assert "migration-only thin wrapper" in text
-    assert "unknown" in text
+    assert not workflow_wrapper.exists()
+    assert not capture_wrapper.exists()

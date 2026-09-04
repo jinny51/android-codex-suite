@@ -241,7 +241,7 @@ class AndroidChangeV2Test(unittest.TestCase):
                 codex_home
                 / ".tmp"
                 / "marketplaces"
-                / "android-framework-codex-suite"
+                / "android-codex-suite"
                 / "plugins"
                 / "akbs-member-ops"
             )
@@ -249,9 +249,9 @@ class AndroidChangeV2Test(unittest.TestCase):
                 codex_home
                 / "plugins"
                 / "cache"
-                / "android-framework-codex-suite"
+                / "android-codex-suite"
                 / "akbs-member-ops"
-                / "2.0.0"
+                / "2.0.1"
             )
             for target in (marketplace_plugin, execution_plugin):
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -266,8 +266,8 @@ class AndroidChangeV2Test(unittest.TestCase):
             fake_codex.write_text(
                 "#!/usr/bin/env python3\n"
                 "import json\n"
-                "print(json.dumps({'installed':[{'pluginId':'akbs-member-ops@android-framework-codex-suite',"
-                "'name':'akbs-member-ops','marketplaceName':'android-framework-codex-suite','version':'2.0.0',"
+                "print(json.dumps({'installed':[{'pluginId':'akbs-member-ops@android-codex-suite',"
+                "'name':'akbs-member-ops','marketplaceName':'android-codex-suite','version':'2.0.1',"
                 "'installed':True,'enabled':True,'source':{'source':'local','path':"
                 + repr(str(marketplace_plugin))
                 + "}}]}))\n",

@@ -10,21 +10,21 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 SKILL_CONTRACTS = (
-    Path("plugins/android-framework-ops/skills/android-remote-channel/SKILL.md"),
-    Path("plugins/android-framework-ops/skills/android-framework-change-workflow/SKILL.md"),
-    Path("plugins/android-framework-ops/skills/android-framework-patch-capture/SKILL.md"),
-    Path("plugins/android-framework-ops/skills/android-remote-build-deploy/SKILL.md"),
-    Path("plugins/android-wsl-ops/skills/android-source-access/SKILL.md"),
-    Path("plugins/android-mac-ops/skills/android-source-access/SKILL.md"),
+    Path("plugins/android-engineering-ops/skills/android-remote-channel/SKILL.md"),
+    Path("plugins/android-engineering-ops/skills/android-change-workflow/SKILL.md"),
+    Path("plugins/android-engineering-ops/skills/android-patch-capture/SKILL.md"),
+    Path("plugins/android-engineering-ops/skills/android-remote-build-deploy/SKILL.md"),
+    Path("plugins/android-engineering-ops/skills/android-source-access/SKILL.md"),
 )
 
 RUNTIME_SCAN_ROOTS = (
-    Path("plugins/android-framework-ops/skills/android-framework-change-workflow/scripts"),
-    Path("plugins/android-framework-ops/skills/android-framework-patch-capture/scripts"),
-    Path("plugins/android-framework-ops/skills/android-remote-build-deploy/scripts"),
-    Path("plugins/android-framework-ops/skills/android-knowledge-intake/scripts"),
-    Path("plugins/android-wsl-ops/skills/android-source-access/scripts"),
-    Path("plugins/android-mac-ops/skills/android-source-access/scripts"),
+    Path("plugins/android-engineering-ops/skills/android-change-workflow/scripts"),
+    Path("plugins/android-engineering-ops/skills/android-patch-capture/scripts"),
+    Path("plugins/android-engineering-ops/skills/android-remote-build-deploy/scripts"),
+    Path("plugins/akbs-member-ops/internal/incoming-v1/scripts"),
+    Path("plugins/android-engineering-ops/skills/android-source-access/scripts"),
+    Path("plugins/android-engineering-ops/adapters/source-access/wsl"),
+    Path("plugins/android-engineering-ops/adapters/source-access/macos"),
 )
 
 
@@ -37,11 +37,11 @@ EXPECTED_DIRECT_SSH_DEBT_FILES: set[Path] = set()
 # scripts must not grow Android source inspection; source commands belong in the
 # channel even when they are read-only.
 DIRECT_SSH_INFRASTRUCTURE_ALLOWLIST = {
-    Path("plugins/android-wsl-ops/skills/android-source-access/scripts/discover-samba-share.sh"),
-    Path("plugins/android-wsl-ops/skills/android-source-access/scripts/ensure-samba-share.sh"),
-    Path("plugins/android-wsl-ops/skills/android-source-access/scripts/install-ssh-key.sh"),
-    Path("plugins/android-wsl-ops/skills/android-source-access/scripts/resolve-ssh-candidate.sh"),
-    Path("plugins/android-mac-ops/skills/android-source-access/scripts/discover-samba-share.sh"),
+    Path("plugins/android-engineering-ops/adapters/source-access/wsl/skills/android-source-access/scripts/discover-samba-share.sh"),
+    Path("plugins/android-engineering-ops/adapters/source-access/wsl/skills/android-source-access/scripts/ensure-samba-share.sh"),
+    Path("plugins/android-engineering-ops/adapters/source-access/wsl/skills/android-source-access/scripts/install-ssh-key.sh"),
+    Path("plugins/android-engineering-ops/adapters/source-access/wsl/skills/android-source-access/scripts/resolve-ssh-candidate.sh"),
+    Path("plugins/android-engineering-ops/adapters/source-access/macos/skills/android-source-access/scripts/discover-samba-share.sh"),
 }
 
 
@@ -49,8 +49,8 @@ DIRECT_SSH_INFRASTRUCTURE_ALLOWLIST = {
 # path. `current_codex_skill` rejects it; mounted source is never an automatic
 # or current-workflow fallback.
 EXPECTED_LOCAL_SOURCE_DEBT_FILES = {
-    Path("plugins/android-framework-ops/skills/android-framework-patch-capture/scripts/capture_framework_patch.py"),
-    Path("plugins/android-framework-ops/skills/android-framework-patch-capture/scripts/patch_capture/git_diff.py"),
+    Path("plugins/android-engineering-ops/skills/android-patch-capture/scripts/capture_android_patch.py"),
+    Path("plugins/android-engineering-ops/skills/android-patch-capture/scripts/patch_capture/git_diff.py"),
 }
 
 
@@ -136,23 +136,23 @@ class RemoteOnlySourceArchitectureTests(unittest.TestCase):
     def test_knowledge_intake_has_no_implicit_android_cwd_patch_fallback(self) -> None:
         sessions = (
             REPO_ROOT
-            / "plugins/android-framework-ops/skills/android-knowledge-intake/scripts/akbs_intake/report_sessions.py"
+            / "plugins/akbs-member-ops/internal/incoming-v1/scripts/akbs_intake/report_sessions.py"
         ).read_text(encoding="utf-8")
         summary = (
             REPO_ROOT
-            / "plugins/android-framework-ops/skills/android-knowledge-intake/scripts/akbs_intake/reports/session_summary.py"
+            / "plugins/akbs-member-ops/internal/incoming-v1/scripts/akbs_intake/reports/session_summary.py"
         ).read_text(encoding="utf-8")
         assets = (
             REPO_ROOT
-            / "plugins/android-framework-ops/skills/android-knowledge-intake/scripts/akbs_intake/patch/assets.py"
+            / "plugins/akbs-member-ops/internal/incoming-v1/scripts/akbs_intake/patch/assets.py"
         ).read_text(encoding="utf-8")
         builder = (
             REPO_ROOT
-            / "plugins/android-framework-ops/skills/android-knowledge-intake/scripts/akbs_intake/patch/builder.py"
+            / "plugins/akbs-member-ops/internal/incoming-v1/scripts/akbs_intake/patch/builder.py"
         ).read_text(encoding="utf-8")
         intake_entry = (
             REPO_ROOT
-            / "plugins/android-framework-ops/skills/android-knowledge-intake/scripts/android_knowledge_intake.py"
+            / "plugins/akbs-member-ops/internal/incoming-v1/scripts/akbs_member_intake.py"
         ).read_text(encoding="utf-8")
 
         self.assertIn("registered_android_mapping(raw_cwd, config)", sessions)
@@ -173,7 +173,7 @@ class RemoteOnlySourceArchitectureTests(unittest.TestCase):
     def test_local_artifact_basename_probe_is_retired(self) -> None:
         probe = (
             REPO_ROOT
-            / "plugins/android-framework-ops/skills/android-framework-change-workflow/scripts/artifact_probe.py"
+            / "plugins/android-engineering-ops/skills/android-change-workflow/scripts/artifact_probe.py"
         )
         result = subprocess.run(
             [str(probe), "/path/that/must/not/be-scanned"],

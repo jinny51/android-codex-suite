@@ -1,7 +1,0 @@
-interface:
-  display_name: "Codex Chat History Cleaner"
-  short_description: "Clean and verify Codex chat state safely"
-  default_prompt: "Use $codex-chat-history-cleaner to inspect, repair, and clean local Codex chat history state with a dry run first."
-
-policy:
-  allow_implicit_invocation: true

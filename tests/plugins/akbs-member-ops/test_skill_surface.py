@@ -23,17 +23,6 @@ CANONICAL = {
     "akbs-weekly-report": "akbs_weekly_report.py",
     "akbs-patch-submit": "akbs_patch_submit.py",
 }
-LEGACY = {
-    "android-member-setup": "android_member_setup.py",
-    "android-knowledge-search": "android_knowledge_search.py",
-    "android-knowledge-merge-review": "android_knowledge_merge_review.py",
-    "android-daily-report-intake": "android_daily_report_intake.py",
-    "android-weekly-report-intake": "android_weekly_report_intake.py",
-    "android-framework-patch-intake": "android_framework_patch_intake.py",
-    "android-knowledge-intake": "android_knowledge_intake.py",
-}
-
-
 class SkillSurfaceTest(unittest.TestCase):
     def load_script(self, name: str, path: Path):
         spec = importlib.util.spec_from_file_location(name, path)
@@ -46,7 +35,7 @@ class SkillSurfaceTest(unittest.TestCase):
     def test_all_public_scripts_are_executable_and_help_from_unrelated_cwd(self) -> None:
         env = os.environ.copy()
         env["PYTHONDONTWRITEBYTECODE"] = "1"
-        for skill, script_name in {**CANONICAL, **LEGACY}.items():
+        for skill, script_name in CANONICAL.items():
             script = PLUGIN / "skills" / skill / "scripts" / script_name
             with self.subTest(skill=skill):
                 self.assertTrue(os.access(script, os.X_OK), script)
@@ -60,48 +49,6 @@ class SkillSurfaceTest(unittest.TestCase):
                     check=False,
                 )
                 self.assertEqual(completed.returncode, 0, completed.stderr)
-
-    def test_legacy_scripts_are_thin_forwarders(self) -> None:
-        for skill, script_name in LEGACY.items():
-            source = (PLUGIN / "skills" / skill / "scripts" / script_name).read_text(encoding="utf-8")
-            with self.subTest(skill=skill):
-                self.assertLessEqual(len(source.splitlines()), 30)
-                self.assertNotIn("urllib", source)
-                self.assertNotIn("write_text", source)
-                self.assertNotIn("write_json", source)
-                self.assertIn("main", source)
-                self.assertIn("DEPRECATED:", source)
-
-    def test_legacy_help_preserves_canonical_stdout_and_adds_one_notice(self) -> None:
-        replacements = {
-            "android-member-setup": "akbs-member-setup",
-            "android-knowledge-search": "akbs-knowledge-search",
-            "android-knowledge-merge-review": "akbs-knowledge-merge-review",
-            "android-daily-report-intake": "akbs-daily-report",
-            "android-weekly-report-intake": "akbs-weekly-report",
-            "android-framework-patch-intake": "akbs-patch-submit",
-        }
-        env = os.environ.copy()
-        env["PYTHONDONTWRITEBYTECODE"] = "1"
-        for legacy, canonical in replacements.items():
-            old_script = PLUGIN / "skills" / legacy / "scripts" / LEGACY[legacy]
-            new_script = PLUGIN / "skills" / canonical / "scripts" / CANONICAL[canonical]
-            with self.subTest(legacy=legacy):
-                old = subprocess.run(
-                    [sys.executable, str(old_script), "--help"], cwd="/tmp", env=env,
-                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
-                )
-                new = subprocess.run(
-                    [sys.executable, str(new_script), "--help"], cwd="/tmp", env=env,
-                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
-                )
-                self.assertEqual(old.returncode, new.returncode)
-                normalized_old = " ".join(
-                    old.stdout.replace(old_script.name, new_script.name).split()
-                )
-                normalized_new = " ".join(new.stdout.split())
-                self.assertEqual(normalized_old, normalized_new)
-                self.assertEqual(old.stderr, f"DEPRECATED: {legacy}; use {canonical}.\n" + new.stderr)
 
     def test_only_one_incoming_v1_kernel_entry_exists(self) -> None:
         kernels = list(PLUGIN.rglob("akbs_member_intake.py"))

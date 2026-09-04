@@ -1,4 +1,4 @@
-# Canonical AKBS member workflows followed by migration-only compatibility Skills.
+# Canonical AKBS member workflows.
 
 [[skills]]
 name = "akbs-member-setup"
@@ -29,38 +29,3 @@ summary = "基于有效日报和跨周台账生成、校验、修订和提交成
 name = "akbs-patch-submit"
 category = "Knowledge System"
 summary = "处理 legacy Framework v1 提交、Android change v2 本地准备及 adapt-capture 2.0 preflight/2.1 离线 materialize/writer-off 门禁"
-
-[[skills]]
-name = "android-member-setup"
-category = "Compatibility"
-summary = "旧成员设置入口到 akbs-member-setup 的薄转发"
-
-[[skills]]
-name = "android-knowledge-search"
-category = "Compatibility"
-summary = "旧知识检索入口到 akbs-knowledge-search 的薄转发"
-
-[[skills]]
-name = "android-knowledge-merge-review"
-category = "Compatibility"
-summary = "旧合并确认入口到 akbs-knowledge-merge-review 的薄转发"
-
-[[skills]]
-name = "android-daily-report-intake"
-category = "Compatibility"
-summary = "旧日报入口到 akbs-daily-report 的薄转发"
-
-[[skills]]
-name = "android-weekly-report-intake"
-category = "Compatibility"
-summary = "旧周报入口到 akbs-weekly-report 的薄转发"
-
-[[skills]]
-name = "android-framework-patch-intake"
-category = "Compatibility"
-summary = "旧 Framework 补丁入口到 akbs-patch-submit 的薄转发"
-
-[[skills]]
-name = "android-knowledge-intake"
-category = "Compatibility"
-summary = "旧 umbrella CLI 到插件内部 incoming v1 内核的薄转发"

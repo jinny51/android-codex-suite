@@ -1,7 +1,7 @@
 {
   "schema": "android-plugin-topology-migration-v2",
   "contract_id": "akbs2-three-plugin-topology-v1",
-  "phase": "phase2_migration_materialized",
+  "phase": "phase6_direct_cutover_complete",
   "architecture_binding": {
     "baseline_id": "akbs-2-architecture-baseline-v1",
     "baseline_run": "v1-20260901",
@@ -12,6 +12,13 @@
     "brand": "AKBS",
     "official_name": "Android Knowledge Base System",
     "rejected_expression": "Android Framework 知识库"
+  },
+  "repository_identity": {
+    "legacy": "jinny51/android-framework-codex-suite",
+    "target": "jinny51/android-codex-suite",
+    "strategy": "new_repository",
+    "legacy_role": "frozen_1.x_reference",
+    "history_rewrite": false
   },
   "engineering_identity_resolution": {
     "schema": "android-engineering-identity-resolution-v1",
@@ -77,12 +84,13 @@
     }
   },
   "physical_policy": {
-    "default_state": "migration",
+    "default_state": "target",
     "materialized_states": [
-      "migration"
+      "target"
     ],
     "declaration_only_states": [
-      "target"
+      "current",
+      "migration"
     ],
     "current_authority": "contracts/plugin-topology/v1/active-topology.json",
     "current_authority_sha256": "423de887cef01689443bef8325f194e06aaff27adfe5429d0be8f578534551cd",
@@ -114,7 +122,7 @@
     },
     {
       "id": "migration",
-      "mode": "physical_default",
+      "mode": "historical_candidate",
       "catalog_plugins": [
         "akbs-member-ops",
         "android-engineering-ops",
@@ -143,7 +151,7 @@
       "canonical_plugins": [
         {
           "id": "akbs-member-ops",
-          "version": "2.0.0",
+          "version": "2.0.1",
           "role": "akbs_member_client",
           "skills": [
             "akbs-member-setup",
@@ -165,7 +173,7 @@
         },
         {
           "id": "android-engineering-ops",
-          "version": "2.0.0",
+          "version": "2.0.1",
           "role": "android_engineering_controller_and_tools",
           "skills": [
             "android-change-policy",
@@ -182,7 +190,7 @@
         },
         {
           "id": "jinny-android-practices",
-          "version": "2.0.0",
+          "version": "2.0.1",
           "role": "optional_practices_provider",
           "skills": [
             "jinny-android-coding-practices",
@@ -321,12 +329,11 @@
     },
     {
       "id": "target",
-      "mode": "declaration_fixture",
+      "mode": "physical_default",
       "source_plugins": [
         "akbs-member-ops",
         "android-engineering-ops",
-        "jinny-android-practices",
-        "codex-workspace-care"
+        "jinny-android-practices"
       ],
       "marketplace_plugins": [
         "akbs-member-ops",
@@ -336,6 +343,7 @@
       "plugins": [
         {
           "id": "akbs-member-ops",
+          "version": "2.0.1",
           "role": "akbs_member_client",
           "skills": [
             "akbs-member-setup",
@@ -348,6 +356,7 @@
         },
         {
           "id": "android-engineering-ops",
+          "version": "2.0.1",
           "role": "android_engineering_controller_and_tools",
           "skills": [
             "android-change-policy",
@@ -360,19 +369,11 @@
         },
         {
           "id": "jinny-android-practices",
+          "version": "2.0.1",
           "role": "optional_practices_provider",
           "skills": [
             "jinny-android-coding-practices",
             "jinny-android-execution-policy"
-          ]
-        },
-        {
-          "id": "codex-workspace-care",
-          "role": "independent_source",
-          "marketplace": false,
-          "skills": [
-            "codex-chat-history-cleaner",
-            "codex-chat-history-context-extractor"
           ]
         }
       ]
@@ -382,10 +383,9 @@
     "one_canonical_implementation_owner_per_intent",
     "one_default_public_owner_per_installed_profile",
     "legacy_and_target_install_families_are_mutually_exclusive",
-    "legacy_surfaces_are_wrapper_adapter_or_notice_only_after_owner_move",
-    "codex_workspace_care_remains_independent",
+    "legacy_public_plugin_and_skill_surfaces_are_not_materialized_in_target",
     "legacy_config_credentials_artifacts_and_packages_are_never_rewritten_in_place",
-    "physical_compatibility_source_is_separate_from_frozen_rollback_release",
+    "legacy_release_is_preserved_in_separate_legacy_repository_current_branch",
     "migration_catalog_materialization_does_not_authorize_install_family_coexistence",
     "legacy_removal_waits_for_adoption_zero"
   ],

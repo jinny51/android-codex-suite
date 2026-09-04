@@ -35,7 +35,7 @@ LEGACY_INSTALL_FAMILY = {"android-framework-ops", "android-wsl-ops", "android-ma
 OPTIONAL_GENERATION_PLUGIN = "jinny-android-practices"
 TARGET_GENERATION_FLOOR = "2.0.0"
 TARGET_MEMBER_PLUGIN = "akbs-member-ops"
-TARGET_MARKETPLACE = "android-framework-codex-suite"
+TARGET_MARKETPLACE = "android-codex-suite"
 PLUGIN_VERSION_RE = re.compile(r"^[0-9]+(?:\.[0-9]+){1,3}(?:[-+][0-9A-Za-z.-]+)?$")
 MAX_PLUGIN_MANIFEST_BYTES = 1024 * 1024
 
@@ -910,7 +910,7 @@ def auto_update_packaged_plugin(plugin_name: str) -> dict[str, Any]:
             "message": family.get("message"),
             "install_family": family,
         }
-    marketplace = "android-framework-codex-suite"
+    marketplace = TARGET_MARKETPLACE
     upgrade_cmd = ["codex", "plugin", "marketplace", "upgrade", marketplace, "--json"]
     add_cmd = ["codex", "plugin", "add", f"{plugin_name}@{marketplace}", "--json"]
     upgrade_cp = run(upgrade_cmd)

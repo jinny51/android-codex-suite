@@ -154,7 +154,7 @@ class RemotePatchSnapshotTests(unittest.TestCase):
         source = codex_home / "test-marketplace/plugins/android-engineering-ops"
         runtime = (
             codex_home
-            / "plugins/cache/android-framework-codex-suite/android-engineering-ops/2.0.0"
+            / "plugins/cache/android-codex-suite/android-engineering-ops/2.0.1"
         )
         for plugin in (source, runtime):
             plugin.parent.mkdir(parents=True, exist_ok=True)
@@ -170,10 +170,10 @@ class RemotePatchSnapshotTests(unittest.TestCase):
         inventory = {
             "installed": [
                 {
-                    "pluginId": "android-engineering-ops@android-framework-codex-suite",
+                    "pluginId": "android-engineering-ops@android-codex-suite",
                     "name": "android-engineering-ops",
-                    "marketplaceName": "android-framework-codex-suite",
-                    "version": "2.0.0",
+                    "marketplaceName": "android-codex-suite",
+                    "version": "2.0.1",
                     "installed": True,
                     "enabled": True,
                     "source": {"source": "local", "path": str(source)},

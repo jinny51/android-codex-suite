@@ -1,8 +1,7 @@
 # Android Knowledge Base & Engineering Suite
 
 AKBS 的正式名称是 **Android Knowledge Base System**。这是其成员端和 Android 工程端共用的
-Codex 插件仓库。仓库名中的 `android-framework-codex-suite` 是既有 GitHub 发布标识，
-不是 AKBS 的释义。工程能力覆盖 Android 的 application、platform、native、HAL、kernel、
+Codex 插件仓库 `android-codex-suite`。工程能力覆盖 Android 的 application、platform、native、HAL、kernel、
 device 与 build 层；type、partition（包括 vendor）和 ownership 作为正交属性表达，而不是再混成一张领域列表。
 
 ## 目标插件
@@ -12,8 +11,6 @@ device 与 build 层；type、partition（包括 vendor）和 ownership 作为�
 | [akbs-member-ops](plugins/akbs-member-ops/README.md) | 成员设置、知识检索、合并复核、日报、周报和 Android 补丁包提交 | 使用 AKBS 的成员安装 |
 | [android-engineering-ops](plugins/android-engineering-ops/README.md) | Android 变更规范、总工作流、跨平台源码接入、远程执行、构建交付和本地补丁采集 | 处理 Android 工程任务的成员安装 |
 | [jinny-android-practices](plugins/jinny-android-practices/README.md) | 可选编码实践和执行策略 Provider；只能给出决策，不能取代核心验收权 | 按成员选择安装 |
-
-`codex-workspace-care` 仍作为独立源码保留，不属于 Android marketplace 或执行链。
 
 ## Skill 结构
 
@@ -38,9 +35,6 @@ jinny-android-practices
 ├── jinny-android-coding-practices
 └── jinny-android-execution-policy
 ```
-
-迁移期的新插件还带有旧 Skill ID 的薄兼容入口。它们只提示替代项并转发到唯一实现，
-不会复制第二套业务逻辑；只有逐入口使用率归零并完成回退演练后才会删除。
 
 ## 边界
 
@@ -70,26 +64,13 @@ Terra 负责常规源码实现，Luna 负责边界明确的编译、推送、证
 模型 worker 只能返回结果和证据，不能自行宣布任务完成；最终结论仍由
 `android-change-workflow` 结合真实状态作出。
 
-## 当前迁移状态
+## 安装与升级
 
-仓库处于 Phase 2 migration catalog：新三插件和旧回退插件可同时出现在 marketplace，
-Codex 安装器也可能把两代都记为已安装；这种混装不是合法运行态。所有 target 业务入口
-必须在产生副作用前拒绝它，迁移工具只能按 `remove legacy → add target → target-only doctor`
-切换，不能把“目录里同时可见”误写成“安装器会自动防止混装”。
+当前 marketplace 只发布三个正式插件。旧 `android-framework-codex-suite` 安装族不与新安装族混用；
+成员升级时先添加 `android-codex-suite`、安装并确认所需的新插件可用，再卸载旧插件和旧 marketplace，随后重启 Codex。
+旧配置、v1 材料和历史包继续兼容读取；旧仓库的当前分支保留稳定 1.x 版本，仅作为参考和回退来源，不再承载新版本发布。
 
-- 新安装族：按角色安装 `akbs-member-ops`、`android-engineering-ops`，可选安装
-  `jinny-android-practices`。
-- 旧回退族：固定 Git commit
-  `79b3665393089ce2bdfb8db4021d03bcac84c8ad` 中的
-  `android-framework-ops@1.0.169`、单一平台插件，以及按需的
-  `jinny-android-practices@1.0.3`。
-- 安装或回退必须先移除另一安装族，再通过 Codex 插件命令安装并取得单一安装族
-  doctor 回执；禁止手工复制 cache。
-- 插件升级会更新磁盘缓存。当前任务先尝试刷新/重新执行；若 Skill catalog 仍旧，退出并重开
-  Codex 即可，不需要重启操作系统、WSL 或 AKBS 服务。
-
-旧 marketplace 入口只为精确回退保留。发布、成员迁移、服务端 v2 writer 激活和旧入口清理
-分别有独立验收门禁，不能因为本地代码存在就宣称已经上线。
+Android change v2 服务端 writer 的启用仍是独立的服务端发布事项，仓库改名不会绕过该门禁。
 
 ## 配置和身份
 

@@ -1,7 +1,0 @@
-interface:
-  display_name: "Android Knowledge Intake"
-  short_description: "Shared member incoming kernel, setup, version gate, and doctor"
-  default_prompt: "Use $android-knowledge-intake for member first setup, plugin update checks, current configuration, doctor checks, and the shared incoming kernel. Use $android-daily-report-intake, $android-weekly-report-intake, or $android-framework-patch-intake for business package generation. Do not use it for local knowledge curation."
-
-policy:
-  allow_implicit_invocation: true

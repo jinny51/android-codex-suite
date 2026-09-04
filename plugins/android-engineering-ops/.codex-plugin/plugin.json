@@ -1,13 +1,13 @@
 {
   "name": "android-engineering-ops",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Standalone Android engineering policy, workflow, source access, remote execution, build/deploy, and patch capture.",
   "author": {
     "name": "Jinny Android Team",
     "url": "https://github.com/jinny51"
   },
-  "homepage": "https://github.com/jinny51/android-framework-codex-suite",
-  "repository": "https://github.com/jinny51/android-framework-codex-suite",
+  "homepage": "https://github.com/jinny51/android-codex-suite",
+  "repository": "https://github.com/jinny51/android-codex-suite",
   "license": "MIT",
   "keywords": [
     "android",

@@ -1,7 +1,0 @@
-interface:
-  display_name: "Android WSL Source Access"
-  short_description: "Mount Android source trees in WSL."
-  default_prompt: "Use $android-source-access to mount, remount, or restore an Android SDK source root into WSL, using SSH candidate discovery, source-tree platform/project recognition, project-level CIFS mounts, and saved recovery credentials without trusting misleading path segments."
-
-policy:
-  allow_implicit_invocation: true

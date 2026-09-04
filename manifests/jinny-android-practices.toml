@@ -1,4 +1,4 @@
-# Optional decision-only provider plus one migration wrapper.
+# Optional decision-only provider.
 
 [[skills]]
 name = "jinny-android-coding-practices"
@@ -9,8 +9,3 @@ summary = "返回不覆盖核心 android-change-policy 的 Jinny coding policy �
 name = "jinny-android-execution-policy"
 category = "Optional Practices"
 summary = "返回受 controller rollout ceiling 约束且不直接执行的 execution policy 决策"
-
-[[skills]]
-name = "jinny-framework-coding-standards"
-category = "Compatibility"
-summary = "迁移期薄入口；将旧 Skill 意图转交 jinny-android-coding-practices"

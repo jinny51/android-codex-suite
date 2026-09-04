@@ -85,28 +85,6 @@ if [[ "$failed" != "0" ]]; then
   exit 1
 fi
 
-rules_file="$repo_root/plugins/android-framework-ops/lib/android_framework_ops/knowledge_rules.py"
-if grep -q '^ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION[[:space:]]*=' "$rules_file"; then
-  echo "knowledge_rules.py must not embed the android-framework-ops release version" >&2
-  exit 1
-fi
-PYTHONPATH="$repo_root/plugins/android-framework-ops/lib${PYTHONPATH:+:$PYTHONPATH}" \
-  python3 - "$repo_root/plugins/android-framework-ops/.codex-plugin/plugin.json" <<'PY'
-import json
-import sys
-
-from android_framework_ops.knowledge_rules import current_plugin_version
-
-with open(sys.argv[1], encoding="utf-8") as handle:
-    manifest_version = str(json.load(handle)["version"])
-rules_observed_version = current_plugin_version()
-if rules_observed_version != manifest_version:
-    raise SystemExit(
-        "knowledge rules could not resolve the enclosing plugin manifest: "
-        f"manifest={manifest_version} observed={rules_observed_version or 'missing'}"
-    )
-PY
-
 for target_plugin in akbs-member-ops android-engineering-ops; do
   target_package="${target_plugin//-/_}"
   target_rules="$repo_root/plugins/$target_plugin/lib/$target_package/knowledge_rules.py"
@@ -132,21 +110,6 @@ if observed_version != manifest_version:
 PY
 done
 
-if find "$repo_root/plugins/android-framework-ops/skills" -mindepth 1 -maxdepth 1 -type d -name 'android-windows-*' | grep -q .; then
-  echo "Windows-side skills must not be inside android-framework-ops" >&2
-  exit 1
-fi
-
-if find "$repo_root/plugins/android-framework-ops/skills" -mindepth 1 -maxdepth 1 -type d -name 'android-macos-*' | grep -q .; then
-  echo "macOS-native skills must not be inside android-framework-ops" >&2
-  exit 1
-fi
-
-if find "$repo_root/plugins/android-framework-ops/skills" -mindepth 1 -maxdepth 1 -type d -name 'codex-chat-history-*' | grep -q .; then
-  echo "codex chat history skills must not be inside android-framework-ops" >&2
-  exit 1
-fi
-
 for target_plugin in akbs-member-ops android-engineering-ops jinny-android-practices; do
   if find "$repo_root/plugins/$target_plugin" -type l | grep -q .; then
     echo "$target_plugin must be a standalone install and cannot contain symlinks" >&2
@@ -167,39 +130,10 @@ for required_path in \
   fi
 done
 
-if find "$repo_root/plugins/android-wsl-ops/skills" -mindepth 1 -maxdepth 1 -type d -name 'android-wsl-*' | grep -q .; then
-  echo "WSL platform skills should use current platform-neutral names such as android-source-access" >&2
-  exit 1
-fi
-
-if find "$repo_root/plugins/android-mac-ops/skills" -mindepth 1 -maxdepth 1 -type d -name 'android-macos-*' | grep -q .; then
-  echo "macOS platform skills should use current android-mac-ops naming, not android-macos-* skill names" >&2
-  exit 1
-fi
-
 old_skill_names="$VALIDATOR_CLEANUP_TMPDIR/old-skill-names.txt"
 if repo_search "android-wsl-source-access|android-wsl-remote-build-deploy|android-wsl-remote-channel|android-macos-source-access|android-macos-ops" "$repo_root/plugins" "$repo_root/docs" "$repo_root/manifests" >"$old_skill_names"; then
   cat "$old_skill_names" >&2
   echo "old platform skill/plugin names must not appear in current plugin sources" >&2
-  exit 1
-fi
-
-if find "$repo_root/plugins/android-wsl-ops/skills" "$repo_root/plugins/android-mac-ops/skills" -mindepth 1 -maxdepth 1 -type d -name 'android-remote-build-deploy' | grep -q .; then
-  echo "host-specific rollback plugins must not duplicate android-remote-build-deploy" >&2
-  exit 1
-fi
-
-layer_errors="$VALIDATOR_CLEANUP_TMPDIR/layer-errors.txt"
-if repo_search 'WSL source/build skills from android-framework-ops|通用源码接入、构建、推送和验收流程；这些属于 `android-framework-ops`' "$repo_root/plugins" "$repo_root/docs" >"$layer_errors"; then
-  cat "$layer_errors" >&2
-  echo "legacy layer descriptions must not claim the target engineering ownership model" >&2
-  exit 1
-fi
-
-old_mac_paths="$VALIDATOR_CLEANUP_TMPDIR/old-mac-paths.txt"
-if repo_search "\.codex/android-macos-source-access-info" "$repo_root/plugins/android-mac-ops" "$repo_root/docs" >"$old_mac_paths"; then
-  cat "$old_mac_paths" >&2
-  echo "android-mac-ops must store registry and credential references under ~/.servers" >&2
   exit 1
 fi
 
@@ -277,19 +211,12 @@ validate_guarded_output_entrypoints() {
   local failed=0
   local entry file marker
   local -a entries=(
-    "plugins/android-framework-ops/skills/android-framework-patch-capture/scripts/capture_framework_patch.py|require_safe_artifact_path"
-    "plugins/android-framework-ops/skills/android-framework-change-workflow/scripts/collect_diagnostics.sh|--owned-create"
-    "plugins/android-framework-ops/skills/android-framework-change-workflow/scripts/extract_video_frames.py|require_safe_artifact_path"
-    "plugins/android-framework-ops/skills/android-remote-build-deploy/scripts/push_artifacts.py|require_safe_artifact_path"
-    "plugins/android-framework-ops/skills/android-remote-build-deploy/scripts/remote-build-v2.py|require_safe_artifact_path"
-    "plugins/android-framework-ops/skills/android-framework-patch-capture/scripts/capture_remote_snapshot.py|require_safe_artifact_path"
     "plugins/android-engineering-ops/skills/android-patch-capture/scripts/capture_android_patch.py|require_safe_artifact_path"
     "plugins/android-engineering-ops/skills/android-patch-capture/scripts/capture_remote_snapshot.py|require_safe_artifact_path"
     "plugins/android-engineering-ops/skills/android-change-workflow/scripts/collect_diagnostics.sh|--owned-create"
     "plugins/android-engineering-ops/skills/android-change-workflow/scripts/extract_video_frames.py|require_safe_artifact_path"
     "plugins/android-engineering-ops/skills/android-remote-build-deploy/scripts/push_artifacts.py|require_safe_artifact_path"
     "plugins/android-engineering-ops/skills/android-remote-build-deploy/scripts/remote-build-v2.py|require_safe_artifact_path"
-    "plugins/codex-workspace-care/skills/codex-chat-history-context-extractor/scripts/extract_codex_context.py|require_safe_artifact_path"
   )
   for entry in "${entries[@]}"; do
     file="${entry%%|*}"

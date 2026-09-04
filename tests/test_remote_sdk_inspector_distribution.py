@@ -7,12 +7,12 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CANONICAL = REPO_ROOT / "plugins" / "android-framework-ops" / "lib" / "android_source_access" / "remote_inspector.sh"
-INSPECTION_HELPER = REPO_ROOT / "plugins" / "android-framework-ops" / "lib" / "android_framework_ops" / "remote_source_inspection.py"
+CANONICAL = REPO_ROOT / "plugins" / "android-engineering-ops" / "lib" / "android_engineering_ops" / "source_access" / "remote_inspector.sh"
+INSPECTION_HELPER = REPO_ROOT / "plugins" / "android-engineering-ops" / "lib" / "android_engineering_ops" / "remote_source_inspection.py"
 WSL_ENTRY = (
     REPO_ROOT
     / "plugins"
-    / "android-wsl-ops"
+    / "android-engineering-ops"
     / "skills"
     / "android-source-access"
     / "scripts"
@@ -21,7 +21,7 @@ WSL_ENTRY = (
 MAC_ENTRY = (
     REPO_ROOT
     / "plugins"
-    / "android-mac-ops"
+    / "android-engineering-ops"
     / "skills"
     / "android-source-access"
     / "scripts"
@@ -78,27 +78,19 @@ def parse_simple_env(stdout: str) -> dict[str, str]:
 def test_remote_inspector_has_one_core_runtime_owner() -> None:
     assert CANONICAL.read_bytes()
     assert not (REPO_ROOT / "shared/android_source_access/remote_inspector.sh").exists()
-    assert not (REPO_ROOT / "plugins/android-mac-ops/lib/android_source_access/remote_inspector.sh").exists()
-    assert not (REPO_ROOT / "plugins/android-wsl-ops/lib/android_source_access/remote_inspector.sh").exists()
+    assert not (REPO_ROOT / "shared/android_source_access/remote_inspector.sh").exists()
 
 
-def test_platform_entries_are_thin_remote_inspector_adapters() -> None:
+def test_public_entries_use_one_host_dispatcher() -> None:
     wsl = WSL_ENTRY.read_text(encoding="utf-8")
     mac = MAC_ENTRY.read_text(encoding="utf-8")
 
     for source in (wsl, mac):
-        assert "_platform_shim.sh" in source
-        assert "_core_source_access.py" not in source
+        assert "android_source_access.py" in source
         assert "score_rk=0" not in source
         assert "first_assignment()" not in source
         assert "ssh " not in source
     assert wsl == mac
-    for entry in (WSL_ENTRY, MAC_ENTRY):
-        platform_shim = (entry.parent / "_platform_shim.sh").read_text(encoding="utf-8")
-        locator = (entry.parent / "_core_source_access.py").read_text(encoding="utf-8")
-        assert "_core_source_access.py" in platform_shim
-        assert "ANDROID_REMOTE_SOURCE_INSPECTION_HELPER" not in platform_shim
-        assert "MIN_CORE_VERSION" in locator
 
 
 def test_mtk_alias_and_project_branch_have_one_identity(tmp_path: Path) -> None:

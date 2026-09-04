@@ -1,4 +1,0 @@
-interface:
-  display_name: "Android Change Workflow"
-  short_description: "Cross-domain Android engineering workflow with domain verification"
-  default_prompt: "Use $android-framework-change-workflow to select the Android domain, search prior knowledge, implement or diagnose the change, verify it by domain, capture local evidence, and submit only when the current server capability allows it."

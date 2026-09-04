@@ -434,16 +434,15 @@ def test_public_policy_skill_and_optional_jinny_layer_have_one_authority() -> No
     policy_skill = (
         PLUGIN_ROOT / "skills/android-change-policy/SKILL.md"
     ).read_text(encoding="utf-8")
-    legacy_skill = (
+    practices_skill = (
         REPO_ROOT
-        / "plugins/jinny-android-practices/skills/jinny-framework-coding-standards/SKILL.md"
+        / "plugins/jinny-android-practices/skills/jinny-android-coding-practices/SKILL.md"
     ).read_text(encoding="utf-8")
     assert "../../contracts/android-change-policy/v1/README.md" in policy_skill
     assert "../../contracts/android-change-policy/v1/policy.json" in policy_skill
-    assert "migration-only thin wrapper" in legacy_skill
-    assert "jinny-android-coding-practices" in legacy_skill
+    assert "android-change-policy" in practices_skill
     assert not (
         REPO_ROOT
-        / "plugins/jinny-android-practices/skills/jinny-framework-coding-standards/references"
+        / "plugins/jinny-android-practices/skills/jinny-framework-coding-standards"
     ).exists()
-    assert "gyf" not in legacy_skill.casefold()
+    assert "gyf" not in practices_skill.casefold()

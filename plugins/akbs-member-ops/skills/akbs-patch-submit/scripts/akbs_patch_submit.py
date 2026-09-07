@@ -31,9 +31,8 @@ def _is_parser_help(arguments: list[str]) -> bool:
 def main(argv: list[str] | None = None) -> int:
     arguments = sys.argv[1:] if argv is None else argv
     if arguments and arguments[0] == "android-change-v2":
-        # Dispatch before loading configuration, freshness checks, archive
-        # creation, or HTTP code.  In particular, v2 submit is a static local
-        # writer-off gate and can never fall through to framework_change v1.
+        # Select the independent v2 surface before any v1 configuration,
+        # contract, archive, or HTTP workflow. Never fall through to v1.
         if _is_parser_help(arguments[1:]):
             return incoming_v2_main(arguments[1:])
         family = installed_plugin_family_status()

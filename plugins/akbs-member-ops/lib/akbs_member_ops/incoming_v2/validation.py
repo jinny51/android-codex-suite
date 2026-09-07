@@ -1,8 +1,8 @@
 """Read, check, and byte-preserve Android change v2 packages.
 
-This module validates untrusted client coherence only.  The bundled evidence
-profile explicitly keeps the server writer blocked, and nothing here can issue
-an upload or claim server qualification.
+This module validates untrusted client coherence only. The hash-pinned evidence
+profile is not a live server switch; nothing here issues an upload or claims
+server qualification.
 """
 
 from __future__ import annotations
@@ -840,11 +840,11 @@ def prepare_package(value: Path, *, pending_root: Path | None = None) -> dict[st
 
 
 def writer_status() -> dict[str, Any]:
-    """Return the frozen local gate without performing network or file I/O."""
+    """Local handling has not observed the server's runtime writer state."""
     return {
-        "state": "blocked",
-        "reason_code": "android_change_v2_writer_off",
-        "message": "Android change v2 server writer is not activated; submission failed closed before side effects.",
+        "state": "server-controlled",
+        "reason_code": "android_change_v2_server_state_unchecked",
+        "message": "Local validation does not query or enable the server writer; submit is a separate operation.",
         "server_qualified": False,
         "v1_fallback": False,
         "network_requests": 0,

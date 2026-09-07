@@ -7,15 +7,16 @@ import json
 from pathlib import Path
 
 from akbs_member_ops.member.profile import MemberProfileError, load_member_profile
+from akbs_member_ops.http_client import HttpClientFailure
 
 from .capture_adapter import capture_schema_version, preflight_capture
 from .materializer import materialize_capture
+from .submission import SubmissionError, submit_package
 from .validation import (
     AndroidChangeV2Error,
     check_package,
     prepare_package,
     read_package,
-    writer_status,
 )
 
 
@@ -24,14 +25,16 @@ def build_parser() -> argparse.ArgumentParser:
         prog="akbs_patch_submit.py android-change-v2",
         description=(
             "Read, strictly check, or byte-preserve an Android change v2 package, or "
-            "preflight capture 2.0 or offline-materialize capture 2.1. Server submission "
-            "remains fail-closed."
+            "preflight capture 2.0 or offline-materialize capture 2.1. Submit uses the "
+            "independent v2 HTTP path with server-authoritative qualification."
         ),
     )
     subparsers = parser.add_subparsers(dest="action", required=True)
     for action in ("read", "check", "prepare", "submit"):
         sub = subparsers.add_parser(action)
         sub.add_argument("package", type=Path, help="package directory or manifest.json")
+        if action == "submit":
+            sub.add_argument("--profile", default="", help="configured AKBS member profile")
     adapt = subparsers.add_parser(
         "adapt-capture",
         help="preflight capture 2.0 or offline-materialize capture 2.1",
@@ -64,28 +67,30 @@ def main(argv: list[str] | None = None) -> int:
                 member_alias=profile.member_alias,
             )
         else:
-            identity = read_package(args.package)
-            result = {
-                "status": "FAIL",
-                "operation": "submit",
-                "contract": identity["contract"],
-                "source_package_key": identity["source_package_key"],
-                "reason_code": "android_change_v2_writer_off",
-                "message": (
-                    "Android change v2 server writer is disabled by the bundled contract; "
-                    "no network request, archive, receipt, or v1 fallback was attempted."
-                ),
-                "writer": writer_status(),
-            }
-            print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
-            return 1
+            result = submit_package(args.package, profile=args.profile or None)
+    except HttpClientFailure as exc:
+        error = exc.result
+        print(json.dumps({
+            "status": "FAIL",
+            "operation": args.action,
+            "reason_code": error.code,
+            "message": error.safe_summary("Android change v2 submission was not confirmed"),
+            "http_status": error.status_code,
+            "request_id": error.request_id,
+            "error_kind": error.kind.value,
+            "retryable": error.retryable,
+            "server_qualified": False,
+            "v1_fallback": False,
+            "network_requests": 1,
+        }, ensure_ascii=False, indent=2, sort_keys=True))
+        return 1
     except AndroidChangeV2Error as exc:
         print(
             json.dumps(
                 {
                     "status": "FAIL",
                     "operation": args.action,
-                    "reason_code": (
+                    "reason_code": exc.reason_code if isinstance(exc, SubmissionError) else (
                         "android_patch_capture_v2_invalid"
                         if args.action == "adapt-capture"
                         else "android_change_v2_payload_invalid"
@@ -93,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
                     "message": str(exc),
                     "server_qualified": False,
                     "v1_fallback": False,
+                    "network_requests": 0,
                 },
                 ensure_ascii=False,
                 indent=2,

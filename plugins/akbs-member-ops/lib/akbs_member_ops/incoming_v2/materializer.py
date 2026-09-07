@@ -608,6 +608,35 @@ def _copy_capture_file(
     return copied
 
 
+def _artifact_id(kind: str, source_id: str) -> str:
+    """Separate capture labels from the shorter canonical identifier namespace."""
+    return f"{kind}-{hashlib.sha256(source_id.encode('utf-8')).hexdigest()}"
+
+
+def _capture_artifact_ids(capture: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "algorithm": "type-prefixed-sha256-utf8-source-id",
+        "patches": [
+            {
+                "source_id": patch["id"],
+                "change_id": _artifact_id("patch", patch["id"]),
+                "file_id": _artifact_id("patch-file", patch["id"]),
+                "path": patch["path"],
+            }
+            for patch in capture["patches"]
+        ],
+        "evidence": [
+            {
+                "source_id": item["id"],
+                "evidence_id": item["id"],
+                "file_id": _artifact_id("evidence-file", item["id"]),
+                "path": item["path"],
+            }
+            for item in capture["evidence"]
+        ],
+    }
+
+
 def _copy_bound_capture_files(
     snapshot: dict[str, Any],
     copy_file: Any,
@@ -640,7 +669,7 @@ def _copy_bound_capture_files(
         facts = _copy_capture_file(
             snapshot, copy_file, package_root, patch["path"]
         )
-        file_id = f"{patch['id']}-file"
+        file_id = _artifact_id("patch-file", patch["id"])
         patch_file_ids[patch["id"]] = file_id
         files.append(
             {
@@ -659,7 +688,7 @@ def _copy_bound_capture_files(
         facts = _copy_capture_file(
             snapshot, copy_file, package_root, item["path"]
         )
-        file_id = f"{item['id']}-file"
+        file_id = _artifact_id("evidence-file", item["id"])
         evidence_file_ids[item["id"]] = file_id
         files.append(
             {
@@ -760,6 +789,7 @@ def _existing_result(
     package = load_json_bytes(manifest_raw, label=str(destination / "manifest.json"))
     extension = (package.get("extensions") or {}).get("akbs.android/capture") or {}
     qualification = (package.get("extensions") or {}).get("akbs.android/qualification") or {}
+    artifact_ids = (package.get("extensions") or {}).get("akbs.android/capture-artifact-ids")
     expected_source_key = f"{run_id[:8]}/{member_alias}/{run_id}"
     input_rows = [
         row
@@ -788,6 +818,9 @@ def _existing_result(
             "adapter_inputs_file_id": "qualification-adapter-inputs",
             "server_qualified": False,
         }
+        # Already materialized valid packages keep their bytes and server retry
+        # identity. New packages additionally preserve the exact source-ID map.
+        or (artifact_ids is not None and artifact_ids != _capture_artifact_ids(snapshot["manifest"]))
         or len(input_rows) != 1
         or input_rows[0].get("path") != "metadata/qualification-adapter-inputs.json"
         or hashlib.sha256(input_raw).hexdigest() != input_rows[0].get("sha256")
@@ -945,7 +978,7 @@ def materialize_capture(
             "files": files,
             "changes": [
                 {
-                    "id": patch["id"],
+                    "id": _artifact_id("patch", patch["id"]),
                     "component_ids": patch["component_ids"],
                     "source_id": source_by_repository[patch["repository_id"]],
                     "file_id": patch_file_ids[patch["id"]],
@@ -972,6 +1005,7 @@ def materialize_capture(
                     "manifest_sha256": snapshot["manifest_sha256"],
                     "archive_inventory_sha256": snapshot["archive_inventory_sha256"],
                 },
+                "akbs.android/capture-artifact-ids": _capture_artifact_ids(capture),
                 "akbs.android/qualification": {
                     "contract": "akbs-qualification-contract-pack-v2/2",
                     "contract_sha256": contract_sha256,

@@ -7,11 +7,11 @@
 parser `--help` 可以跳过；`--` 后面的字面 `--help` 仍是业务输入。
 
 - `knowledge-incoming-package/1/framework_change`：永久兼容读取，并继续通过 incoming v1 真实提交。
-- `akbs-android-change-package-v2/2/android_change`：覆盖 application、platform、native、HAL、kernel、device、build，当前只开放本地 read/check/prepare。
+- `akbs-android-change-package-v2/2/android_change`：支持本地 read/check/prepare 和显式 submit；当前可提交的组件层为 application/platform，其他层仍未开放。
 - `android-patch-capture-package-v2/2.0/android_change_capture`：保留零网络、零写的兼容 preflight；不能把 capture 目录直接交给 `prepare`。
 - `android-patch-capture-package-v2/2.1/android_change_capture`：作为 Phase 4 的离线 materializer 输入，按 hash-pinned 37 组 qualification 合同生成 canonical v2；首轮只启用 application/platform，其余层返回 `layer_not_enabled`。
 
-v2 的本地 PASS 只代表 `client_semantic_coherence_valid`。客户端 adapter outputs 仍是 untrusted input，服务端必须重新计算资格；当前证据 profile 明确将 writer 设为 blocked，所以 submit 在任何更新检查网络、tar、HTTP、receipt 或 v1 fallback 前返回 `android_change_v2_writer_off`。
+v2 的本地 PASS 只代表 `client_semantic_coherence_valid`。客户端 adapter outputs 仍是 untrusted input，服务端必须重新计算资格。submit 使用成员已有 profile，通过现有 incoming HTTP 入口提交，普通成员不需要试点 grant。服务器未启用写入或合同不兼容时明确报错，不回退 v1。
 
 所有 v2 真实动作先以 `codex plugin list --json` 证明 target-only active family，并严格绑定唯一 target 条目的 `pluginId`、version、absolute marketplace `source.path` 与当前进程的精确 versioned cache；两边 direct manifest 字节和完整发布内容及 regular-file executable-bit 的规范化树 hash 必须一致（只排除 `__pycache__`/`.pyc`）。命令失败、JSON/version 畸形、symlink、路径/身份/内容不符、混装或目标插件未激活时均 fail closed，`--help` 不受业务 gate 影响。组件只接受合同中的 canonical `layer`、`type`、`partition`、`ownership`；v1 的 `change_domain` 不会被用来推导这些 facet。
 
@@ -19,7 +19,7 @@ v2 的本地 PASS 只代表 `client_semantic_coherence_valid`。客户端 adapte
 python3 "scripts/akbs_patch_submit.py" android-change-v2 read /path/to/package
 python3 "scripts/akbs_patch_submit.py" android-change-v2 check /path/to/package
 python3 "scripts/akbs_patch_submit.py" android-change-v2 prepare /path/to/package
-python3 "scripts/akbs_patch_submit.py" android-change-v2 submit /path/to/package
+python3 "scripts/akbs_patch_submit.py" android-change-v2 submit /path/to/package --profile <member_alias>
 python3 "scripts/akbs_patch_submit.py" android-change-v2 adapt-capture /path/to/capture
 ```
 
@@ -35,7 +35,12 @@ client-adapter outputs、receipt 或伪 PASS。
 versioned adapter input schema 生成确定性的 hash-bound canonical v2 包；
 重复执行复用同一结果，原 capture 不改写。
 client adapter 输出仍是 untrusted input，`server_qualified=false`，不发
-HTTP，也不进入 v1 fallback。v2 server writer 继续关闭。
+HTTP，也不进入 v1 fallback；提交是单独的显式操作。
+
+补丁文件名、路径和内容保持不变，包括文件名中的 `@`、`+`；canonical
+内部编号单独生成。提交时包内成员身份必须与 profile 一致，重试同一包使用同一
+幂等键，并校验服务器回执。网络超时后可重试原包，不要通过改名或重新生成包
+编号绕过未知结果。
 
 `prepare` 不生成或补写 adapter PASS，只在完整 schema、profile SHA、qualification hash、组件/证据绑定及目录 bytes 全部通过后，把输入原样保存到：
 

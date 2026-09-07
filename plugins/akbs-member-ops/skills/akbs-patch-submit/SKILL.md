@@ -1,6 +1,6 @@
 ---
 name: akbs-patch-submit
-description: "Use when an AKBS member needs to preflight or locally materialize a capture, or read, check, prepare, or submit an Android change package. Supports real legacy Framework change v1 submission, capture 2.0 compatibility preflight, capture 2.1 offline adaptation for enabled layers, and local canonical Android change v2 handling; v2 server submission remains fail-closed."
+description: "Use when an AKBS member needs to preflight or materialize a capture, or read, check, prepare, or submit an Android change package. Supports legacy Framework v1 and canonical Android change v2 submission for enabled application/platform layers; excludes source implementation and administrator curation."
 ---
 
 # AKBS Patch Submit
@@ -27,16 +27,17 @@ business input and must not bypass the gate. Continue only on exit 0 with JSON
 - Legacy `knowledge-incoming-package/1/framework_change` remains readable,
   checkable, and genuinely submittable through the internal incoming v1 kernel.
 - Generic `akbs-android-change-package-v2/2/android_change` supports strict local
-  read, check, and byte-preserving prepare.
+  read, check, byte-preserving prepare, and explicit server submission.
 - `android-patch-capture-package-v2/2.0/android_change_capture` remains the
   frozen read-only preflight contract and cannot be passed directly to `prepare`.
 - Capture 2.1 is the additive Phase 4 materializer input. `adapt-capture` creates a new
   canonical package only for enabled `application` and `platform` components.
   Native, HAL, kernel, device, and build are frozen but return
   `layer_not_enabled` until a later contract release.
-- Android change v2 server qualification and writer activation are not available.
-  A v2 submit attempt fails locally before config loading, plugin freshness
-  network access, archive creation, POST, receipt writing, or v1 fallback.
+- Android change v2 submission uses the selected member profile and the existing
+  incoming HTTP endpoint. The server independently qualifies every component;
+  ordinary members do not need a pilot grant. A disabled or incompatible server
+  returns an explicit error, never a v1 fallback or a fabricated success.
 - Every v2 read/check/prepare/submit/adapt-capture action first requires an authoritative,
   target-only active plugin inventory. Missing, malformed, ambiguous, or mixed
   inventory fails closed; `--help` remains available without a business gate.
@@ -99,13 +100,19 @@ After a successful check, preserve the exact package bytes under
 python3 "scripts/akbs_patch_submit.py" android-change-v2 prepare /path/to/package
 ```
 
-The following command is an explicit writer-off probe and currently returns a
-non-zero result with `reason_code=android_change_v2_writer_off` and zero submission
-side effects:
+Submit a checked canonical package using the existing selected member profile
+(or select an existing profile explicitly):
 
 ```bash
-python3 "scripts/akbs_patch_submit.py" android-change-v2 submit /path/to/package
+python3 "scripts/akbs_patch_submit.py" android-change-v2 submit /path/to/package --profile <member_alias>
 ```
+
+The package member must match that profile. Submission preserves package bytes,
+uses a stable idempotency key, and checks the server receipt. Retry the same
+package after a transport failure; do not rename it or regenerate its identity
+to work around an uncertain response. Local checks and adaptation never imply
+server acceptance. Capture artifact names (including `@` or `+`) remain intact;
+canonical IDs are separate deterministic identifiers.
 
 ## Legacy Framework change v1
 

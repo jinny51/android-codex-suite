@@ -787,6 +787,62 @@ class CaptureAdapterPreflightTest(unittest.TestCase):
                 with self.assertRaisesRegex(AndroidChangeV2Error, "pinned archive inventory"):
                     preflight_capture(capture)
 
+    def test_capture_21_hashes_capture_labels_without_renaming_or_changing_bytes(self) -> None:
+        for source_id in ("frameworks@base+change", "a" * 254 + "@+", "changed-files"):
+            with self.subTest(source_id=source_id), tempfile.TemporaryDirectory() as temporary:
+                workspace = Path(temporary)
+                capture = build_capture_v21(workspace / "capture")
+                manifest = json.loads((capture / "manifest.json").read_text(encoding="utf-8"))
+                patch = manifest["patches"][0]
+                old_id = patch["id"]
+                patch["id"] = source_id
+                original = capture / patch["path"]
+                patch["path"] = "patches/frameworks@base+change.patch"
+                original.rename(capture / patch["path"])
+                long_evidence_id = "e" * 128
+                evidence = manifest["evidence"][0]
+                old_evidence_id = evidence["id"]
+                evidence["id"] = long_evidence_id
+                for binding in manifest["qualification_bindings"]:
+                    binding["patch_ids"] = [source_id if value == old_id else value for value in binding["patch_ids"]]
+                    binding["evidence_ids"] = [
+                        long_evidence_id if value == old_evidence_id else value for value in binding["evidence_ids"]
+                    ]
+                refresh_inventory(capture, manifest)
+                before = {path.relative_to(capture).as_posix(): path.read_bytes() for path in capture.rglob("*") if path.is_file()}
+                result = materialize_capture(capture, member_alias="member01", output_root=workspace / "adapted")
+                destination = Path(result["package"])
+                canonical = json.loads((destination / "manifest.json").read_text(encoding="utf-8"))
+                self.assertEqual(validation.check_package(destination)["status"], "PASS")
+                digest = hashlib.sha256(source_id.encode("utf-8")).hexdigest()
+                change = canonical["changes"][0]
+                self.assertEqual(change["id"], "patch-" + digest)
+                self.assertEqual(change["file_id"], "patch-file-" + digest)
+                file_by_id = {row["id"]: row for row in canonical["files"]}
+                self.assertEqual(len(file_by_id), len(canonical["files"]))
+                for row in canonical["files"]:
+                    self.assertLessEqual(len(row["id"]), 128)
+                    self.assertRegex(row["id"], r"^[a-z0-9][a-z0-9._-]*$")
+                    if row["role"] in {"patch", "evidence", "readme"}:
+                        self.assertEqual((destination / row["path"]).read_bytes(), before[row["path"]])
+                self.assertEqual(file_by_id[change["file_id"]]["path"], patch["path"])
+                evidence_row = canonical["evidence"][0]
+                self.assertEqual(evidence_row["id"], long_evidence_id)
+                self.assertEqual(evidence_row["file_id"], "evidence-file-" + hashlib.sha256(long_evidence_id.encode()).hexdigest())
+                mapping = canonical["extensions"]["akbs.android/capture-artifact-ids"]
+                self.assertEqual(mapping["patches"][0]["source_id"], source_id)
+                self.assertEqual(mapping["patches"][0]["change_id"], change["id"])
+                self.assertEqual(mapping["patches"][0]["file_id"], change["file_id"])
+                self.assertEqual(mapping["evidence"][0]["source_id"], long_evidence_id)
+                self.assertEqual(mapping["evidence"][0]["file_id"], evidence_row["file_id"])
+                second = materialize_capture(capture, member_alias="member01", output_root=workspace / "adapted")
+                self.assertTrue(second["idempotent_reuse"])
+                independent = materialize_capture(capture, member_alias="member01", output_root=workspace / "independent")
+                self.assertEqual(result["manifest_sha256"], independent["manifest_sha256"])
+                self.assertEqual(result["archive_inventory_sha256"], independent["archive_inventory_sha256"])
+                after = {path.relative_to(capture).as_posix(): path.read_bytes() for path in capture.rglob("*") if path.is_file()}
+                self.assertEqual(before, after)
+
     def test_capture_21_materializes_canonical_package_idempotently_without_rewrite(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             workspace = Path(temporary)

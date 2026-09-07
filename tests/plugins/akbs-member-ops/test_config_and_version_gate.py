@@ -13,6 +13,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[3]
 PLUGIN = ROOT / "plugins" / "akbs-member-ops"
+PLUGIN_VERSION = json.loads((PLUGIN / ".codex-plugin" / "plugin.json").read_text())["version"]
 sys.path.insert(0, str(PLUGIN / "lib"))
 sys.path.insert(0, str(PLUGIN / "internal" / "incoming-v1" / "scripts"))
 
@@ -648,7 +649,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
         self.assertTrue(family["blocking"])
         self.assertFalse(metadata["installed_plugin_active"])
         self.assertNotIn("installed_plugin_version", metadata)
-        self.assertEqual(metadata["execution_plugin_version"], "2.0.1")
+        self.assertEqual(metadata["execution_plugin_version"], PLUGIN_VERSION)
 
     def test_cli_unavailable_falls_back_to_execution_root_not_history(self) -> None:
         with tempfile.TemporaryDirectory() as temporary, mock.patch.dict(
@@ -659,7 +660,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
         self.assertFalse(result["installed_plugin_active"])
         self.assertEqual(result["installed_plugin_authority"], "current_execution_plugin_root_fallback")
         self.assertNotIn("installed_plugin_version", result)
-        self.assertEqual(result["execution_plugin_version"], "2.0.1")
+        self.assertEqual(result["execution_plugin_version"], PLUGIN_VERSION)
 
     def test_unavailable_or_malformed_active_inventory_is_blocking(self) -> None:
         cases = (

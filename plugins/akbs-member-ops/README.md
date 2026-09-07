@@ -1,6 +1,6 @@
 # AKBS Member Ops
 
-Standalone AKBS member plugin, version 2.0.1. It owns member setup, knowledge
+Standalone AKBS member plugin, version 2.0.2. It owns member setup, knowledge
 search and merge review, personal daily/weekly reports, and Android change
 package handling without depending on the engineering or optional practices
 plugins at runtime.
@@ -53,9 +53,10 @@ incoming v1.
 `akbs-patch-submit` also handles generic
 `akbs-android-change-package-v2/2/android_change` packages. It can strictly read,
 check, and byte-preserve them into the target artifact root. Client coherence is
-not server qualification. The bundled v2 evidence profile keeps the server
-writer blocked, so v2 submit fails before network or file submission side
-effects and never falls back to Framework v1.
+not server qualification. Explicit v2 submit uses the existing member profile
+and incoming HTTP endpoint, preserving bytes and using an idempotency key.
+The server must enable ordinary-member writing and independently qualify the
+package; a disabled or incompatible server returns an error with no v1 fallback.
 
 An `android-patch-capture-package-v2/2.0/android_change_capture` directory is a
 frozen read-only source contract and cannot be passed directly to v2 `prepare`.
@@ -63,7 +64,7 @@ frozen read-only source contract and cannot be passed directly to v2 `prepare`.
 For additive capture 2.1, it evaluates the hash-pinned 37-group qualification
 pack and materializes a canonical v2 package offline for enabled application and
 platform layers. The source capture is unchanged, output is idempotent,
-`server_qualified=false`, and the writer remains off. Other frozen layers fail
+`server_qualified=false` until server acceptance. Other frozen layers fail
 with `layer_not_enabled`; no path falls back to Framework v1.
 
 ## Install-family boundary

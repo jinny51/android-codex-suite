@@ -1,7 +1,7 @@
 interface:
   display_name: "AKBS Patch Submit"
-  short_description: "Check Android changes; submit legacy Framework v1"
-  default_prompt: "Use $akbs-patch-submit to route the package by its exact contract: keep legacy framework_change v1 genuinely submittable; strictly read/check/prepare canonical Android change v2 locally; preserve capture 2.0 as the read-only zero-network BLOCKED preflight; and use capture 2.1 adapt-capture only for hash-pinned offline materialization of enabled application/platform layers. Keep client adapter outputs untrusted, reject disabled layers, never pass a capture directly to prepare, silently downgrade v2 to v1, perform HTTP v2 submit, or claim client coherence is server qualification."
+  short_description: "Prepare and submit Android change packages"
+  default_prompt: "Use $akbs-patch-submit to check the exact package contract, run adapt-capture for capture 2.1 when needed, and submit with my existing member profile; preserve legacy v1 compatibility, enabled-layer limits, original patch bytes, and server-owned qualification."
 
 policy:
   allow_implicit_invocation: true

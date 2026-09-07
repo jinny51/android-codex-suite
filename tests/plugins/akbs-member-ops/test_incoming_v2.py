@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import contextlib
 import hashlib
+import http.server
 import importlib.util
 import io
 import json
@@ -12,7 +13,9 @@ import subprocess
 import sys
 import tempfile
 import tarfile
+import threading
 import unittest
+import urllib.error
 import urllib.request
 from pathlib import Path
 from unittest import mock
@@ -20,6 +23,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[3]
 PLUGIN = ROOT / "plugins" / "akbs-member-ops"
+PLUGIN_VERSION = json.loads((PLUGIN / ".codex-plugin" / "plugin.json").read_text())["version"]
 LIB = PLUGIN / "lib"
 SCRIPT = PLUGIN / "skills" / "akbs-patch-submit" / "scripts" / "akbs_patch_submit.py"
 FIXTURES = ROOT / "contracts" / "incoming" / "v2" / "fixtures"
@@ -34,6 +38,9 @@ from akbs_member_ops.incoming_v2.validation import (  # noqa: E402
     read_package,
 )
 from akbs_member_ops.incoming_v2 import validation as incoming_v2_validation  # noqa: E402
+from akbs_member_ops.incoming_v2 import submission as incoming_v2_submission  # noqa: E402
+from akbs_member_ops.incoming_v2 import cli as incoming_v2_cli  # noqa: E402
+from akbs_member_ops.http_client import HttpClientFailure  # noqa: E402
 from akbs_intake import version_gate  # noqa: E402
 
 
@@ -76,6 +83,79 @@ def build_package(root: Path) -> Path:
     return root
 
 
+@contextlib.contextmanager
+def submission_environment(workspace: Path, *, alias: str = "member1", modes: str = "patch,daily,weekly"):
+    codex_home = workspace / "codex-home"
+    codex_home.mkdir(exist_ok=True)
+    (codex_home / "akbs-member-ops.toml").write_text(
+        'default_profile = "selected"\n[profiles.selected]\n'
+        f'member_alias = "{alias}"\nmember_name = "Test Member"\nallowed_modes = "{modes}"\n',
+        encoding="utf-8",
+    )
+    environment = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith(("CODEX_REPORT_", "CODEX_WORK_REPORT_"))
+    }
+    environment.update(
+        CODEX_HOME=str(codex_home),
+        CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_BASE_URL="http://akbs.invalid/akbs/api",
+    )
+    with mock.patch.dict(os.environ, environment, clear=True):
+        yield
+
+
+def upload_receipt(source: Path) -> dict[str, object]:
+    checked = check_package(source)
+    identity = json.loads((source / "manifest.json").read_text())["identity"]
+    key = "android-change-v2:" + checked["archive_inventory_sha256"]
+    package = {
+        "package_key": checked["source_package_key"],
+        "patch_package_id": "patch-test-0001", "revision": 1,
+        "review_id": "review-test-0001", "status": "received",
+    }
+    operation = {
+        "write_operation_id": "upload-test-0001", "grant_id": "",
+        "idempotency_key_sha256": hashlib.sha256(key.encode()).hexdigest(),
+        "manifest_sha256": checked["manifest_sha256"],
+        "directory_payload_sha256": checked["archive_inventory_sha256"],
+        "contract_pin_sha256": "c" * 64, "runtime_generation_sha256": "d" * 64,
+        "accepted_at": "2026-09-07T00:00:00Z",
+    }
+    qualification = {
+        "schema": "akbs-server-qualification-decision-v1",
+        "authority": "server_authoritative", "authority_scope": "incoming_contract_qualification",
+        "decision": "accept", "qualification_id": "qualification-test-0001",
+        "patch_package_id": package["patch_package_id"], "revision": package["revision"],
+        "source_package_key": checked["source_package_key"], "authenticated_actor": identity["member_alias"],
+        "manifest_sha256": checked["manifest_sha256"],
+        "directory_payload_sha256": checked["archive_inventory_sha256"],
+        "contract_pin_sha256": operation["contract_pin_sha256"],
+        "runtime_generation_sha256": operation["runtime_generation_sha256"],
+        "qualified_at": operation["accepted_at"],
+        "qualification_input_sha256": checked["coherence"]["qualification_input_sha256"],
+    }
+    receipt = {
+        "schema": incoming_v2_submission.RECEIPT_SCHEMA,
+        "accepted": True, "upload_type": "patch", "server_qualified": True,
+        "package": package, "operation": operation, "qualification": qualification,
+        "seal": {
+            "seal_id": "seal-test-0001", "summary_algorithm": "sha256",
+            "component_count": 1, "component_set_sha256": "e" * 64,
+            "qualification_claim_count": 11, "qualification_claim_set_sha256": "f" * 64,
+            "sealed_at": operation["accepted_at"],
+        },
+        "asset_set_sha256": "a" * 64,
+    }
+    receipt["receipt_sha256"] = incoming_v2_validation.canonical_json_sha256(receipt)
+    return receipt
+
+
+def receipt_response(receipt: dict[str, object]) -> io.BytesIO:
+    response = io.BytesIO(json.dumps(receipt).encode("utf-8"))
+    response.headers = {"X-Request-ID": "req_" + "a" * 32}
+    return response
+
+
 class AndroidChangeV2Test(unittest.TestCase):
     def test_bundled_v2_contracts_are_exact_copies_of_root_contracts(self) -> None:
         for name in (
@@ -114,7 +194,7 @@ class AndroidChangeV2Test(unittest.TestCase):
             }
             self.assertEqual(after, before)
             self.assertTrue(prepared["bytes_preserved"])
-            self.assertEqual(prepared["writer"]["state"], "blocked")
+            self.assertEqual(prepared["writer"]["state"], "server-controlled")
             self.assertEqual(prepared["writer"]["scope"], "submission_only")
 
     def test_prepare_rejects_member_and_run_symlink_escape(self) -> None:
@@ -232,7 +312,7 @@ class AndroidChangeV2Test(unittest.TestCase):
             with self.assertRaisesRegex(AndroidChangeV2Error, "additional properties at \\$/components/0"):
                 check_package(source)
 
-    def test_submit_writer_off_has_zero_output_and_no_v1_fallback(self) -> None:
+    def test_submit_without_member_profile_has_no_output_or_v1_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             workspace = Path(temporary)
             source = build_package(workspace / "source")
@@ -251,7 +331,7 @@ class AndroidChangeV2Test(unittest.TestCase):
                 / "cache"
                 / "android-codex-suite"
                 / "akbs-member-ops"
-                / "2.0.1"
+                / PLUGIN_VERSION
             )
             for target in (marketplace_plugin, execution_plugin):
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -267,7 +347,8 @@ class AndroidChangeV2Test(unittest.TestCase):
                 "#!/usr/bin/env python3\n"
                 "import json\n"
                 "print(json.dumps({'installed':[{'pluginId':'akbs-member-ops@android-codex-suite',"
-                "'name':'akbs-member-ops','marketplaceName':'android-codex-suite','version':'2.0.1',"
+                "'name':'akbs-member-ops','marketplaceName':'android-codex-suite','version':"
+                + repr(PLUGIN_VERSION) + ","
                 "'installed':True,'enabled':True,'source':{'source':'local','path':"
                 + repr(str(marketplace_plugin))
                 + "}}]}))\n",
@@ -302,13 +383,12 @@ class AndroidChangeV2Test(unittest.TestCase):
             )
             self.assertEqual(completed.returncode, 1)
             payload = json.loads(completed.stdout)
-            self.assertEqual(payload["reason_code"], "android_change_v2_writer_off")
-            self.assertFalse(payload["writer"]["v1_fallback"])
-            self.assertEqual(payload["writer"]["network_requests"], 0)
-            self.assertEqual(payload["writer"]["files_written"], 0)
+            self.assertEqual(payload["reason_code"], "android_change_v2_profile_invalid")
+            self.assertFalse(payload["v1_fallback"])
+            self.assertEqual(payload["network_requests"], 0)
             self.assertFalse((codex_home / "artifacts" / "akbs-member-ops").exists())
 
-    def test_submit_dispatch_never_reaches_v1_network_tar_or_writes(self) -> None:
+    def test_submit_dispatch_uses_v2_profile_and_never_reaches_v1(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             workspace = Path(temporary)
             source = build_package(workspace / "source")
@@ -331,6 +411,7 @@ class AndroidChangeV2Test(unittest.TestCase):
                 ) as family_gate,
                 mock.patch.object(module, "incoming_main") as v1_main,
                 mock.patch.object(module, "route_arguments") as v1_router,
+                mock.patch.object(incoming_v2_cli, "submit_package", return_value={"status": "PASS"}) as v2_submit,
                 mock.patch.object(urllib.request, "urlopen") as urlopen,
                 mock.patch.object(tarfile, "open") as tar_open,
                 mock.patch.object(Path, "write_bytes", side_effect=AssertionError("unexpected write_bytes")),
@@ -339,9 +420,10 @@ class AndroidChangeV2Test(unittest.TestCase):
                 mock.patch("os.replace", side_effect=AssertionError("unexpected replace")),
                 contextlib.redirect_stdout(output),
             ):
-                result = module.main(["android-change-v2", "submit", str(source)])
-            self.assertEqual(result, 1)
-            self.assertEqual(json.loads(output.getvalue())["reason_code"], "android_change_v2_writer_off")
+                result = module.main(["android-change-v2", "submit", str(source), "--profile", "member1"])
+            self.assertEqual(result, 0)
+            self.assertEqual(json.loads(output.getvalue())["status"], "PASS")
+            v2_submit.assert_called_once_with(source, profile="member1")
             family_gate.assert_called_once_with()
             v1_main.assert_not_called()
             v1_router.assert_not_called()
@@ -370,6 +452,220 @@ class AndroidChangeV2Test(unittest.TestCase):
                     module.main(["android-change-v2", action, "/not/read"])
                 family_gate.assert_called_once_with()
                 v2_main.assert_not_called()
+
+    def test_v2_submit_has_deterministic_tar_retry_key_and_unchanged_source(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            source = build_package(workspace / "source")
+            before = {path.relative_to(source).as_posix(): path.read_bytes() for path in source.rglob("*") if path.is_file()}
+            receipt = upload_receipt(source)
+            with submission_environment(workspace), mock.patch.object(
+                urllib.request, "urlopen", side_effect=lambda *args, **kwargs: receipt_response(receipt)
+            ) as urlopen:
+                first = incoming_v2_submission.submit_package(source, profile="selected")
+                for path in source.rglob("*"):
+                    if path.is_file():
+                        os.utime(path, (1000, 1000))
+                        path.chmod(0o600)
+                second = incoming_v2_submission.submit_package(source, profile="selected")
+            requests = [call.args[0] for call in urlopen.call_args_list]
+            self.assertEqual(len(requests), 2)
+            self.assertEqual(requests[0].data, requests[1].data)
+            self.assertEqual(first["archive_sha256"], second["archive_sha256"])
+            self.assertEqual(first["idempotency_key"], second["idempotency_key"])
+            self.assertTrue(first["server_qualified"])
+            self.assertFalse(first["v1_fallback"])
+            self.assertEqual(first["receipt"], receipt)
+            for request in requests:
+                self.assertEqual(request.full_url, "http://akbs.invalid/akbs/api/member/me/uploads/patch")
+                self.assertEqual(request.method, "POST")
+                headers = {key.lower(): value for key, value in request.header_items()}
+                self.assertEqual(headers["x-akbs-user"], "member1")
+                self.assertEqual(headers["idempotency-key"], first["idempotency_key"])
+                self.assertEqual(headers["content-type"], "application/gzip")
+                self.assertNotIn("x-akbs-pilot-grant", headers)
+                with tarfile.open(fileobj=io.BytesIO(request.data), mode="r:gz") as archive:
+                    self.assertEqual(archive.getnames(), sorted(before))
+                    for item in archive.getmembers():
+                        self.assertTrue(item.isfile())
+                        self.assertEqual((item.uid, item.gid, item.mtime, item.mode), (0, 0, 0, 0o644))
+                        self.assertEqual(archive.extractfile(item).read(), before[item.name])
+            after = {path.relative_to(source).as_posix(): path.read_bytes() for path in source.rglob("*") if path.is_file()}
+            self.assertEqual(before, after)
+            self.assertFalse((workspace / "codex-home" / "artifacts").exists())
+
+    def test_v2_submit_profile_mismatch_and_report_only_never_send_or_rewrite(self) -> None:
+        for alias, modes, expected in (
+            ("member2", "patch", "android_change_v2_member_mismatch"),
+            ("member1", "daily,weekly", "android_change_v2_profile_invalid"),
+        ):
+            with self.subTest(alias=alias, modes=modes), tempfile.TemporaryDirectory() as temporary:
+                workspace = Path(temporary)
+                source = build_package(workspace / "source")
+                before = (source / "manifest.json").read_bytes()
+                with submission_environment(workspace, alias=alias, modes=modes), mock.patch.object(
+                    urllib.request, "urlopen"
+                ) as urlopen, mock.patch.object(incoming_v2_submission, "_archive_bytes") as archive:
+                    with self.assertRaises(incoming_v2_submission.SubmissionError) as caught:
+                        incoming_v2_submission.submit_package(source, profile="selected")
+                self.assertEqual(caught.exception.reason_code, expected)
+                self.assertEqual(before, (source / "manifest.json").read_bytes())
+                urlopen.assert_not_called()
+                archive.assert_not_called()
+
+    def test_v2_submit_real_http_uses_existing_member_patch_route(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            source = build_package(workspace / "source")
+            receipt = upload_receipt(source)
+            received = []
+
+            class Handler(http.server.BaseHTTPRequestHandler):
+                def log_message(self, *args):
+                    pass
+
+                def do_POST(self):
+                    body = self.rfile.read(int(self.headers["Content-Length"]))
+                    received.append((self.path, dict(self.headers), body))
+                    raw = json.dumps(receipt).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(raw)))
+                    self.send_header("X-Request-ID", "req_" + "a" * 32)
+                    self.end_headers()
+                    self.wfile.write(raw)
+
+            with http.server.HTTPServer(("127.0.0.1", 0), Handler) as server:
+                server.timeout = 5
+                thread = threading.Thread(target=server.handle_request, daemon=True)
+                thread.start()
+                with submission_environment(workspace), mock.patch.dict(os.environ, {
+                    "CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_BASE_URL":
+                    f"http://127.0.0.1:{server.server_port}/akbs/api",
+                    "NO_PROXY": "127.0.0.1", "no_proxy": "127.0.0.1",
+                }):
+                    result = incoming_v2_submission.submit_package(source, profile="selected")
+                thread.join(timeout=5)
+                self.assertFalse(thread.is_alive())
+            self.assertEqual(result["status"], "PASS")
+            self.assertEqual(result["request_id"], "req_" + "a" * 32)
+            self.assertEqual(len(received), 1)
+            path, headers, body = received[0]
+            self.assertEqual(path, "/akbs/api/member/me/uploads/patch")
+            self.assertEqual(headers["X-Akbs-User"], "member1")
+            self.assertEqual(headers["Idempotency-Key"], result["idempotency_key"])
+            self.assertEqual(hashlib.sha256(body).hexdigest(), result["archive_sha256"])
+
+    def test_v2_submit_checks_the_bytes_written_to_tar(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            source = build_package(workspace / "source")
+            original_addfile = tarfile.TarFile.addfile
+
+            def substitute_encoded_file(archive, entry, reader=None):
+                if entry.name == "patches/change.patch":
+                    reader.source = io.BytesIO(b"x" * entry.size)
+                return original_addfile(archive, entry, reader)
+
+            with submission_environment(workspace), mock.patch.object(
+                tarfile.TarFile, "addfile", new=substitute_encoded_file
+            ), mock.patch.object(urllib.request, "urlopen") as urlopen:
+                with self.assertRaises(incoming_v2_submission.SubmissionError) as caught:
+                    incoming_v2_submission.submit_package(source)
+            self.assertEqual(caught.exception.reason_code, "android_change_v2_payload_changed")
+            urlopen.assert_not_called()
+
+    def test_v2_submit_rechecks_bytes_after_check_before_http(self) -> None:
+        for mutate_manifest in (False, True):
+            with self.subTest(manifest=mutate_manifest), tempfile.TemporaryDirectory() as temporary:
+                workspace = Path(temporary)
+                source = build_package(workspace / "source")
+                original_check = incoming_v2_submission.check_package
+                def change_after_check(path):
+                    result = original_check(path)
+                    target = source / ("manifest.json" if mutate_manifest else "patches/change.patch")
+                    target.write_bytes(target.read_bytes() + b"\n")
+                    return result
+                with submission_environment(workspace), mock.patch.object(
+                    incoming_v2_submission, "check_package", side_effect=change_after_check
+                ), mock.patch.object(urllib.request, "urlopen") as urlopen:
+                    with self.assertRaises(incoming_v2_submission.SubmissionError) as caught:
+                        incoming_v2_submission.submit_package(source)
+                self.assertEqual(caught.exception.reason_code, "android_change_v2_payload_changed")
+                urlopen.assert_not_called()
+
+    def test_v2_submit_server_off_auth_conflict_and_transport_are_explicit_no_fallback(self) -> None:
+        for status, code in (
+            (503, "android_change_v2_writer_off"), (403, "forbidden"),
+            (409, "conflict"), (413, "payload_too_large"), (0, "transport_error"),
+        ):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as temporary:
+                workspace = Path(temporary)
+                source = build_package(workspace / "source")
+                if status:
+                    envelope = {
+                        "schema": "akbs-error-envelope-v1", "code": code,
+                        "message": "request rejected", "request_id": "req_" + "a" * 32,
+                    }
+                    error = urllib.error.HTTPError(
+                        "http://akbs.invalid", status, "rejected",
+                        {"X-Request-ID": envelope["request_id"]}, io.BytesIO(json.dumps(envelope).encode()),
+                    )
+                else:
+                    error = urllib.error.URLError("test timeout")
+                output = io.StringIO()
+                with submission_environment(workspace), mock.patch.object(
+                    urllib.request, "urlopen", side_effect=error
+                ) as urlopen, contextlib.redirect_stdout(output):
+                    exit_code = incoming_v2_cli.main(["submit", str(source), "--profile", "selected"])
+                result = json.loads(output.getvalue())
+                self.assertEqual(exit_code, 1)
+                self.assertEqual(result["http_status"], status)
+                if status:
+                    self.assertEqual(result["reason_code"], code)
+                else:
+                    self.assertTrue(result["retryable"])
+                self.assertFalse(result["v1_fallback"])
+                self.assertFalse(result["server_qualified"])
+                self.assertEqual(result["network_requests"], 1)
+                urlopen.assert_called_once()
+
+    def test_v2_submit_rejects_wrong_or_unbound_success_receipts(self) -> None:
+        mutations = (
+            lambda value: value.update(schema="incoming-v1"),
+            lambda value: value.update(accepted=False),
+            lambda value: value["package"].update(package_key="other/package"),
+            lambda value: value["package"].update(revision=True),
+            lambda value: value["operation"].update(manifest_sha256="0" * 64),
+            lambda value: value["operation"].update(directory_payload_sha256="0" * 64),
+            lambda value: value["operation"].update(idempotency_key_sha256="0" * 64),
+            lambda value: value["qualification"].update(authenticated_actor="member2"),
+            lambda value: value["qualification"].update(decision="reject"),
+            lambda value: value["qualification"].update(qualification_input_sha256="0" * 64),
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            source = build_package(workspace / "source")
+            good = upload_receipt(source)
+            for index, mutate in enumerate(mutations):
+                receipt = copy.deepcopy(good)
+                mutate(receipt)
+                receipt["receipt_sha256"] = incoming_v2_validation.canonical_json_sha256(
+                    {key: value for key, value in receipt.items() if key != "receipt_sha256"}
+                )
+                with self.subTest(index=index), submission_environment(workspace), mock.patch.object(
+                    urllib.request, "urlopen", return_value=receipt_response(receipt)
+                ):
+                    with self.assertRaises(HttpClientFailure) as caught:
+                        incoming_v2_submission.submit_package(source)
+                self.assertEqual(caught.exception.result.code, "invalid_success_response")
+            for raw in (b"not JSON", b"[]", json.dumps({**good, "receipt_sha256": "0" * 64}).encode()):
+                with self.subTest(raw=raw[:30]), submission_environment(workspace), mock.patch.object(
+                    urllib.request, "urlopen", return_value=io.BytesIO(raw)
+                ):
+                    with self.assertRaises(HttpClientFailure) as caught:
+                        incoming_v2_submission.submit_package(source)
+                self.assertEqual(caught.exception.result.code, "invalid_success_response")
 
     def test_real_v2_actions_fail_closed_when_active_inventory_is_unavailable(self) -> None:
         spec = importlib.util.spec_from_file_location("akbs_patch_submit_inventory_test", SCRIPT)

@@ -7,9 +7,11 @@
 parser `--help` 可以跳过；`--` 后面的字面 `--help` 仍是业务输入。
 
 - `knowledge-incoming-package/1/framework_change`：永久兼容读取，并继续通过 incoming v1 真实提交。
-- `akbs-android-change-package-v2/2/android_change`：支持本地 read/check/prepare 和显式 submit；当前可提交的组件层为 application/platform，其他层仍未开放。
+- `akbs-android-change-package-v2/2/android_change`：支持本地 read/check/prepare 和显式 submit，覆盖七层组件；每个组件仍须满足自己的证据规则。
 - `android-patch-capture-package-v2/2.0/android_change_capture`：保留零网络、零写的兼容 preflight；不能把 capture 目录直接交给 `prepare`。
-- `android-patch-capture-package-v2/2.1/android_change_capture`：作为 Phase 4 的离线 materializer 输入，按 hash-pinned 37 组 qualification 合同生成 canonical v2；首轮只启用 application/platform，其余层返回 `layer_not_enabled`。
+- `android-patch-capture-package-v2/2.1/android_change_capture`：离线 materializer 输入，按 hash-pinned 37 组 qualification 合同生成 canonical v2，支持 application/platform/native/hal/kernel/device/build；跨层包按组件逐项验证。
+
+七层合同必须先在服务器部署，再发布成员插件。服务端同时保留旧两层合同，旧版本已生成但尚未上传的 application/platform 包无需重写。升级后重新适配同一 capture 会复用已经存在且匹配的旧包，保留原始 bytes、合同 hash 和重试身份。新包使用七层合同；不能修改层标签或回退 v1 绕过校验。报错应区分本地转换、包检查和服务器接收，不把本地失败写成服务器拒收。
 
 v2 的本地 PASS 只代表 `client_semantic_coherence_valid`。客户端 adapter outputs 仍是 untrusted input，服务端必须重新计算资格。submit 使用成员已有 profile，通过现有 incoming HTTP 入口提交，普通成员不需要试点 grant。服务器未启用写入或合同不兼容时明确报错，不回退 v1。
 

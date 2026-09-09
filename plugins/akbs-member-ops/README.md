@@ -62,10 +62,16 @@ An `android-patch-capture-package-v2/2.0/android_change_capture` directory is a
 frozen read-only source contract and cannot be passed directly to v2 `prepare`.
 `android-change-v2 adapt-capture CAPTURE` preserves that 2.0 BLOCKED preflight.
 For additive capture 2.1, it evaluates the hash-pinned 37-group qualification
-pack and materializes a canonical v2 package offline for enabled application and
-platform layers. The source capture is unchanged, output is idempotent,
-`server_qualified=false` until server acceptance. Other frozen layers fail
-with `layer_not_enabled`; no path falls back to Framework v1.
+pack and materializes a canonical v2 package offline for all seven component
+layers. Every component must satisfy its own evidence requirements. The source
+capture is unchanged, output is idempotent, and `server_qualified=false` until
+server acceptance. No path falls back to Framework v1.
+
+Deploy the matching seven-layer server contract before publishing this member
+update. The server also accepts the original two-layer qualification contract;
+existing packages retain their bytes and upload identities. Re-adapting an
+unchanged capture reuses an existing matching two-layer package instead of
+rewriting it or creating another upload identity.
 
 ## Install-family boundary
 

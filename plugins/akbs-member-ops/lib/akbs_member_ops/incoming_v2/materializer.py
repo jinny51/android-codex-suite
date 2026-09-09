@@ -53,6 +53,9 @@ GIT_OID_RE = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 ALIAS_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
 TOKEN_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 SEARCH_DECISIONS = {"reuse", "adapt", "reference_only", "not_applicable", "not_found"}
+# The released two-layer pack has identical evidence rules. Existing packages
+# retain its identity and exact bytes so an upgrade cannot break an upload retry.
+LEGACY_QUALIFICATION_PACK_SHA256 = "ac064f0c6215ff9471b3b7c6ab8f9dab9fcec066b112cadfbb334985cd09b1a4"
 
 
 def _fail(code: str, detail: str) -> None:
@@ -151,9 +154,9 @@ def _load_qualification_contract() -> tuple[
     if (
         set(capability.get("taxonomy_layers") or {})
         != {"application", "platform", "native", "hal", "kernel", "device", "build"}
-        or set(capability.get("executable_layers") or {}) != {"application", "platform"}
-        or set(capability.get("disabled_layers") or {})
-        != {"native", "hal", "kernel", "device", "build"}
+        or set(capability.get("executable_layers") or {})
+        != {"application", "platform", "native", "hal", "kernel", "device", "build"}
+        or capability.get("disabled_layers") != {}
     ):
         _fail("qualification_contract_invalid", "layer capability differs")
     families = pack.get("shape_families")
@@ -762,6 +765,112 @@ def _target_adapted_root() -> Path:
     )
 
 
+def _validate_existing_capture_bindings(
+    package: dict[str, Any],
+    snapshot: dict[str, Any],
+    derived_claims: dict[str, list[str]],
+) -> None:
+    """Bind an existing package to the capture without requiring current opaque IDs."""
+    capture = snapshot["manifest"]
+    files = {row["id"]: row for row in package["files"]}
+    files_by_path = {row["path"]: row for row in package["files"]}
+    expected_roles = {
+        capture["readme"]: "readme",
+        **{row["path"]: "patch" for row in capture["patches"]},
+        **{row["path"]: "evidence" for row in capture["evidence"]},
+        "metadata/qualification-adapter-inputs.json": "metadata",
+        "metadata/client-adapter-outputs.json": "metadata",
+    }
+    if {path: row["role"] for path, row in files_by_path.items()} != expected_roles:
+        _fail("idempotency_conflict", "existing capture file paths or roles differ")
+    for path, role in expected_roles.items():
+        if role == "metadata":
+            continue
+        expected = snapshot["inventory"][path]
+        if any(files_by_path[path][key] != expected[key] for key in ("sha256", "size_bytes")):
+            _fail("idempotency_conflict", f"existing capture file bytes differ: {path}")
+    changes = [
+        {
+            "path": files[row["file_id"]]["path"],
+            "component_ids": row["component_ids"],
+            "repository_id": row["source_id"],
+            "format": row["format"],
+        }
+        for row in package["changes"]
+    ]
+    expected_changes = [
+        {
+            "path": row["path"],
+            "component_ids": row["component_ids"],
+            "repository_id": row["repository_id"],
+            "format": "git_diff",
+        }
+        for row in capture["patches"]
+    ]
+    evidence = [
+        {
+            **{key: value for key, value in row.items() if key != "file_id"},
+            "path": files[row["file_id"]]["path"],
+        }
+        for row in package["evidence"]
+    ]
+    expected_evidence = []
+    for item in capture["evidence"]:
+        row = {
+            "id": item["id"],
+            "kind": item["kind"],
+            "component_ids": item["component_ids"],
+            "path": item["path"],
+            "scope": {
+                "component": "component", "package": "package",
+                "feature": "feature", "change": "feature",
+            }.get(item.get("scope"), "feature"),
+            "result": {"SKIPPED": "NOT_RUN"}.get(item["result"], item["result"]),
+            "contract": item["contract"],
+            "declared_claims": list(dict.fromkeys(
+                [*item["declared_claims"], *derived_claims.get(item["id"], [])]
+            )),
+            "summary": item["summary"],
+        }
+        if "not_applicable_basis" in item:
+            row["not_applicable_basis"] = item["not_applicable_basis"]
+        expected_evidence.append(row)
+    expected_workflow = {
+        "contract": capture["workflow_contract"],
+        "implementation_origins": [capture["implementation_origin"]],
+        "capture_tool": {"id": "android-patch-capture", "version": "2.1"},
+    }
+    if capture["workflow_contract"] in {"manual_import", "historical_import"}:
+        imports = [row for row in capture["evidence"] if row["kind"] == "import_provenance"]
+        if len(imports) != 1:
+            _fail("idempotency_conflict", "existing import provenance is not unique")
+        expected_workflow["import_provenance_file_id"] = files_by_path[imports[0]["path"]]["id"]
+    if (
+        package["components"] != capture["components"]
+        or package["sources"] != _canonical_sources(capture)
+        or changes != expected_changes
+        or evidence != expected_evidence
+        or package["identity"]["created_at"] != _canonical_created_at(capture["created_at"])
+        or package["subject"] != {
+            "title": capture["change_id"],
+            "summary": capture["summary"],
+            "feature_key": capture["change_id"],
+            "primary_component_id": capture["primary_component_id"],
+            "target": {
+                "project": str(capture["project"]).lower().replace("_", "-"),
+                "platform": capture["platform_token"],
+                "android_version": capture["android_version"],
+            },
+        }
+        or package["workflow"] != expected_workflow
+        or package["qualification"]["component_evidence_bindings"] != [
+            {"component_id": row["component_id"], "evidence_ids": row["evidence_ids"]}
+            for row in capture["qualification_bindings"]
+        ]
+    ):
+        _fail("idempotency_conflict", "existing package facts differ from the capture")
+
+
 def _existing_result(
     destination: Path,
     *,
@@ -771,6 +880,8 @@ def _existing_result(
     snapshot: dict[str, Any],
     contract_sha256: str,
     expected_adapter_inputs_raw: bytes,
+    expected_component_outputs: list[dict[str, Any]],
+    derived_claims: dict[str, list[str]],
 ) -> dict[str, Any] | None:
     member_root = root / member_alias
     for label, path in (
@@ -782,13 +893,49 @@ def _existing_result(
             _fail("idempotency_path_unsafe", f"{label} is a symbolic link: {path}")
     if not destination.exists() and not destination.is_symlink():
         return None
-    checked = check_package(destination)
-    manifest_raw = (destination / "manifest.json").read_bytes()
+    try:
+        checked = check_package(destination)
+        manifest_raw = (destination / "manifest.json").read_bytes()
+        package = load_json_bytes(manifest_raw, label=str(destination / "manifest.json"))
+    except (AndroidChangeV2Error, OSError, SchemaError) as exc:
+        _fail("idempotency_conflict", str(exc))
     if hashlib.sha256(manifest_raw).hexdigest() != checked["manifest_sha256"]:
         _fail("idempotency_conflict", f"manifest changed after validation: {destination}")
-    package = load_json_bytes(manifest_raw, label=str(destination / "manifest.json"))
     extension = (package.get("extensions") or {}).get("akbs.android/capture") or {}
     qualification = (package.get("extensions") or {}).get("akbs.android/qualification") or {}
+    if not isinstance(extension, dict) or not isinstance(qualification, dict):
+        _fail("idempotency_conflict", "existing capture or qualification extension differs")
+    existing_contract_sha256 = qualification.get("contract_sha256")
+    if existing_contract_sha256 == LEGACY_QUALIFICATION_PACK_SHA256:
+        if any(
+            component["layer"] not in {"application", "platform"}
+            for component in snapshot["details"]["components"]
+        ):
+            _fail("idempotency_conflict", "legacy qualification does not cover this component")
+        expected_inputs = load_json_bytes(
+            expected_adapter_inputs_raw, label="expected qualification adapter inputs"
+        )
+        expected_inputs["qualification_contract_sha256"] = existing_contract_sha256
+        expected_adapter_inputs_raw = _json_bytes(expected_inputs)
+    elif existing_contract_sha256 != contract_sha256:
+        _fail("idempotency_conflict", "existing qualification contract is not supported")
+    _validate_existing_capture_bindings(package, snapshot, derived_claims)
+    output_file = next(
+        row for row in package["files"]
+        if row["id"] == package["qualification"]["client_adapter_outputs_file_id"]
+    )
+    try:
+        output_raw = (destination / output_file["path"]).read_bytes()
+        outputs = load_json_bytes(output_raw, label="existing client adapter outputs")
+    except (OSError, SchemaError) as exc:
+        _fail("idempotency_conflict", str(exc))
+    if (
+        output_file["path"] != "metadata/client-adapter-outputs.json"
+        or hashlib.sha256(output_raw).hexdigest() != output_file["sha256"]
+        or len(output_raw) != output_file["size_bytes"]
+        or outputs.get("components") != expected_component_outputs
+    ):
+        _fail("idempotency_conflict", "existing client adapter outputs differ from the capture")
     artifact_ids = (package.get("extensions") or {}).get("akbs.android/capture-artifact-ids")
     expected_source_key = f"{run_id[:8]}/{member_alias}/{run_id}"
     input_rows = [
@@ -800,7 +947,10 @@ def _existing_result(
     if len(input_rows) == 1:
         input_path = destination / str(input_rows[0].get("path") or "")
         if not input_path.is_symlink() and input_path.is_file():
-            input_raw = input_path.read_bytes()
+            try:
+                input_raw = input_path.read_bytes()
+            except OSError as exc:
+                _fail("idempotency_conflict", str(exc))
     if (
         (package.get("identity") or {}).get("member_alias") != member_alias
         or (package.get("identity") or {}).get("run_id") != run_id
@@ -814,7 +964,7 @@ def _existing_result(
         or qualification
         != {
             "contract": "akbs-qualification-contract-pack-v2/2",
-            "contract_sha256": contract_sha256,
+            "contract_sha256": existing_contract_sha256,
             "adapter_inputs_file_id": "qualification-adapter-inputs",
             "server_qualified": False,
         }
@@ -837,7 +987,7 @@ def _existing_result(
         "source_package_key": checked["source_package_key"],
         "capture_manifest_sha256": snapshot["manifest_sha256"],
         "capture_archive_inventory_sha256": snapshot["archive_inventory_sha256"],
-        "qualification_contract_sha256": contract_sha256,
+        "qualification_contract_sha256": existing_contract_sha256,
         "qualification_input_sha256": checked["coherence"]["qualification_input_sha256"],
         "idempotent_reuse": True,
         "source_capture_rewritten": False,
@@ -899,6 +1049,8 @@ def materialize_capture(
         snapshot=snapshot,
         contract_sha256=contract_sha256,
         expected_adapter_inputs_raw=adapter_inputs_raw,
+        expected_component_outputs=component_outputs,
+        derived_claims=derived_claims,
     )
     if existing is not None:
         return existing

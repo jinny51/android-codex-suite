@@ -243,7 +243,7 @@ def build_capture(package: Path) -> Path:
     return package
 
 
-def build_capture_v21(package: Path) -> Path:
+def build_capture_v21(package: Path, *, layers: tuple[str, ...] | None = None) -> Path:
     package = build_capture(package)
     manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
     manifest["schema_version"] = "2.1"
@@ -428,7 +428,273 @@ def build_capture_v21(package: Path) -> Path:
             )
         )
     refresh_inventory(package, manifest)
+    if layers is not None:
+        configure_capture_layers(package, layers)
     return package
+
+
+LAYER_CAPTURE_FIXTURES = {
+    "application": {
+        "facets": ("settings-ui", "system_app", "system_ext", "product"),
+        "qualifiers": ["installable"],
+        "repo": "packages/apps/Settings",
+        "file": "src/DisplaySettings.java",
+        "change": ("return requested;", "return Math.min(requested, 100);"),
+        "build": "m Settings completed with exit 0",
+        "runtime": "Installed Settings, opened display settings, and confirmed brightness is capped at 100.",
+        "assertions": [
+            ("permission_and_signing", "permission_signing_compatibility", "Platform certificate and privileged permission grants match the baseline."),
+            ("install_or_upgrade", "install_upgrade_behavior", "Updated Settings without clearing data; the saved brightness preference survived."),
+        ],
+    },
+    "platform": {
+        "facets": ("platform-core", "framework_api", "system", "aosp"),
+        "qualifiers": [],
+        "repo": "frameworks/base",
+        "file": "core/java/android/os/DisplayBrightness.java",
+        "change": ("return requested;", "return Math.min(requested, 100);"),
+        "build": "m framework-minus-apex completed with exit 0",
+        "runtime": "Called the brightness API with 101 and observed 100 through the native service.",
+        "assertions": [
+            ("api_or_resource_compatibility", "api_resource_compatibility", "The public method signature is unchanged and the API compatibility check passed."),
+        ],
+    },
+    "native": {
+        "facets": ("native-brightness", "native_library", "system", "aosp"),
+        "qualifiers": ["published_abi_or_api"],
+        "repo": "frameworks/native",
+        "file": "libs/brightness/brightness.cpp",
+        "change": ("return requested;", "return std::min(requested, 100);"),
+        "build": "m libbrightness completed with exit 0",
+        "runtime": "Loaded libbrightness and exercised inputs 0, 100, and 101; observed 0, 100, and 100 with no linker errors.",
+        "assertions": [
+            ("abi_api_or_linker_compatibility", "abi_api_linker_compatibility", "Exported symbols and SONAME match the baseline; the platform caller resolves the library."),
+        ],
+    },
+    "hal": {
+        "facets": ("hal-lights", "aidl_hal", "vendor", "silicon_vendor"),
+        "qualifiers": [],
+        "repo": "hardware/interfaces",
+        "file": "light/aidl/default/Lights.cpp",
+        "change": ("return level;", "return std::min(level, 100);"),
+        "build": "m android.hardware.light-service.example completed with exit 0",
+        "runtime": "Started the light HAL and confirmed the device LED follows the requested bounded level.",
+        "assertions": [
+            ("interface_version", "interface_version_compatibility", "The frozen AIDL version and interface hash match the registered client."),
+            ("vintf_selinux_service_registration", "vintf_selinux_service_registration", "VINTF check passed, the service is registered, and the LED exercise produced no AVC denial."),
+            ("hardware_behavior", "hardware_behavior", "Measured the device LED at low and maximum brightness after invoking the HAL."),
+        ],
+    },
+    "kernel": {
+        "facets": ("kernel-backlight", "driver", "vendor_boot", "silicon_vendor"),
+        "qualifiers": ["power_managed"],
+        "repo": "kernel",
+        "file": "drivers/video/backlight/panel_bl.c",
+        "change": ("return level;", "return min_t(u32, level, 100);"),
+        "build": "make Image modules completed with exit 0 using the product defconfig",
+        "runtime": "Booted the captured kernel, reached sys.boot_completed=1, and exercised backlight control.",
+        "assertions": [
+            ("kconfig_and_build_graph", "kconfig_build_graph", "CONFIG_BACKLIGHT_PANEL is enabled and panel_bl.o is linked into the product kernel."),
+            ("probe_bind_or_dmesg", "probe_bind_dmesg", "The panel driver bound successfully; dmesg has no probe failure or kernel oops."),
+            ("hardware_behavior", "hardware_behavior", "Measured panel brightness while writing 0 and 100 through sysfs."),
+            ("power_and_suspend_resume", "power_suspend_resume", "Completed three suspend/resume cycles and restored the previous panel brightness."),
+        ],
+    },
+    "device": {
+        "facets": ("device-board", "device_tree", "vendor_boot", "product"),
+        "qualifiers": [],
+        "repo": "device/example/board",
+        "file": "board.dts",
+        "change": ('status = "disabled";', 'status = "okay";'),
+        "build": "m vendorbootimage dtboimage completed with exit 0",
+        "runtime": "Booted the updated board images and observed the backlight node bound to the expected driver.",
+        "assertions": [
+            ("partition_overlay_or_policy", "partition_overlay_policy", "The board DTBO is present in the expected image and selects the correct backlight node."),
+            ("device_behavior", "device_behavior", "The display and backlight both operate on the target board after a cold boot."),
+        ],
+    },
+    "build": {
+        "facets": ("build-soong", "soong", "build_host", "aosp"),
+        "qualifiers": ["reproducibility_relevant"],
+        "repo": "build/soong",
+        "file": "Android.bp",
+        "change": ('cflags: ["-Wall"],', 'cflags: ["-Wall", "-Werror"],'),
+        "build": "Clean and incremental m libbrightness completed with exit 0",
+        "runtime": "Compared generated artifacts and exercised the library packaged by the updated build graph.",
+        "assertions": [
+            ("dependency_graph", "dependency_graph", "Ninja graph resolves libbrightness and its generated header with no missing or cyclic edge."),
+            ("clean_and_incremental", "clean_incremental_build", "Both a clean output directory and an incremental rebuild after a header edit succeeded."),
+            ("artifact_contract", "artifact_contract", "The output remains a shared ELF library with the expected install path and exported symbols."),
+            ("reproducibility", "reproducibility", "Two clean builds from the same inputs produced equal artifact SHA-256 values."),
+        ],
+    },
+}
+
+COMMON_CAPTURE_GROUPS = {
+    "source_integrity", "change_diff_facts", "risk_surface", "android_change_policy",
+    "feature_acceptance", "regression", "rollback", "pre_change_search",
+}
+LAYER_VERIFICATION_GROUPS = {
+    "application": {"application_build", "application_runtime_or_integration"},
+    "platform": {"platform_build", "platform_runtime"},
+    "native": {"native_build", "native_runtime"},
+    "hal": {"hal_build"},
+    "kernel": {"kernel_or_module_build", "boot"},
+    "device": {"board_build", "boot_integration"},
+    "build": {"build_result"},
+}
+
+
+def configure_capture_layers(package: Path, layers: tuple[str, ...]) -> None:
+    """Replace the default topology with scoped, layer-specific source and evidence."""
+    manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+    patch_template = copy.deepcopy(manifest["patches"][0])
+    verification_template = json.loads(
+        (package / "evidence/verification-result.json").read_text(encoding="utf-8")
+    )
+    for patch in manifest["patches"]:
+        (package / patch["path"]).unlink()
+    for row in manifest["evidence"]:
+        if row["kind"] in {"verification_result", "component_assertion"}:
+            (package / row["path"]).unlink()
+    manifest["evidence"] = [
+        row for row in manifest["evidence"]
+        if row["kind"] not in {"verification_result", "component_assertion"}
+    ]
+    manifest["components"] = []
+    manifest["git_repositories"] = []
+    manifest["patches"] = []
+    changed_repositories = []
+    for index, layer in enumerate(layers, 1):
+        fixture = LAYER_CAPTURE_FIXTURES[layer]
+        component_id, component_type, partition, ownership = fixture["facets"]
+        component = {
+            "id": component_id, "layer": layer, "type": component_type,
+            "partition": partition, "ownership": ownership,
+            "qualifiers": fixture["qualifiers"],
+        }
+        manifest["components"].append(component)
+        repository = {
+            "id": f"repo-{index:03d}", "repo_path": fixture["repo"],
+            "root": f"/source/{fixture['repo']}", "component_ids": [component_id],
+            "git": {"head": f"{index:040x}", "branch": "brightness-fix"},
+        }
+        manifest["git_repositories"].append(repository)
+        before, after = fixture["change"]
+        source_file = fixture["file"]
+        patch_raw = (
+            f"diff --git a/{source_file} b/{source_file}\n"
+            f"--- a/{source_file}\n+++ b/{source_file}\n"
+            f"@@ -1 +1 @@\n-{before}\n+{after}\n"
+        ).encode("utf-8")
+        patch = copy.deepcopy(patch_template)
+        patch.update(
+            id=f"{component_id}-patch", path=f"patches/{component_id}.patch",
+            repository_id=repository["id"], repo_path=repository["repo_path"],
+            component_ids=[component_id], source_root=repository["root"],
+            content_sha1=hashlib.sha1(patch_raw).hexdigest(),
+            facts={"content_sha1": hashlib.sha1(patch_raw).hexdigest()},
+        )
+        (package / patch["path"]).write_bytes(patch_raw)
+        manifest["patches"].append(patch)
+        changed_repositories.append({
+            "repository_id": repository["id"], "component_ids": [component_id],
+            "modified_files": [f"{fixture['repo']}/{source_file}"],
+        })
+
+    all_components = [component["id"] for component in manifest["components"]]
+    modified_files = [path for row in changed_repositories for path in row["modified_files"]]
+    for row in manifest["evidence"]:
+        row["component_ids"] = all_components
+        payload_path = package / row["path"]
+        payload = json.loads(payload_path.read_text(encoding="utf-8"))
+        payload["component_ids"] = all_components
+        if row["kind"] == "changed_files":
+            payload.update(repositories=changed_repositories, modified_files=modified_files)
+        elif row["kind"] == "patch_diff_facts":
+            payload["modified_files"] = modified_files
+        elif row["kind"] == "risk_surface":
+            payload.update(
+                risk_areas=[f"{layer} brightness integration" for layer in layers],
+                basis=modified_files, limits=["synthetic fixture for one product variant"],
+            )
+        elif row["kind"] == "rollback_plan":
+            payload["plan"] = "Reverse all captured patches and restore the corresponding baseline artifacts."
+        write_json(payload_path, payload)
+
+    for layer in layers:
+        fixture = LAYER_CAPTURE_FIXTURES[layer]
+        component_id = fixture["facets"][0]
+        verification = copy.deepcopy(verification_template)
+        verification.update(
+            component_ids=[component_id], build=[fixture["build"]],
+            steps=[fixture["runtime"]], health_checks=[f"No crash or error during {component_id} verification."],
+        )
+        assertion = {
+            "kind": "component_assertion", "result": "INFO", "component_ids": [component_id],
+            "assertions": [
+                {"component_id": component_id, "assertion_id": assertion_id,
+                 "result": "PASS", "observations": [observation]}
+                for _group, assertion_id, observation in fixture["assertions"]
+            ],
+        }
+        for prefix, payload, claim in (
+            ("verification", verification, "verification_recorded_not_server_accepted"),
+            ("assertion", assertion, "component_assertions_recorded"),
+        ):
+            evidence_id = f"{prefix}-{component_id}"
+            path = f"evidence/{evidence_id}.json"
+            write_json(package / path, payload)
+            manifest["evidence"].append({
+                "id": evidence_id, "kind": payload["kind"], "path": path,
+                "result": payload["result"], "scope": "component",
+                "summary": f"{component_id} {prefix} fixture", "component_ids": [component_id],
+                "contract": {
+                    "id": "android-patch-capture-component-assertion" if prefix == "assertion" else "android-patch-capture-evidence",
+                    "version": "2.1",
+                },
+                "declared_claims": [claim],
+            })
+    manifest["primary_component_id"] = all_components[0]
+    manifest["source_roots"] = [row["root"] for row in manifest["git_repositories"]]
+    manifest["qualification_bindings"] = [
+        {
+            "component_id": component_id, "repository_ids": [repository["id"]],
+            "patch_ids": [patch["id"]],
+            "evidence_ids": [row["id"] for row in manifest["evidence"] if component_id in row["component_ids"]],
+            "contract": "android-patch-capture-local-qualification-v2",
+            "declared_claims": ["patch_bytes_captured", "local_checks_recorded"],
+        }
+        for component_id, repository, patch in zip(all_components, manifest["git_repositories"], manifest["patches"])
+    ]
+    refresh_inventory(package, manifest)
+
+
+def legacy_qualification_contract() -> tuple:
+    _raw, pack, profiles, item_schema, collection_schema = materializer._load_qualification_contract()
+    legacy_pack = copy.deepcopy(pack)
+    legacy_pack["capability"]["executable_layers"] = ["application", "platform"]
+    legacy_pack["capability"]["disabled_layers"] = {
+        layer: "layer_not_enabled" for layer in ("native", "hal", "kernel", "device", "build")
+    }
+    legacy_raw = (json.dumps(legacy_pack, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    assert hashlib.sha256(legacy_raw).hexdigest() == "ac064f0c6215ff9471b3b7c6ab8f9dab9fcec066b112cadfbb334985cd09b1a4"
+    return legacy_raw, legacy_pack, profiles, item_schema, collection_schema
+
+
+def resign_canonical_package(package: Path, manifest: dict) -> None:
+    """Rebind the fixture's real bytes and client-output hash after tampering."""
+    output_id = manifest["qualification"]["client_adapter_outputs_file_id"]
+    output_row = next(row for row in manifest["files"] if row["id"] == output_id)
+    for row in manifest["files"]:
+        if row["id"] != output_id:
+            raw = (package / row["path"]).read_bytes()
+            row.update(sha256=hashlib.sha256(raw).hexdigest(), size_bytes=len(raw))
+    outputs = json.loads((package / output_row["path"]).read_text(encoding="utf-8"))
+    outputs["qualification_input_sha256"] = validation.qualification_input_sha256(manifest)
+    raw = write_json(package / output_row["path"], outputs)
+    output_row.update(sha256=hashlib.sha256(raw).hexdigest(), size_bytes=len(raw))
+    write_json(package / "manifest.json", manifest)
 
 
 class CaptureAdapterPreflightTest(unittest.TestCase):
@@ -488,12 +754,9 @@ class CaptureAdapterPreflightTest(unittest.TestCase):
         self.assertEqual(len(pack["groups"]), 37)
         self.assertEqual(
             set(pack["capability"]["executable_layers"]),
-            {"application", "platform"},
+            set(LAYER_CAPTURE_FIXTURES),
         )
-        self.assertEqual(
-            set(pack["capability"]["disabled_layers"]),
-            {"native", "hal", "kernel", "device", "build"},
-        )
+        self.assertEqual(pack["capability"]["disabled_layers"], {})
         schemas = (
             "qualification-adapter-input-v2.schema.json",
             "qualification-adapter-inputs-v2.schema.json",
@@ -1064,7 +1327,7 @@ class CaptureAdapterPreflightTest(unittest.TestCase):
                     output_root=root_link,
                 )
 
-    def test_capture_21_rejects_cross_component_borrow_and_disabled_or_unknown_layer(self) -> None:
+    def test_capture_21_rejects_cross_component_borrow_and_unknown_layer(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             workspace = Path(temporary)
             capture = build_capture_v21(workspace / "capture-cross")
@@ -1084,17 +1347,6 @@ class CaptureAdapterPreflightTest(unittest.TestCase):
                     output_root=workspace / "adapted-cross",
                 )
 
-            disabled = build_capture_v21(workspace / "capture-disabled")
-            manifest = json.loads((disabled / "manifest.json").read_text(encoding="utf-8"))
-            manifest["components"][0]["layer"] = "native"
-            refresh_inventory(disabled, manifest)
-            with self.assertRaisesRegex(AndroidChangeV2Error, "layer_not_enabled"):
-                materialize_capture(
-                    disabled,
-                    member_alias="member01",
-                    output_root=workspace / "adapted-disabled",
-                )
-
             unknown = build_capture_v21(workspace / "capture-unknown")
             manifest = json.loads((unknown / "manifest.json").read_text(encoding="utf-8"))
             manifest["components"][0]["layer"] = "unknown-layer"
@@ -1104,6 +1356,333 @@ class CaptureAdapterPreflightTest(unittest.TestCase):
                     unknown,
                     member_alias="member01",
                     output_root=workspace / "adapted-unknown",
+                )
+
+    def test_capture_21_each_layer_materializes_checks_and_prepares_bound_evidence(self) -> None:
+        for layer, fixture in LAYER_CAPTURE_FIXTURES.items():
+            with self.subTest(layer=layer), tempfile.TemporaryDirectory() as temporary:
+                workspace = Path(temporary)
+                capture = build_capture_v21(workspace / "capture", layers=(layer,))
+                component_id = fixture["facets"][0]
+                source_bytes = {
+                    path.relative_to(capture).as_posix(): path.read_bytes()
+                    for path in capture.rglob("*") if path.is_file()
+                }
+                with mock.patch.object(urllib.request, "urlopen") as urlopen:
+                    result = materialize_capture(capture, member_alias="member01", output_root=workspace / "adapted")
+                    package = Path(result["package"])
+                    read = validation.read_package(package)
+                    checked = validation.check_package(package)
+                    prepared = validation.prepare_package(package, pending_root=workspace / "pending")
+                urlopen.assert_not_called()
+                self.assertEqual(result["status"], "PASS")
+                self.assertEqual(read["component_layers"], [layer])
+                self.assertEqual(checked["status"], "PASS")
+                self.assertTrue(prepared["bytes_preserved"])
+                self.assertFalse(result["server_qualified"])
+                self.assertFalse(prepared["server_qualified"])
+                inputs = json.loads((package / "metadata/qualification-adapter-inputs.json").read_text(encoding="utf-8"))
+                expected_groups = (
+                    COMMON_CAPTURE_GROUPS | LAYER_VERIFICATION_GROUPS[layer]
+                    | {row[0] for row in fixture["assertions"]}
+                )
+                self.assertEqual({row["group_id"] for row in inputs["inputs"]}, expected_groups)
+                self.assertEqual(len(inputs["inputs"]), len(expected_groups))
+                manifest = json.loads((capture / "manifest.json").read_text(encoding="utf-8"))
+                evidence_paths = {row["id"]: row["path"] for row in manifest["evidence"]}
+                for row in inputs["inputs"]:
+                    self.assertEqual(row["component"], manifest["components"][0])
+                    self.assertEqual(row["evidence"]["component_ids"], [component_id])
+                    raw = source_bytes[evidence_paths[row["evidence"]["id"]]]
+                    self.assertEqual(row["evidence"]["sha256"], hashlib.sha256(raw).hexdigest())
+                    self.assertEqual(row["evidence"]["payload"], json.loads(raw))
+                for relative, raw in source_bytes.items():
+                    self.assertEqual((capture / relative).read_bytes(), raw)
+                    if relative != "manifest.json":
+                        self.assertEqual((package / relative).read_bytes(), raw)
+                prepared_package = Path(prepared["package"])
+                for path in package.rglob("*"):
+                    if path.is_file():
+                        self.assertEqual((prepared_package / path.relative_to(package)).read_bytes(), path.read_bytes())
+
+    def test_capture_21_platform_native_cross_layer_qualification_is_per_component(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            capture = build_capture_v21(workspace / "capture", layers=("platform", "native"))
+            result = materialize_capture(capture, member_alias="member01", output_root=workspace / "adapted")
+            package = Path(result["package"])
+            inputs = json.loads((package / "metadata/qualification-adapter-inputs.json").read_text(encoding="utf-8"))
+            outputs = json.loads((package / "metadata/client-adapter-outputs.json").read_text(encoding="utf-8"))
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual({row["layer"] for row in manifest["components"]}, {"platform", "native"})
+            self.assertEqual(len([row for row in manifest["files"] if row["role"] == "patch"]), 2)
+            self.assertEqual({row["component_id"] for row in outputs["components"]}, {"platform-core", "native-brightness"})
+            for component in manifest["components"]:
+                fixture = LAYER_CAPTURE_FIXTURES[component["layer"]]
+                required = COMMON_CAPTURE_GROUPS | LAYER_VERIFICATION_GROUPS[component["layer"]] | {row[0] for row in fixture["assertions"]}
+                component_inputs = [row for row in inputs["inputs"] if row["component"]["id"] == component["id"]]
+                self.assertEqual({row["group_id"] for row in component_inputs}, required)
+                for row in component_inputs:
+                    if row["evidence"]["kind"] in {"verification_result", "component_assertion"}:
+                        self.assertEqual(row["evidence"]["component_ids"], [component["id"]])
+                output = next(row for row in outputs["components"] if row["component_id"] == component["id"])
+                self.assertEqual({row["group_id"] for row in output["outputs"]}, required)
+            prepared = validation.prepare_package(package, pending_root=workspace / "pending")
+            self.assertTrue(prepared["bytes_preserved"])
+            self.assertFalse(prepared["server_qualified"])
+
+    def test_capture_21_conditional_groups_require_their_own_assertion(self) -> None:
+        cases = (
+            ("application", "permission_and_signing", "permission_signing_compatibility"),
+            ("application", "install_or_upgrade", "install_upgrade_behavior"),
+            ("platform", "api_or_resource_compatibility", "api_resource_compatibility"),
+            ("native", "abi_api_or_linker_compatibility", "abi_api_linker_compatibility"),
+            ("hal", "hardware_behavior", "hardware_behavior"),
+            ("kernel", "hardware_behavior", "hardware_behavior"),
+            ("kernel", "power_and_suspend_resume", "power_suspend_resume"),
+            ("build", "reproducibility", "reproducibility"),
+        )
+        for layer, group_id, assertion_id in cases:
+            with self.subTest(layer=layer, group=group_id), tempfile.TemporaryDirectory() as temporary:
+                workspace = Path(temporary)
+                capture = build_capture_v21(workspace / "capture", layers=(layer,))
+                component_id = LAYER_CAPTURE_FIXTURES[layer]["facets"][0]
+                evidence_id = f"assertion-{component_id}"
+                assertion_path = capture / f"evidence/{evidence_id}.json"
+                payload = json.loads(assertion_path.read_text(encoding="utf-8"))
+                payload["assertions"] = [row for row in payload["assertions"] if row["assertion_id"] != assertion_id]
+                manifest = json.loads((capture / "manifest.json").read_text(encoding="utf-8"))
+                if payload["assertions"]:
+                    write_json(assertion_path, payload)
+                else:
+                    assertion_path.unlink()
+                    manifest["evidence"] = [row for row in manifest["evidence"] if row["id"] != evidence_id]
+                    manifest["qualification_bindings"][0]["evidence_ids"].remove(evidence_id)
+                refresh_inventory(capture, manifest)
+                output_root = workspace / "adapted"
+                with self.assertRaisesRegex(AndroidChangeV2Error, rf"{component_id}\.{group_id} has 0 qualifying evidence rows"):
+                    materialize_capture(capture, member_alias="member01", output_root=output_root)
+                self.assertFalse(output_root.exists())
+
+    def test_capture_21_new_layers_do_not_accept_pass_without_build_or_runtime_facts(self) -> None:
+        cases = (
+            ("native", "build", "native_build"),
+            ("native", "steps", "native_runtime"),
+            ("hal", "build", "hal_build"),
+            ("kernel", "build", "kernel_or_module_build"),
+            ("kernel", "steps", "boot"),
+            ("device", "build", "board_build"),
+            ("device", "steps", "boot_integration"),
+            ("build", "build", "build_result"),
+        )
+        for layer, field, group_id in cases:
+            with self.subTest(layer=layer, field=field), tempfile.TemporaryDirectory() as temporary:
+                workspace = Path(temporary)
+                capture = build_capture_v21(workspace / "capture", layers=(layer,))
+                component_id = LAYER_CAPTURE_FIXTURES[layer]["facets"][0]
+                evidence_path = capture / f"evidence/verification-{component_id}.json"
+                payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+                self.assertEqual(payload["result"], "PASS")
+                payload[field] = []
+                write_json(evidence_path, payload)
+                manifest = json.loads((capture / "manifest.json").read_text(encoding="utf-8"))
+                refresh_inventory(capture, manifest)
+                with self.assertRaisesRegex(AndroidChangeV2Error, rf"{component_id}\.{group_id} has 0 qualifying evidence rows"):
+                    materialize_capture(capture, member_alias="member01", output_root=workspace / "adapted")
+
+    def test_capture_21_new_layer_assertions_require_observations_not_naked_pass(self) -> None:
+        for layer in ("native", "hal", "kernel", "device", "build"):
+            with self.subTest(layer=layer), tempfile.TemporaryDirectory() as temporary:
+                workspace = Path(temporary)
+                capture = build_capture_v21(workspace / "capture", layers=(layer,))
+                component_id = LAYER_CAPTURE_FIXTURES[layer]["facets"][0]
+                assertion_path = capture / f"evidence/assertion-{component_id}.json"
+                payload = json.loads(assertion_path.read_text(encoding="utf-8"))
+                payload["assertions"][0].pop("observations")
+                write_json(assertion_path, payload)
+                manifest = json.loads((capture / "manifest.json").read_text(encoding="utf-8"))
+                refresh_inventory(capture, manifest)
+                with self.assertRaisesRegex(AndroidChangeV2Error, "component assertion"):
+                    materialize_capture(capture, member_alias="member01", output_root=workspace / "adapted")
+
+    def test_capture_21_native_cannot_borrow_platform_verification_or_assertions(self) -> None:
+        for evidence_kind in ("verification", "assertion"):
+            with self.subTest(kind=evidence_kind), tempfile.TemporaryDirectory() as temporary:
+                workspace = Path(temporary)
+                capture = build_capture_v21(workspace / "capture", layers=("platform", "native"))
+                manifest = json.loads((capture / "manifest.json").read_text(encoding="utf-8"))
+                binding = next(row for row in manifest["qualification_bindings"] if row["component_id"] == "native-brightness")
+                binding["evidence_ids"].remove(f"{evidence_kind}-native-brightness")
+                binding["evidence_ids"].append(f"{evidence_kind}-platform-core")
+                refresh_inventory(capture, manifest)
+                with self.assertRaisesRegex(AndroidChangeV2Error, "qualification evidence binding differs: native-brightness"):
+                    materialize_capture(capture, member_alias="member01", output_root=workspace / "adapted")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            capture = build_capture_v21(workspace / "capture", layers=("platform", "native"))
+            manifest = json.loads((capture / "manifest.json").read_text(encoding="utf-8"))
+            assertion_path = capture / "evidence/assertion-native-brightness.json"
+            payload = json.loads(assertion_path.read_text(encoding="utf-8"))
+            payload["assertions"][0]["component_id"] = "platform-core"
+            write_json(assertion_path, payload)
+            refresh_inventory(capture, manifest)
+            with self.assertRaisesRegex(AndroidChangeV2Error, "component assertion identity/result differs"):
+                materialize_capture(capture, member_alias="member01", output_root=workspace / "adapted")
+
+    def test_capture_21_mandatory_structured_groups_cannot_be_not_applicable(self) -> None:
+        cases = (
+            ("hal", "interface_version", "interface_version_compatibility"),
+            ("hal", "vintf_selinux_service_registration", "vintf_selinux_service_registration"),
+            ("hal", "hardware_behavior", "hardware_behavior"),
+            ("kernel", "kconfig_and_build_graph", "kconfig_build_graph"),
+            ("kernel", "probe_bind_or_dmesg", "probe_bind_dmesg"),
+            ("kernel", "hardware_behavior", "hardware_behavior"),
+            ("device", "partition_overlay_or_policy", "partition_overlay_policy"),
+            ("device", "device_behavior", "device_behavior"),
+            ("build", "dependency_graph", "dependency_graph"),
+            ("build", "clean_and_incremental", "clean_incremental_build"),
+            ("build", "artifact_contract", "artifact_contract"),
+        )
+        for layer, group_id, assertion_id in cases:
+            with self.subTest(layer=layer, group=group_id), tempfile.TemporaryDirectory() as temporary:
+                workspace = Path(temporary)
+                capture = build_capture_v21(workspace / "capture", layers=(layer,))
+                component_id = LAYER_CAPTURE_FIXTURES[layer]["facets"][0]
+                assertion_path = capture / f"evidence/assertion-{component_id}.json"
+                payload = json.loads(assertion_path.read_text(encoding="utf-8"))
+                assertion = next(row for row in payload["assertions"] if row["assertion_id"] == assertion_id)
+                assertion.pop("observations")
+                assertion.update(result="NOT_APPLICABLE", basis="Claimed static-only change", limits="Only this captured patch")
+                write_json(assertion_path, payload)
+                manifest = json.loads((capture / "manifest.json").read_text(encoding="utf-8"))
+                refresh_inventory(capture, manifest)
+                with self.assertRaisesRegex(AndroidChangeV2Error, rf"qualification_result_not_allowed: {component_id}\.{group_id} derived NOT_APPLICABLE"):
+                    materialize_capture(capture, member_alias="member01", output_root=workspace / "adapted")
+
+    def test_capture_21_upgrade_reuses_legacy_two_layer_package_without_changing_bytes(self) -> None:
+        legacy_contract = legacy_qualification_contract()
+        legacy_sha = "ac064f0c6215ff9471b3b7c6ab8f9dab9fcec066b112cadfbb334985cd09b1a4"
+        self.assertEqual(hashlib.sha256(legacy_contract[0]).hexdigest(), legacy_sha)
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            capture = build_capture_v21(workspace / "capture")
+            output_root = workspace / "adapted"
+            with mock.patch.object(
+                materializer, "_load_qualification_contract",
+                return_value=legacy_contract,
+            ):
+                original = materialize_capture(capture, member_alias="member01", output_root=output_root)
+            package = Path(original["package"])
+            before = {
+                path.relative_to(package).as_posix(): path.read_bytes()
+                for path in package.rglob("*") if path.is_file()
+            }
+            with mock.patch.object(urllib.request, "urlopen") as urlopen:
+                upgraded = materialize_capture(capture, member_alias="member01", output_root=output_root)
+                read = validation.read_package(package)
+                checked = validation.check_package(package)
+                prepared = validation.prepare_package(package, pending_root=workspace / "pending")
+            urlopen.assert_not_called()
+            self.assertTrue(upgraded["idempotent_reuse"])
+            self.assertFalse(upgraded["source_capture_rewritten"])
+            self.assertFalse(upgraded["server_qualified"])
+            self.assertEqual(original["qualification_contract_sha256"], legacy_sha)
+            self.assertEqual(upgraded["qualification_contract_sha256"], legacy_sha)
+            for field in ("package", "source_package_key", "manifest_sha256", "archive_inventory_sha256", "qualification_input_sha256"):
+                self.assertEqual(upgraded[field], original[field])
+            self.assertEqual(read["component_layers"], ["application", "platform"])
+            self.assertEqual(checked["status"], "PASS")
+            self.assertTrue(prepared["bytes_preserved"])
+            after = {
+                path.relative_to(package).as_posix(): path.read_bytes()
+                for path in package.rglob("*") if path.is_file()
+            }
+            self.assertEqual(after, before)
+            prepared_package = Path(prepared["package"])
+            prepared_bytes = {
+                path.relative_to(prepared_package).as_posix(): path.read_bytes()
+                for path in prepared_package.rglob("*") if path.is_file()
+            }
+            self.assertEqual(prepared_bytes, before)
+
+    def test_capture_21_native_package_cannot_reuse_legacy_two_layer_hash(self) -> None:
+        _raw, current_pack, profiles, item_schema, collection_schema = materializer._load_qualification_contract()
+        legacy_raw = legacy_qualification_contract()[0]
+        self.assertEqual(hashlib.sha256(legacy_raw).hexdigest(), materializer.LEGACY_QUALIFICATION_PACK_SHA256)
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            capture = build_capture_v21(workspace / "capture", layers=("native",))
+            output_root = workspace / "adapted"
+            # Deliberately forge only the pack-byte source in this adversarial
+            # fixture; all native evidence and derived manifest hashes are real.
+            with mock.patch.object(
+                materializer, "_load_qualification_contract",
+                return_value=(legacy_raw, current_pack, profiles, item_schema, collection_schema),
+            ):
+                forged = materialize_capture(capture, member_alias="member01", output_root=output_root)
+            package = Path(forged["package"])
+            before = {path.relative_to(package).as_posix(): path.read_bytes() for path in package.rglob("*") if path.is_file()}
+            with self.assertRaisesRegex(AndroidChangeV2Error, "idempotency_conflict: legacy qualification does not cover this component"):
+                materialize_capture(capture, member_alias="member01", output_root=output_root)
+            self.assertEqual(
+                {path.relative_to(package).as_posix(): path.read_bytes() for path in package.rglob("*") if path.is_file()},
+                before,
+            )
+
+    def test_capture_21_legacy_reuse_rejects_resigned_patch_bytes(self) -> None:
+        legacy_contract = legacy_qualification_contract()
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            capture = build_capture_v21(workspace / "capture")
+            output_root = workspace / "adapted"
+            with mock.patch.object(materializer, "_load_qualification_contract", return_value=legacy_contract):
+                original = materialize_capture(capture, member_alias="member01", output_root=output_root)
+            package = Path(original["package"])
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+            patch_row = next(row for row in manifest["files"] if row["role"] == "patch")
+            patch_path = package / patch_row["path"]
+            patch_path.write_bytes(
+                patch_path.read_bytes()
+                + b"--- a/core.java\n+++ b/core.java\n@@ -1 +1 @@\n-return requested;\n+return 0;\n"
+            )
+            resign_canonical_package(package, manifest)
+            checked = validation.check_package(package)
+            self.assertEqual(checked["status"], "PASS")
+            self.assertNotEqual(checked["manifest_sha256"], original["manifest_sha256"])
+            self.assertNotEqual(checked["coherence"]["qualification_input_sha256"], original["qualification_input_sha256"])
+            before = {path.relative_to(package).as_posix(): path.read_bytes() for path in package.rglob("*") if path.is_file()}
+            with self.assertRaisesRegex(AndroidChangeV2Error, "idempotency_conflict"):
+                materialize_capture(capture, member_alias="member01", output_root=output_root)
+            self.assertEqual(
+                {path.relative_to(package).as_posix(): path.read_bytes() for path in package.rglob("*") if path.is_file()},
+                before,
+            )
+
+    def test_capture_21_legacy_reuse_rejects_resigned_component_facets(self) -> None:
+        legacy_contract = legacy_qualification_contract()
+        for facet, replacement in (("partition", "product"), ("ownership", "vendor")):
+            with self.subTest(facet=facet), tempfile.TemporaryDirectory() as temporary:
+                workspace = Path(temporary)
+                capture = build_capture_v21(workspace / "capture")
+                output_root = workspace / "adapted"
+                with mock.patch.object(materializer, "_load_qualification_contract", return_value=legacy_contract):
+                    original = materialize_capture(capture, member_alias="member01", output_root=output_root)
+                package = Path(original["package"])
+                manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+                self.assertNotEqual(manifest["components"][0][facet], replacement)
+                manifest["components"][0][facet] = replacement
+                resign_canonical_package(package, manifest)
+                checked = validation.check_package(package)
+                self.assertEqual(checked["status"], "PASS")
+                self.assertNotEqual(checked["manifest_sha256"], original["manifest_sha256"])
+                self.assertNotEqual(checked["coherence"]["qualification_input_sha256"], original["qualification_input_sha256"])
+                before = {path.relative_to(package).as_posix(): path.read_bytes() for path in package.rglob("*") if path.is_file()}
+                with self.assertRaisesRegex(AndroidChangeV2Error, "idempotency_conflict"):
+                    materialize_capture(capture, member_alias="member01", output_root=output_root)
+                self.assertEqual(
+                    {path.relative_to(package).as_posix(): path.read_bytes() for path in package.rglob("*") if path.is_file()},
+                    before,
                 )
 
     def test_capture_21_not_applicable_rule_and_hash_replay_are_enforced(self) -> None:

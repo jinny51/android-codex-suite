@@ -35,7 +35,7 @@ CONTRACT_SHA256 = {
     "component-evidence-profiles.json": "5e2f0eb8341d3b6ef58084adcaeebfb6627c83807776b13f1e709fbec847dc4c",
     "capture-package.schema.json": "df925aab64a7c3854095c294f19164c7631befccd87eae6fed7614a05be665c3",
     "capture-package-v2.1.schema.json": "e79a65a2a9e9cbde9d3bf1d605d2f5fab05797969b75fd75c9dc7a620d148901",
-    "qualification-contract-pack-v2.json": "ac064f0c6215ff9471b3b7c6ab8f9dab9fcec066b112cadfbb334985cd09b1a4",
+    "qualification-contract-pack-v2.json": "f4d909382059f6db3a2007d1c6e9ab21ee08b2398a7de07c2292bf0826d4cb54",
     "qualification-adapter-input-v2.schema.json": "612d432792d20c1aa1255e368068f7d16ac165c40600e4467ff1ea54f5c59e37",
     "qualification-adapter-inputs-v2.schema.json": "c098833d00899063f35a3874bf2390626a448d83d62c36e6900ba7d121d55a96",
 }

@@ -26,15 +26,14 @@
     ],
     "executable_layers": [
       "application",
-      "platform"
+      "platform",
+      "native",
+      "hal",
+      "kernel",
+      "device",
+      "build"
     ],
-    "disabled_layers": {
-      "native": "layer_not_enabled",
-      "hal": "layer_not_enabled",
-      "kernel": "layer_not_enabled",
-      "device": "layer_not_enabled",
-      "build": "layer_not_enabled"
-    }
+    "disabled_layers": {}
   },
   "input_binding": {
     "item_schema": {

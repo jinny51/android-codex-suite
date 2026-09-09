@@ -120,7 +120,8 @@ class SkillSurfaceTest(unittest.TestCase):
         for text in (skill, docs):
             normalized = " ".join(text.split())
             self.assertIn("BLOCKED", normalized)
-            self.assertIn("Phase 4", normalized)
+            for layer in ("application", "platform", "native", "hal", "kernel", "device", "build"):
+                self.assertIn(layer, normalized)
             self.assertIn("versioned adapter input", normalized)
 
     def test_canonical_search_covers_non_framework_android_changes(self) -> None:

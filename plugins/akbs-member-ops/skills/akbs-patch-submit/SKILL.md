@@ -1,6 +1,6 @@
 ---
 name: akbs-patch-submit
-description: "Use when an AKBS member needs to preflight or materialize a capture, or read, check, prepare, or submit an Android change package. Supports legacy Framework v1 and canonical Android change v2 submission for enabled application/platform layers; excludes source implementation and administrator curation."
+description: "Use when an AKBS member needs to preflight or materialize a capture, or read, check, prepare, or submit an Android change package. Supports legacy Framework v1 and canonical Android change v2 across all seven component layers; excludes source implementation and administrator curation."
 ---
 
 # AKBS Patch Submit
@@ -30,10 +30,14 @@ business input and must not bypass the gate. Continue only on exit 0 with JSON
   read, check, byte-preserving prepare, and explicit server submission.
 - `android-patch-capture-package-v2/2.0/android_change_capture` remains the
   frozen read-only preflight contract and cannot be passed directly to `prepare`.
-- Capture 2.1 is the additive Phase 4 materializer input. `adapt-capture` creates a new
-  canonical package only for enabled `application` and `platform` components.
-  Native, HAL, kernel, device, and build are frozen but return
-  `layer_not_enabled` until a later contract release.
+- Capture 2.1 is the materializer input. `adapt-capture` creates a canonical package
+  for `application`, `platform`, `native`, `hal`, `kernel`, `device`, and `build`.
+  Every component must satisfy its own required and conditional evidence groups;
+  a cross-layer change stays one coherent package with exact component bindings.
+- The seven-layer qualification pack requires the matching server contract. Deploy
+  server support before distributing this member update. Existing two-layer packages
+  retain their original contract hash and bytes and remain readable/submittable;
+  rerunning adaptation reuses an existing matching package without changing its identity.
 - Android change v2 submission uses the selected member profile and the existing
   incoming HTTP endpoint. The server independently qualifies every component;
   ordinary members do not need a pilot grant. A disabled or incompatible server
@@ -43,6 +47,9 @@ business input and must not bypass the gate. Continue only on exit 0 with JSON
   inventory fails closed; `--help` remains available without a business gate.
 - Never translate a v2 package or an `android_change_capture` into
   `framework_change` merely to make upload available.
+- On a layer/contract rejection, preserve the capture and report the failing stage,
+  declared component, contract hash, and exact error. Do not infer a server rejection
+  from a local adaptation error, or change a layer label to bypass acceptance.
 
 The v2 client outputs are untrusted inputs. The local checker validates schema,
 the frozen evidence-profile hash, qualification-input hash, file hashes and sizes,

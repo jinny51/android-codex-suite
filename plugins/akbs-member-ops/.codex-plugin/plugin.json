@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "AKBS Member Ops",
     "shortDescription": "成员配置、知识检索、个人报告与补丁提交",
-    "longDescription": "为 AKBS 成员提供独立的首次配置、知识检索与合并确认、个人日报周报以及补丁包准备和提交。保留已有成员配置及 incoming v1 兼容；adapt-capture 保留 capture 2.0 零写 preflight，并为 application/platform 离线转换 capture 2.1。Android change v2 使用已有成员配置提交，由服务器独立校验资格、原子入库并保证幂等重试。",
+    "longDescription": "为 AKBS 成员提供独立的首次配置、知识检索与合并确认、个人日报周报以及补丁包准备和提交。保留已有成员配置及 incoming v1 兼容；adapt-capture 保留 capture 2.0 零写 preflight，并为七层 Android 组件离线转换 capture 2.1。Android change v2 使用已有成员配置提交，由匹配版本的服务器独立校验资格、原子入库并保证幂等重试。",
     "developerName": "Jinny Android Team",
     "category": "Coding",
     "capabilities": [

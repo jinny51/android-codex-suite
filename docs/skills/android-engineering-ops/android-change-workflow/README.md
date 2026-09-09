@@ -8,4 +8,4 @@ Android 工程 controller 的唯一入口，覆盖 application、platform、nati
 
 Extension 按项目配置优先于本地配置解析；选择 provider 后只从 Codex active installed+enabled inventory 取得固定插件根，异常 fail closed，能力缺失或不适用才回 core。
 
-Canonical layer 只有 application/platform/native/hal/kernel/device/build；type、partition、ownership 正交且不互相推断。任何 layer 的 validated 包均可进入 `akbs-patch-submit` 的 v2 本地检查/byte-preserving prepare；writer-off 时不产生网络副作用，也不回落 Framework v1。
+Canonical layer 只有 application/platform/native/hal/kernel/device/build；type、partition、ownership 正交且不互相推断。任何 layer 的 validated capture 均先通过 `akbs-patch-submit android-change-v2 adapt-capture` 转成 canonical 上传包，再检查和提交，不能将 capture 直接 `prepare`。成员适配器与服务器必须同时支持其 qualification 合同；采集、转换和服务器接收分别验收，失败时说明具体阶段，不回落 Framework v1。

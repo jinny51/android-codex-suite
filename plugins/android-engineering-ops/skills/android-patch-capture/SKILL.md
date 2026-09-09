@@ -244,7 +244,10 @@ To prepare later with canonical `akbs-patch-submit`, pass the whole capture pack
 directory to `android-change-v2 adapt-capture`. Capture 2.0 remains read-only and
 returns the original Phase-2 BLOCKED preflight. Capture 2.1 materializes a new,
 hash-bound canonical package below the AKBS member artifact root without changing
-the capture. Writer-off still rejects network submit. Never fall back to v1 or
+the capture. All seven layers require a member adapter and server with the matching
+qualification contract; capture success alone is not adaptation or upload success.
+If adaptation is blocked, preserve the capture and report that stage and its exact
+error. Writer-off still rejects network submit. Never fall back to v1 or
 relabel v2 material as a v1 Framework package:
 
 ```bash
@@ -273,7 +276,7 @@ Do not use one capture package for a date-bundled patch set such as “今日补
 
 If one change summary is clear but the diff includes many unrelated resource keys, settings keys, system properties, or other anchors, treat it as patch asset contamination rather than a valid package. Stop and ask the member to recapture the same change from a clean worktree. If an uploaded package needs patch changes, intake must reject it and the member must submit a newly generated complete patch package; never hand-edit the uploaded package.
 
-For a correction, create a fresh change capture from a clean source worktree containing only the intended diff. The later `akbs-patch-submit` submission uses `--patch-package <this capture package dir>` to create a new complete patch package. Do not prepare a correction from copied old patch files or handwritten claims.
+For a correction, create a fresh change capture from a clean source worktree containing only the intended diff. Use `akbs-patch-submit android-change-v2 adapt-capture <this capture package dir>` to create the new canonical patch package, then submit that returned package. Do not prepare a correction from copied old patch files or handwritten claims.
 
 Pure file mode diffs such as `old mode 100755` / `new mode 100644` are usually checkout or chmod noise, not a meaningful source change. Patch capture filters diff sections that contain only mode changes. If every changed file is mode-only, stop with no package. If a repository has both real content changes and mode-only noise, keep the content diff and drop the mode-only sections. A chmod change may be preserved only when it is part of an intentional executable-script or tool behavior change and is accompanied by content, summary, risk, and verification evidence.
 

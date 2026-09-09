@@ -171,8 +171,12 @@ Use `android-patch-capture --component-layer ... --component-type ...
 reviewable `android_change_capture`. Capture verifies policy/evidence and determines an
 effective local status, but does not repair code after the fact.
 
-A validated package from any supported layer may continue to `akbs-patch-submit` for
-strict v2 local validation and byte-preserving prepare. When the server v2 writer is
+A validated capture from any supported layer continues through
+`akbs-patch-submit android-change-v2 adapt-capture` to become a canonical upload
+package; do not pass a capture directly to `prepare`. The member adapter and server
+must both support its qualification contract. Adaptation, local package checks, and
+server acceptance are separate results. After adaptation, a validated package from any supported layer
+uses strict v2 local validation and byte-preserving prepare. When the server v2 writer is
 off, network submission is capability-gated with zero side effects; never relabel a
 non-Framework component or fall back to v1. Existing legacy Framework v1 packages
 remain eligible only through their permanent compatibility contract and preserve their

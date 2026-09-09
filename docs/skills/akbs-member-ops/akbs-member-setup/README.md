@@ -29,6 +29,12 @@ regular-file executable-bit 的规范化树 hash 必须一致；仅排除 `__pyc
 symlink、重复、source/cache/内容不符、从 checkout 执行业务或新旧代混装均阻断；
 checkout 只能作为开发证据。
 
+本地配置了 alias 只会显示 `configured_unverified`，不代表服务器已登记或认可该身份。
+`--check-remote` 通过只读身份接口确认本人，且服务器 alias 与本地一致后，才显示
+`server_confirmed`；旧服务器不支持、网络失败、身份拒绝或不一致都不能当作确认成功。
+服务器返回的在职状态、是否参与排名、日报/周报是否应交分别展示，不推断成全部业务权限。
+管理员参与开发、检索和贡献时也使用普通成员 profile，不需要管理员权限。
+
 首次配置读取共享内核中的唯一
 `plugins/akbs-member-ops/internal/incoming-v1/references/member-setup-prompt.md`，避免维护两套身份和 endpoint 规则。
 现行入口统一为 `akbs-member-setup doctor`。

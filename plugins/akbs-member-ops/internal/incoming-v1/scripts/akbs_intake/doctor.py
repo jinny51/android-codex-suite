@@ -4,10 +4,12 @@ import datetime as dt
 import json
 import os
 import subprocess
+import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
 from akbs_member_ops.incoming_v1.patch_markers import ALIAS_RE
+from akbs_member_ops.http_client import HttpClientFailure, request_json
 
 from akbs_intake.config import (
     allowed_modes,
@@ -25,6 +27,72 @@ from akbs_intake.diagnostics import warn_local_input
 
 RunCommand = Callable[[list[str]], subprocess.CompletedProcess[str]]
 PluginGateCheck = Callable[..., dict[str, Any]]
+
+
+def member_identity_check(config: dict[str, str], *, check_remote: bool) -> dict[str, Any]:
+    """Separate the configured claim from a read-only server-authenticated identity."""
+    alias = config.get("member_alias", "").strip()
+    result: dict[str, Any] = {
+        "mode": "fixed_ip_alias",
+        "configured_alias": alias,
+        "authenticated": False,
+        "status": "configured_unverified" if alias else "alias_required",
+        "message": "本地已配置成员标识，尚未向服务器确认身份。" if alias else "请先配置成员标识。",
+    }
+    if not alias:
+        return result
+    if alias in {"member_alias", "admin_alias", "unknown"} or not ALIAS_RE.fullmatch(alias):
+        result.update(status="alias_invalid", message="本地成员标识无效，未请求服务器。")
+        return result
+    if not check_remote:
+        return result
+
+    try:
+        request = urllib.request.Request(
+            submission_api_base_url(config).rstrip("/") + "/member/me/identity",
+            headers={"Accept": "application/json", "X-AKBS-User": alias},
+            method="GET",
+        )
+        identity = request_json(request, timeout=6)
+    except ValueError:
+        result.update(status="endpoint_invalid", message="身份诊断入口地址无效，未确认成员身份。")
+        return result
+    except HttpClientFailure as exc:
+        failure = exc.result
+        if failure.status_code in {401, 403}:
+            status, message = "authentication_failed", "服务器未认可当前成员身份，请管理员核对账号和来源网络绑定。"
+        elif failure.status_code == 404:
+            status, message = "server_unsupported", "服务器尚未提供身份诊断接口，不能据此确认成员身份。"
+        elif failure.code == "invalid_success_response":
+            status, message = "invalid_response", "服务器身份响应格式不正确，未确认成员身份。"
+        else:
+            status, message = "server_unavailable", "暂时无法向服务器确认身份；本地配置未改动。"
+        result.update(
+            status=status, message=message, http_status=failure.status_code,
+            error_code=failure.code, request_id=failure.request_id,
+        )
+        return result
+
+    text_fields = ("member_alias", "member_name", "member_status")
+    policy_fields = ("ranking_eligible", "daily_required", "weekly_required")
+    if (
+        identity.get("schema") != "akbs-member-identity-v1"
+        or identity.get("authenticated") is not True
+        or any(not isinstance(identity.get(key), str) or not identity[key].strip() for key in text_fields)
+        or any(type(identity.get(key)) is not bool for key in policy_fields)
+    ):
+        result.update(status="invalid_response", message="服务器身份响应不符合约定，未确认成员身份。")
+        return result
+    if identity["member_alias"] != alias:
+        result.update(status="identity_mismatch", message="服务器确认的成员与本地配置不一致；未修改本地身份。")
+        return result
+    result.update({key: identity[key] for key in (*text_fields, *policy_fields)})
+    result.update(
+        authenticated=True,
+        status="server_confirmed",
+        message="服务器已确认当前成员身份；参与排名和应交日报/周报以返回的服务器策略为准，不代表所有业务操作均可用。",
+    )
+    return result
 
 
 def latest_pending(report_type: str, config: dict[str, str], date: dt.date | None = None) -> Path:
@@ -85,6 +153,7 @@ def doctor_strict_checks(
     *,
     run_command: RunCommand,
     plugin_gate_check: PluginGateCheck,
+    member_identity: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     errors: list[str] = []
     warnings: list[str] = []
@@ -156,6 +225,11 @@ def doctor_strict_checks(
     elif freshness.get("status") == "UNKNOWN":
         warn(str(freshness.get("message") or "无法确认插件是否为最新版本。"))
 
+    if check_remote:
+        identity = member_identity if member_identity is not None else member_identity_check(config, check_remote=True)
+        if identity.get("status") != "server_confirmed":
+            error(str(identity.get("message") or "服务器未确认成员身份。"))
+
     if not knowledge_repo.exists():
         warn(f"knowledge_repo_worktree 不存在，本地离线搜索不可用: {knowledge_repo}")
     elif not (knowledge_repo / ".git").exists():
@@ -190,6 +264,7 @@ def doctor(
         "submission_api_base_url": endpoint["submission_api_base_url"],
     }
     freshness = plugin_gate_check(config, fetch=check_remote, require=False)
+    identity = member_identity_check(config, check_remote=check_remote)
     payload: dict[str, Any] = {
         "skill_root": str(plugin_root),
         "codex_home": default_codex_home(),
@@ -201,11 +276,7 @@ def doctor(
         "member_alias": config.get("member_alias"),
         "member_name": config.get("member_name"),
         "akbs_endpoint": public_endpoint,
-        "member_identity": {
-            "mode": "fixed_ip_alias",
-            "status": "ready" if config.get("member_alias", "").strip() else "alias_required",
-            "message": "成员只发送 member_alias；服务端按固定来源 IP 验证身份。",
-        },
+        "member_identity": identity,
         "submission_api_base_url": submission_api_base_url(config),
         "knowledge_repo_worktree": str(knowledge_repo),
         "knowledge_repo_cloned": (knowledge_repo / ".git").exists(),
@@ -214,7 +285,7 @@ def doctor(
         "plugin_freshness": freshness,
         "install_family": freshness.get("install_family", {}),
     }
-    if freshness.get("blocking"):
+    if freshness.get("blocking") or (check_remote and identity.get("status") != "server_confirmed"):
         payload["status"] = "FAIL"
     if strict:
         payload["strict"] = doctor_strict_checks(
@@ -224,6 +295,7 @@ def doctor(
             allow_synthetic,
             run_command=run_command,
             plugin_gate_check=plugin_gate_check,
+            member_identity=identity,
         )
         payload["status"] = payload["strict"]["status"]
     return payload

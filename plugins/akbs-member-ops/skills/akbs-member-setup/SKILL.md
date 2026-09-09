@@ -52,6 +52,16 @@ alias, or ask ordinary members to configure server tokens, cookies, roles, datab
 paths, or client-IP headers. Incoming v1 support is an internal data-compatibility
 kernel, not a public legacy Skill.
 
+Local doctor reports `configured_unverified`, not authenticated identity. With
+`--check-remote`, it reads `/akbs/api/member/me/identity`; only an authenticated
+response matching the configured alias yields `server_confirmed`. An unavailable
+server, unsupported identity endpoint, rejection or mismatch is not confirmation.
+Keep server-returned member status, ranking eligibility and daily/weekly obligations
+separate from local configuration and business permissions. An administrator who
+also contributes uses an ordinary member profile; administrator privileges are not
+required for development, search or contribution. Do not rewrite identity or grant
+privileges to make a diagnostic pass.
+
 If `$CODEX_HOME/akbs-member-ops.toml` is present, it is the sole AKBS config
 authority: do not discover or read any legacy member/search/report config, even
 for conflict checks. Read legacy config only when the target file is absent.

@@ -42,6 +42,11 @@ token、cookie、客户端 IP 声明、服务器路径或数据库地址。
 
 5. doctor 通过前不要生成日报、周报或补丁包。本地知识工作树不存在时不创建、
    不克隆；AKBS API 仍是默认检索和上传入口。
+   本地 alias 配置仅是 configured_unverified；必须在 --check-remote 下取得
+   server_confirmed，才能报告服务器已确认身份。网络失败、旧服务器不支持接口、
+   身份拒绝或 alias 不一致时如实报告，不修改成员标识或伪造来源 IP 来通过检查。
+   管理员本人参与开发也用普通 member profile；是否排名及日报/周报是否应交读取
+   服务器策略，不通过本地 role 或 allowed_modes 猜测。
 
 完成后只报告插件/会话版本、目标配置读取状态、endpoint 状态、成员 alias 状态、
 可选离线索引状态和 doctor 结果。

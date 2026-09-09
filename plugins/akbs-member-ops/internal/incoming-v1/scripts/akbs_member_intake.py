@@ -647,7 +647,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     doctor_parser = subparsers.add_parser("doctor")
     doctor_parser.add_argument("--strict", action="store_true", help="fail when the selected profile is unsafe for member-side automation")
-    doctor_parser.add_argument("--check-remote", action="store_true", help="also verify plugin freshness and optional local knowledge fallback reachability")
+    doctor_parser.add_argument("--check-remote", action="store_true", help="also verify plugin freshness and server-authenticated member identity")
     doctor_parser.add_argument("--allow-synthetic", action="store_true", help="allow synthetic_data=true for protocol or gray-flow testing")
     doctor_parser.set_defaults(report_type="")
 

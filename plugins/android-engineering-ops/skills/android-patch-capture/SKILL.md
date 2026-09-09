@@ -14,6 +14,14 @@ consumer may impose its own independently versioned acceptance policy without
 changing this engineering contract. Writer-off gates network submission with
 zero side effects and never causes fallback to Framework v1.
 
+## Task Startup
+
+Before a new engineering task starts, set `PLUGIN_ROOT` to the directory two levels
+above this `SKILL.md`, read `../../references/task-start.md`, and run its shared
+`task_start.py` entry, which includes the first local install check. Reuse the same task ID/result across nested Skills;
+do not update again at each build/remote command or while recovering running work.
+This applies equally when this Skill is invoked directly without the full workflow.
+
 ## Active Install Family
 
 Before reading a snapshot, patch, package, identity/config, or evidence, and before any

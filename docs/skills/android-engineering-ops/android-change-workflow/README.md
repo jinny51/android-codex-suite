@@ -1,5 +1,7 @@
 # android-change-workflow
 
+新工程任务开始前统一调用 `task_start.py --task-id <本任务固定标识>` 检查并按需更新工程插件；同一任务的后续 Skill 复用结果。更新后需重启 Codex，执行中的编译/命令不做中途升级。任务标识由 Codex 管理，不需要成员填写。
+
 > GitHub 说明页。Runtime Skill 位于 [../../../../plugins/android-engineering-ops/skills/android-change-workflow](../../../../plugins/android-engineering-ops/skills/android-change-workflow)。
 
 Android 工程 controller 的唯一入口，覆盖 application、platform、native、HAL、kernel、device 和 build。它拥有 requirement contract、阶段、Gate、assignment/result 校验与最终验收；可选 practices provider 只返回 schema/hash 绑定的决策，不能 spawn、写入、取锁或宣布验收。

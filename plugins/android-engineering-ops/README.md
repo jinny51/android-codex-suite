@@ -1,6 +1,6 @@
 # Android Engineering Ops
 
-`android-engineering-ops` 2.0.2 是可独立安装的 Android 工程核心。它不依赖
+`android-engineering-ops` 2.0.4 是可独立安装的 Android 工程核心。它不依赖
 `akbs-member-ops` 或任何 practices provider；未配置扩展时始终使用 core-direct。
 
 | Skill | 职责 |
@@ -11,6 +11,10 @@
 | `android-remote-channel` | 远端 source/build 命令、锁、队列和恢复 |
 | `android-remote-build-deploy` | 受控 build、artifact 校验和本地 adb 交付 |
 | `android-patch-capture` | 七层 component 标注的本地 `android_change_capture` 和 effective status |
+
+## Task startup and updates
+
+新工程任务开始时，六个 Skill 共用 `lib/android_engineering_ops/task_start.py` 检查和更新本插件；同一任务只联网检查一次，后续命令保持本地安装校验。更新成功后提示重启 Codex，不在执行中的编译/推送里切换版本。任务身份和失败重试见 [启动约定](references/task-start.md)。公共更新源码与成员插件共用，但没有运行时依赖；现有成员需要先安装含此机制的版本一次。
 
 ## Optional practices provider
 

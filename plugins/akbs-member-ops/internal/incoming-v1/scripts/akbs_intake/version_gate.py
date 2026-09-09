@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import hashlib
 import os
-import re
 import shlex
 import stat
 import subprocess
@@ -24,6 +23,13 @@ except ImportError:  # pragma: no cover - direct script import fallback
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[4]
+PLUGIN_LIB = PLUGIN_ROOT / "lib"
+if str(PLUGIN_LIB) not in sys.path:
+    sys.path.insert(0, str(PLUGIN_LIB))
+
+import codex_plugin_update as _plugin_update  # noqa: E402
+
+
 PLUGIN_UPDATE_SKIP_ENV = "CODEX_REPORT_SKIP_PLUGIN_UPDATE_CHECK"
 PLUGIN_UPDATE_REQUIRE_ENV = "CODEX_REPORT_REQUIRE_PLUGIN_UPDATE_CHECK"
 PLUGIN_REEXEC_ATTEMPT_ENV = "CODEX_REPORT_PLUGIN_REEXEC_ATTEMPTED"
@@ -36,7 +42,7 @@ OPTIONAL_GENERATION_PLUGIN = "jinny-android-practices"
 TARGET_GENERATION_FLOOR = "2.0.0"
 TARGET_MEMBER_PLUGIN = "akbs-member-ops"
 TARGET_MARKETPLACE = "android-codex-suite"
-PLUGIN_VERSION_RE = re.compile(r"^[0-9]+(?:\.[0-9]+){1,3}(?:[-+][0-9A-Za-z.-]+)?$")
+PLUGIN_VERSION_RE = _plugin_update.PLUGIN_VERSION_RE
 MAX_PLUGIN_MANIFEST_BYTES = 1024 * 1024
 
 
@@ -749,42 +755,27 @@ def latest_installed_plugin_cache_metadata(plugin_name: str = "akbs-member-ops")
 
 
 def version_parts(value: str) -> tuple[int, ...]:
-    text = str(value or "")
-    if not PLUGIN_VERSION_RE.fullmatch(text):
-        raise ValueError(f"malformed plugin version: {text!r}")
-    release = re.split(r"[-+]", text, maxsplit=1)[0]
-    return tuple(int(item) for item in release.split("."))
+    return _plugin_update.version_parts(value)
 
 
 def compare_versions(left: str, right: str) -> int:
-    left_parts = list(version_parts(left))
-    right_parts = list(version_parts(right))
-    size = max(len(left_parts), len(right_parts), 1)
-    left_parts.extend([0] * (size - len(left_parts)))
-    right_parts.extend([0] * (size - len(right_parts)))
-    return (left_parts > right_parts) - (left_parts < right_parts)
+    return _plugin_update.compare_versions(left, right)
 
 
 def github_raw_plugin_manifest_url(metadata: dict[str, str]) -> str:
-    repository = str(metadata.get("repository") or "").strip().removesuffix(".git")
-    match = re.search(r"github\.com[:/](?P<owner>[^/]+)/(?P<repo>[^/#?]+)", repository)
-    plugin_name = str(metadata.get("plugin_name") or "akbs-member-ops").strip()
-    if not match or not plugin_name:
-        return ""
-    owner = match.group("owner")
-    repo = match.group("repo")
-    return f"https://raw.githubusercontent.com/{owner}/{repo}/main/plugins/{plugin_name}/.codex-plugin/plugin.json"
+    return _plugin_update.github_manifest_url(
+        str(metadata.get("repository") or ""),
+        str(metadata.get("plugin_name") or "akbs-member-ops").strip(),
+    )
 
 
 def fetch_remote_plugin_manifest(metadata: dict[str, str]) -> dict[str, Any]:
     url = github_raw_plugin_manifest_url(metadata)
     if not url:
         raise RuntimeError("插件仓库不是可识别的 GitHub 仓库，不能读取远端插件版本。")
-    with urllib.request.urlopen(url, timeout=PLUGIN_REMOTE_MANIFEST_TIMEOUT) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    if not isinstance(payload, dict):
-        raise RuntimeError("远端插件清单不是 JSON 对象。")
-    return payload
+    return _plugin_update.fetch_manifest(
+        url, PLUGIN_REMOTE_MANIFEST_TIMEOUT, opener=urllib.request.urlopen
+    )
 
 
 def git_remote_plugin_version(git_root: Path, ref: str) -> str:
@@ -863,6 +854,16 @@ def packaged_plugin_freshness(metadata: dict[str, str], fetch: bool, require: bo
         return plugin_update_unknown("远端插件版本格式非法，不能确认是否有更新。", require)
     if remote_version and compare_versions(local_version, remote_version) < 0:
         auto_update = auto_update_packaged_plugin(str(metadata.get("plugin_name") or "akbs-member-ops"))
+        if auto_update.get("status") == "PASS":
+            actual_version = str(auto_update.get("installed_plugin_version") or "")
+            if not PLUGIN_VERSION_RE.fullmatch(actual_version) or compare_versions(actual_version, remote_version) < 0:
+                auto_update = {
+                    **auto_update,
+                    "status": "FAIL",
+                    "restart_required": False,
+                    "reason": "installed_version_mismatch",
+                    "message": "更新后的 active 插件版本尚未达到已发布版本。",
+                }
         payload["auto_update"] = auto_update
         if auto_update.get("status") == "PASS":
             payload.update(
@@ -900,6 +901,32 @@ def packaged_plugin_freshness(metadata: dict[str, str], fetch: bool, require: bo
     return payload
 
 
+def _verify_updated_member_install(plugin_name: str) -> dict[str, Any]:
+    """Rebind fresh inventory to its new cache without claiming this process reloaded."""
+    global PLUGIN_LIST_CACHE, PLUGIN_ROOT
+    PLUGIN_LIST_CACHE = None
+    payload, error = _plugin_list_payload()
+    matches = [
+        row for row in _active_plugin_rows(payload or {}) if row.get("name") == plugin_name
+    ]
+    if len(matches) != 1:
+        return {"status": "FAIL", "blocking": True, "message": error or "更新后无法确定唯一 active 插件。"}
+    version = matches[0].get("version")
+    if not isinstance(version, str) or not PLUGIN_VERSION_RE.fullmatch(version):
+        return {"status": "FAIL", "blocking": True, "message": "更新后的 active 插件缺少合法版本。"}
+    runtime = Path(default_codex_home()) / "plugins" / "cache" / TARGET_MARKETPLACE / plugin_name / version
+    previous_root = PLUGIN_ROOT
+    try:
+        # The exact existing family/hash verifier must inspect the newly installed
+        # cache, while the running process and its eventual re-exec remain explicit.
+        PLUGIN_ROOT = runtime
+        family = installed_plugin_family_status()
+        metadata = latest_installed_plugin_cache_metadata(plugin_name)
+    finally:
+        PLUGIN_ROOT = previous_root
+    return {**metadata, "install_family": family, "blocking": family.get("blocking", True)}
+
+
 def auto_update_packaged_plugin(plugin_name: str) -> dict[str, Any]:
     family = installed_plugin_family_status()
     if family.get("blocking"):
@@ -910,39 +937,13 @@ def auto_update_packaged_plugin(plugin_name: str) -> dict[str, Any]:
             "message": family.get("message"),
             "install_family": family,
         }
-    marketplace = TARGET_MARKETPLACE
-    upgrade_cmd = ["codex", "plugin", "marketplace", "upgrade", marketplace, "--json"]
-    add_cmd = ["codex", "plugin", "add", f"{plugin_name}@{marketplace}", "--json"]
-    upgrade_cp = run(upgrade_cmd)
-    if upgrade_cp.returncode != 0:
-        return {
-            "attempted": True,
-            "status": "FAIL",
-            "upgrade_command": shlex.join(upgrade_cmd),
-            "stderr": upgrade_cp.stderr.strip(),
-            "stdout": upgrade_cp.stdout.strip(),
-        }
-    add_cp = run(add_cmd)
-    if add_cp.returncode != 0:
-        return {
-            "attempted": True,
-            "status": "FAIL",
-            "upgrade_command": shlex.join(upgrade_cmd),
-            "install_command": shlex.join(add_cmd),
-            "marketplace_stdout": upgrade_cp.stdout.strip(),
-            "stderr": add_cp.stderr.strip(),
-            "stdout": add_cp.stdout.strip(),
-        }
-    payload = {
-        "attempted": True,
-        "status": "PASS",
-        "upgrade_command": shlex.join(upgrade_cmd),
-        "install_command": shlex.join(add_cmd),
-        "marketplace_stdout": upgrade_cp.stdout.strip(),
-        "install_stdout": add_cp.stdout.strip(),
-    }
-    payload.update(latest_installed_plugin_cache_metadata(plugin_name))
-    return payload
+    if plugin_name != TARGET_MEMBER_PLUGIN:
+        return {"attempted": False, "status": "FAIL", "reason": "unsupported_plugin"}
+    return _plugin_update.update_plugin(
+        plugin_name,
+        run_command=run,
+        verify_install=lambda: _verify_updated_member_install(plugin_name),
+    )
 
 
 def plugin_intake_script_from_root(root: Path) -> Path:

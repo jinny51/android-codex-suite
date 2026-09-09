@@ -699,6 +699,93 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
         self.assertTrue(timed_out["blocking"])
 
 
+    def test_packaged_update_rechecks_fresh_active_inventory_and_new_cache_content(self) -> None:
+        for outcome in ("valid", "no-active", "content-mismatch"):
+            version_gate.PLUGIN_LIST_CACHE = None
+            with self.subTest(outcome=outcome), tempfile.TemporaryDirectory() as temporary, mock.patch.dict(
+                os.environ, {"CODEX_HOME": temporary}, clear=False
+            ):
+                home = Path(temporary)
+                source = home / ".tmp/marketplaces/android-codex-suite/plugins/akbs-member-ops"
+                old_cache = self.cache_root(home, version="2.0.0")
+                new_cache = self.cache_root(home, version="2.0.1")
+                self.write_manifest(source)
+                self.write_manifest(old_cache)
+                inventory = {"installed": [self.target_row(source)]}
+                commands: list[list[str]] = []
+
+                def simulate(command: list[str], *, timeout: float | None = None) -> subprocess.CompletedProcess[str]:
+                    commands.append(command)
+                    if command == ["codex", "plugin", "list", "--json"]:
+                        self.assertEqual(timeout, 15)
+                        return completed(inventory)
+                    self.assertEqual(timeout, version_gate._plugin_update.UPDATE_COMMAND_TIMEOUT)
+                    if command == ["codex", "plugin", "marketplace", "upgrade", "android-codex-suite", "--json"]:
+                        self.write_manifest(source, version="2.0.1")
+                    elif command == ["codex", "plugin", "add", "akbs-member-ops@android-codex-suite", "--json"]:
+                        self.write_manifest(new_cache, version="2.0.1")
+                        inventory["installed"] = [self.target_row(source, version="2.0.1")]
+                        if outcome == "no-active":
+                            inventory["installed"] = []
+                        elif outcome == "content-mismatch":
+                            (new_cache / "unexpected.txt").write_text("different content", encoding="utf-8")
+                    else:
+                        self.fail(f"unexpected command: {command}")
+                    return subprocess.CompletedProcess(command, 0, stdout="updated", stderr="")
+
+                original_family = version_gate.installed_plugin_family_status
+                with mock.patch.object(version_gate, "PLUGIN_ROOT", old_cache), mock.patch.object(
+                    version_gate, "run", side_effect=simulate
+                ), mock.patch.object(
+                    version_gate, "installed_plugin_family_status", wraps=original_family
+                ) as family:
+                    result = version_gate.auto_update_packaged_plugin("akbs-member-ops")
+                    self.assertEqual(version_gate.PLUGIN_ROOT, old_cache)
+                self.assertEqual(commands.count(["codex", "plugin", "list", "--json"]), 2)
+                self.assertEqual(family.call_count, 1 if outcome == "no-active" else 2)
+                self.assertEqual(result["status"], "PASS" if outcome == "valid" else "FAIL")
+                self.assertEqual(result["restart_required"], outcome == "valid")
+                if outcome == "valid":
+                    self.assertEqual(result["installed_plugin_version"], "2.0.1")
+                    self.assertEqual(Path(result["installed_plugin_path"]), new_cache)
+                    self.assertTrue(result["installed_plugin_binding"]["valid"])
+                    self.assertEqual(result["install_family"]["status"], "PASS")
+                if outcome == "content-mismatch":
+                    self.assertEqual(result["install_family"]["status"], "ACTIVE_IDENTITY_MISMATCH")
+
+    def test_packaged_freshness_rejects_an_update_that_did_not_reach_remote_version(self) -> None:
+        metadata = {"plugin_name": "akbs-member-ops", "plugin_version": "2.0.0"}
+        with mock.patch.object(version_gate, "latest_installed_plugin_cache_metadata", return_value={}), mock.patch.object(
+            version_gate, "current_skill_cache_metadata", return_value={}
+        ), mock.patch.object(
+            version_gate, "fetch_remote_plugin_manifest", return_value={"version": "2.0.2"}
+        ), mock.patch.object(
+            version_gate,
+            "auto_update_packaged_plugin",
+            return_value={"status": "PASS", "installed_plugin_version": "2.0.1", "restart_required": True},
+        ) as update:
+            result = version_gate.packaged_plugin_freshness(metadata, fetch=True, require=True)
+        update.assert_called_once_with("akbs-member-ops")
+        self.assertEqual(result["status"], "STALE")
+        self.assertTrue(result["blocking"])
+        self.assertEqual(result["auto_update"]["reason"], "installed_version_mismatch")
+        self.assertFalse(result["auto_update"]["restart_required"])
+
+    def test_member_manifest_wrapper_keeps_the_urlopen_mock_boundary(self) -> None:
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = b'{"name":"akbs-member-ops","version":"2.0.3"}'
+        with mock.patch.object(version_gate.urllib.request, "urlopen", return_value=response) as opener:
+            result = version_gate.fetch_remote_plugin_manifest(
+                {"repository": "https://github.com/jinny51/android-codex-suite.git", "plugin_name": "akbs-member-ops"}
+            )
+        self.assertEqual(result["version"], "2.0.3")
+        opener.assert_called_once_with(
+            "https://raw.githubusercontent.com/jinny51/android-codex-suite/main/plugins/akbs-member-ops/.codex-plugin/plugin.json",
+            timeout=version_gate.PLUGIN_REMOTE_MANIFEST_TIMEOUT,
+        )
+        response.__enter__.return_value.read.assert_called_once_with(version_gate._plugin_update.MAX_MANIFEST_BYTES + 1)
+
+
 class GmsTargetContractTest(unittest.TestCase):
     def test_android_major_target_is_normalized_and_required(self) -> None:
         fields = {

@@ -1,6 +1,6 @@
 # AKBS Member Ops
 
-Standalone AKBS member plugin, version 2.0.3. It owns member setup, knowledge
+Standalone AKBS member plugin, version 2.0.5. It owns member setup, knowledge
 search and merge review, personal daily/weekly reports, and Android change
 package handling without depending on the engineering or optional practices
 plugins at runtime.
@@ -74,6 +74,13 @@ unchanged capture reuses an existing matching two-layer package instead of
 rewriting it or creating another upload identity.
 
 ## Install-family boundary
+
+Daily, weekly and patch entrypoints share the existing member version gate. Its
+generic release lookup, version comparison and marketplace update code comes from
+the same `shared/codex_plugin_update.py` source packaged in the engineering plugin.
+Business triggers and member configuration/package handling remain unchanged; neither
+plugin needs the other installed to update itself. An update changes files on disk,
+not Skill instructions already loaded into a Codex session.
 
 Doctor and business gates use `codex plugin list --json` as the authority for the
 unique active install. Historical cache directories are evidence only and are

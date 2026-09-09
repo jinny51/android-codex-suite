@@ -12,6 +12,14 @@ logs, and project-global locking. It does not own Android source mounting, build
 profile inference, build wrapper generation, artifact mapping, adb deployment,
 or framework verification.
 
+## Task Startup
+
+Before a new engineering task starts, set `PLUGIN_ROOT` to the directory two levels
+above this `SKILL.md`, read `../../references/task-start.md`, and run its shared
+`task_start.py` entry, which includes the first local install check. Reuse the same task ID/result across nested Skills;
+do not update again at each build/remote command or while recovering running work.
+This applies equally when this Skill is invoked directly without the full workflow.
+
 ## Active Install Family
 
 Before any SSH/network request, remote source read, state lookup/write, lock, or command

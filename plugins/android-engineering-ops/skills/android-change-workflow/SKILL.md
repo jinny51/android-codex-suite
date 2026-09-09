@@ -8,6 +8,14 @@ description: "Use when implementing, diagnosing, modifying, or verifying Android
 Use this Skill as the end-to-end engineering workflow for Android source work.
 Framework is a `platform/framework` component type, not a product boundary or layer.
 
+## Task Startup
+
+Before a new engineering task starts, set `PLUGIN_ROOT` to the directory two levels
+above this `SKILL.md`, read `../../references/task-start.md`, and run its shared
+`task_start.py` entry, which includes the first local install check. Reuse the same task ID/result across nested Skills;
+do not update again at each build/remote command or while recovering running work.
+This applies equally when this Skill is invoked directly without the full workflow.
+
 ## Gate 0: Active Install Family
 
 Before reading project/source data, resolving a practices provider, editing, running a

@@ -1,5 +1,7 @@
 # android-patch-capture
 
+新工程任务开始前统一调用 `task_start.py --task-id <本任务固定标识>` 检查并按需更新工程插件；同一任务的后续 Skill 复用结果。更新后需重启 Codex，执行中的编译/命令不做中途升级。任务标识由 Codex 管理，不需要成员填写。
+
 > GitHub 说明页。Runtime Skill 位于 [../../../../plugins/android-engineering-ops/skills/android-patch-capture](../../../../plugins/android-engineering-ops/skills/android-patch-capture)。
 
 把既有 Android 变更封装为 `$CODEX_HOME/artifacts/android-patch-capture/packages` 下的本地不可变材料。新包记录 `components[]`（application/platform/native/hal/kernel/device/build layer 与独立 type/partition/ownership）、`primary_component_id`，以及每个 repository/patch 的显式 `component_ids[]`；不从路径猜 layer。capture 只能保留或降级声明状态，不能把 draft/candidate 升为 validated。

@@ -989,12 +989,12 @@ def retarget_member(package: Path, manifest: dict[str, Any], member: str, run_id
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate plugin/server incoming v1 compatibility in an isolated runtime.")
+    parser = argparse.ArgumentParser(description="Validate incoming compatibility; v2-release runs the formal capture-to-server chain in isolation.")
     parser.add_argument(
         "--mode",
-        choices=("client-only", "remote-pilot"),
+        choices=("client-only", "remote-pilot", "v2-release"),
         default="client-only",
-        help="Safe local package generation is the default; real SSH/server validation is an explicit Phase 4 pilot.",
+        help="Local v1 checks are the default; remote-pilot checks v1 and v2-release is the paired v2 release gate.",
     )
     parser.add_argument("--system-root", type=Path, help="Read-only AKBS system repository root")
     parser.add_argument("--server-host", default="test35", help="SSH host providing the authoritative system Python runtime")
@@ -1007,6 +1007,12 @@ def main() -> int:
     parser.add_argument("--server-packages-root", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--plugin-suite-root", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.mode == "v2-release":
+        from android_change_v2_contract_gate import run_remote
+
+        result = run_remote(REPO_ROOT, host=args.server_host, system_root=args.server_runtime_root)
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+        return 0
     if (REPO_ROOT / ".git").exists():
         from validator_hygiene import repository_cleanup
 

@@ -954,12 +954,29 @@ def collect_external_evidence(args: argparse.Namespace, evidence_dir: Path) -> l
         seen.add(source)
         payload = read_json(source)
         kind = evidence_kind_from_file(source, payload)
+        is_delivery_receipt = kind == "verification_result"
+        if is_delivery_receipt:
+            payload = wrap_build_delivery_receipt(payload, source)
+            kind = payload["kind"]
         if kind not in SUPPORTED_EXTERNAL_EVIDENCE_KINDS:
             allowed = ", ".join(sorted(SUPPORTED_EXTERNAL_EVIDENCE_KINDS))
             raise SystemExit(f"外部 evidence kind 不支持: {kind} ({source}); 允许: {allowed}")
         payload.setdefault("kind", kind)
+        target_name = evidence_file_name(
+            "build_delivery" if is_delivery_receipt else kind, source, used_names
+        )
+        evidence_id = slug(Path(target_name).stem)
         known_components = {item["id"] for item in args.components}
         component_ids = payload.get("component_ids")
+        if is_delivery_receipt and component_ids is None:
+            explicit_components = [
+                value.split(":", 1)[1]
+                for value in getattr(args, "evidence_component", []) or []
+                if value.startswith(evidence_id + ":")
+            ]
+            if explicit_components:
+                component_ids = explicit_components
+                payload["component_ids"] = component_ids
         if component_ids is None and len(known_components) == 1:
             component_ids = sorted(known_components)
             payload["component_ids"] = component_ids
@@ -979,15 +996,16 @@ def collect_external_evidence(args: argparse.Namespace, evidence_dir: Path) -> l
             validate_component_assertion_payload(payload, component_ids, source)
             declared_claims = ["component_assertions_recorded"]
             contract_id = "android-patch-capture-component-assertion"
+        elif is_delivery_receipt:
+            declared_claims = ["build_delivery_recorded_not_requirement_accepted"]
         else:
             declared_claims = ["external_evidence_recorded"]
-        target_name = evidence_file_name(kind, source, used_names)
         used_names.add(target_name)
         target = evidence_dir / target_name
         write_json(target, payload)
         entries.append(
             {
-                "id": slug(target.stem),
+                "id": evidence_id,
                 "kind": kind,
                 "path": f"evidence/{target.name}",
                 "result": evidence_result(payload),
@@ -999,6 +1017,45 @@ def collect_external_evidence(args: argparse.Namespace, evidence_dir: Path) -> l
             }
         )
     return entries
+
+
+def wrap_build_delivery_receipt(payload: dict[str, Any], source: Path) -> dict[str, Any]:
+    """Keep producer delivery facts separate from capture-owned feature acceptance."""
+    expected = build_delivery_contract_fields()
+    delivery = payload.get("local_delivery")
+    remote = payload.get("remote_build")
+    steps = payload.get("steps")
+    actions = delivery.get("adb_actions") if isinstance(delivery, dict) else None
+    if (
+        any(payload.get(key) != value for key, value in expected.items())
+        or payload.get("result") not in {"PASS", "INFO"}
+        or payload.get("method") != "device"
+        or not isinstance(remote, dict)
+        or not isinstance(remote.get("artifacts"), list)
+        or not isinstance(delivery, dict)
+        or not isinstance(steps, list)
+        or not steps
+        or any(not isinstance(item, str) or not item.strip() for item in steps)
+        or not isinstance(actions, list)
+        or not actions
+        or any(not isinstance(item, str) or not item.strip() for item in actions)
+    ):
+        raise SystemExit(
+            "外部 verification_result 必须是明确的 build_delivery/unverified 回执，"
+            f"不能替代需求验收或仅声明 PASS: {source}"
+        )
+    # The original receipt is retained intact; component association belongs to
+    # this capture envelope, not to the producer's immutable delivery record.
+    wrapped = {
+        **expected,
+        "kind": "deploy_result",
+        "result": payload["result"],
+        "summary": str(payload.get("summary") or "remote build artifact delivery"),
+        "delivery_receipt": payload,
+    }
+    if "component_ids" in payload:
+        wrapped["component_ids"] = payload["component_ids"]
+    return wrapped
 
 
 def inferred_verification_method(args: argparse.Namespace, auto_payload: dict[str, Any] | None = None) -> str:

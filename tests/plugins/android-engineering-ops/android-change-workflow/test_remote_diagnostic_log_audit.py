@@ -14,6 +14,7 @@ import unittest
 REPO_ROOT = Path(__file__).resolve().parents[4]
 SCRIPT = REPO_ROOT / "plugins/android-engineering-ops/skills/android-change-workflow/scripts/diagnostic_log_audit.py"
 PLUGIN_SOURCE = REPO_ROOT / "plugins/android-engineering-ops"
+PLUGIN_VERSION = json.loads((PLUGIN_SOURCE / ".codex-plugin/plugin.json").read_text())["version"]
 
 
 class RemoteDiagnosticAuditTests(unittest.TestCase):
@@ -43,7 +44,7 @@ class RemoteDiagnosticAuditTests(unittest.TestCase):
         bundled.chmod(bundled.stat().st_mode | stat.S_IXUSR)
         runtime = (
             codex_home
-            / "plugins/cache/android-codex-suite/android-engineering-ops/2.0.2"
+            / "plugins/cache/android-codex-suite/android-engineering-ops" / PLUGIN_VERSION
         )
         runtime.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source, runtime)
@@ -55,7 +56,7 @@ class RemoteDiagnosticAuditTests(unittest.TestCase):
                     "pluginId": "android-engineering-ops@android-codex-suite",
                     "name": "android-engineering-ops",
                     "marketplaceName": "android-codex-suite",
-                    "version": "2.0.2",
+                    "version": PLUGIN_VERSION,
                     "installed": True,
                     "enabled": True,
                     "source": {"source": "local", "path": str(source)},

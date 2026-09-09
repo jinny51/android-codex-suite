@@ -11,7 +11,18 @@ parser `--help` 可以跳过；`--` 后面的字面 `--help` 仍是业务输入�
 - `android-patch-capture-package-v2/2.0/android_change_capture`：保留零网络、零写的兼容 preflight；不能把 capture 目录直接交给 `prepare`。
 - `android-patch-capture-package-v2/2.1/android_change_capture`：离线 materializer 输入，按 hash-pinned 37 组 qualification 合同生成 canonical v2，支持 application/platform/native/hal/kernel/device/build；跨层包按组件逐项验证。
 
-七层合同必须先在服务器部署，再发布成员插件。服务端同时保留旧两层合同，旧版本已生成但尚未上传的 application/platform 包无需重写。升级后重新适配同一 capture 会复用已经存在且匹配的旧包，保留原始 bytes、合同 hash 和重试身份。新包使用七层合同；不能修改层标签或回退 v1 绕过校验。报错应区分本地转换、包检查和服务器接收，不把本地失败写成服务器拒收。
+更新的证据合同必须先在服务器部署并登记，再发布成员插件。服务端保留旧两层合同和原七层合同，旧版本已生成但尚未上传的包无需重写。升级后重新适配同一 capture 会复用已经存在且匹配的旧包，保留原始 bytes、合同 hash 和重试身份。新包使用当前七层合同；不能修改层标签或回退 v1 绕过校验。报错应区分本地转换、包检查和服务器接收，不把本地失败写成服务器拒收。
+
+当前合同将 capture 已支持的显式等效验收贯通到成员和服务端：不适合真机交互的资源、构建、打包、静态配置或文档变更，可使用 `method=equivalent`，同时提供类型、理由、覆盖范围和剩余风险。不得为通过检查伪造设备步骤；HAL/kernel 等组件的专门硬件、接口或集成证据要求没有取消。构建/推送回执仍仅为 `build_delivery/unverified`，不能替代需求验收。
+
+修改 capture、适配器或服务端 qualification 后，发布验收必须运行配对仓库的正式 v2 链路，不能用 `plugin-full` 的本地 v1 检查替代：
+
+```bash
+python3 scripts/validate_incoming_contract_gate.py --mode v2-release \
+  --server-host test35 --server-runtime-root /path/to/verified/system-worktree
+```
+
+该入口调用正式快照、capture、适配及 prepare 工具，经过成员 HTTP 提交、服务端临时库入库、原字节重试和成员页面 API 回读；覆盖七层与跨组件包。所有样本和数据库均为隔离测试数据，不上传到生产服务。验收应记录 plugin/system 的 clean commit；服务器上线在先，成员更新在后。
 
 v2 的本地 PASS 只代表 `client_semantic_coherence_valid`。客户端 adapter outputs 仍是 untrusted input，服务端必须重新计算资格。submit 使用成员已有 profile，通过现有 incoming HTTP 入口提交，普通成员不需要试点 grant。服务器未启用写入或合同不兼容时明确报错，不回退 v1。
 

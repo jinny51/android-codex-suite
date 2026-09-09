@@ -13,6 +13,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 PLUGIN = ROOT / "plugins/android-engineering-ops"
+PLUGIN_VERSION = json.loads((PLUGIN / ".codex-plugin/plugin.json").read_text())["version"]
 LIB = PLUGIN / "lib"
 if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
@@ -29,7 +30,7 @@ def entry(name: str, root: Path = PLUGIN) -> dict[str, object]:
         "pluginId": f"{name}@{marketplace}",
         "name": name,
         "marketplaceName": marketplace,
-        "version": "2.0.2" if name == "android-engineering-ops" else "2.0.1",
+        "version": json.loads((root / ".codex-plugin/plugin.json").read_text())["version"],
         "installed": True,
         "enabled": True,
         "source": {"source": "local", "path": str(root)},
@@ -40,7 +41,7 @@ def installed_core(tmp_path: Path) -> tuple[Path, Path, Path, dict[str, object]]
     home = tmp_path / "codex-home"
     marketplace = "android-codex-suite"
     source = home / ".tmp/marketplaces" / marketplace / "plugins/android-engineering-ops"
-    runtime = home / "plugins/cache" / marketplace / "android-engineering-ops/2.0.2"
+    runtime = home / "plugins/cache" / marketplace / "android-engineering-ops" / PLUGIN_VERSION
     for target in (source, runtime):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(
@@ -102,7 +103,8 @@ def test_optional_jinny_must_match_core_generation_and_provider_contract(
     home, _core_source, core_runtime, core_row = installed_core(tmp_path)
     marketplace = "android-codex-suite"
     jinny_source = home / ".tmp/marketplaces" / marketplace / "plugins/jinny-android-practices"
-    jinny_cache = home / "plugins/cache" / marketplace / "jinny-android-practices/2.0.1"
+    jinny_version = json.loads((jinny / ".codex-plugin/plugin.json").read_text())["version"]
+    jinny_cache = home / "plugins/cache" / marketplace / "jinny-android-practices" / jinny_version
     for target in (jinny_source, jinny_cache):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(
@@ -165,7 +167,7 @@ def test_real_inventory_source_and_runtime_cache_are_both_hash_bound(
     home = tmp_path / "codex-home"
     marketplace = "android-codex-suite"
     source = home / ".tmp/marketplaces" / marketplace / "plugins/android-engineering-ops"
-    runtime = home / "plugins/cache" / marketplace / "android-engineering-ops/2.0.2"
+    runtime = home / "plugins/cache" / marketplace / "android-engineering-ops" / PLUGIN_VERSION
     for target in (source, runtime):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(
@@ -194,7 +196,7 @@ def test_real_inventory_source_and_runtime_executable_mode_are_hash_bound(
     home = tmp_path / "codex-home"
     marketplace = "android-codex-suite"
     source = home / ".tmp/marketplaces" / marketplace / "plugins/android-engineering-ops"
-    runtime = home / "plugins/cache" / marketplace / "android-engineering-ops/2.0.2"
+    runtime = home / "plugins/cache" / marketplace / "android-engineering-ops" / PLUGIN_VERSION
     for target in (source, runtime):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(

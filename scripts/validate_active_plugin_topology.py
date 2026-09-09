@@ -42,8 +42,8 @@ TARGET_PLUGINS = {
     ),
 }
 TARGET_PLUGIN_VERSIONS = {
-    "akbs-member-ops": "2.0.3",
-    "android-engineering-ops": "2.0.2",
+    "akbs-member-ops": "2.0.4",
+    "android-engineering-ops": "2.0.3",
     "jinny-android-practices": "2.0.1",
 }
 MIGRATION_ALIASES = {

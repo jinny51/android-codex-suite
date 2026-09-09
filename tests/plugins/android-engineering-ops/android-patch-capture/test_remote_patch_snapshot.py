@@ -36,6 +36,7 @@ HANDOFF = SKILL_ROOT / "scripts" / "capture_remote_snapshot.py"
 INSTALLED_RUNTIME_ENTRYPOINTS = ("CAPTURE", "HANDOFF")
 SNAPSHOT_MODULE = LIB_ROOT / "android_engineering_ops" / "remote_patch_snapshot.py"
 PLUGIN_SOURCE = REPO_ROOT / "plugins" / "android-engineering-ops"
+PLUGIN_VERSION = json.loads((PLUGIN_SOURCE / ".codex-plugin/plugin.json").read_text())["version"]
 
 
 def run(command: list[str], cwd: Path, *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -154,7 +155,7 @@ class RemotePatchSnapshotTests(unittest.TestCase):
         source = codex_home / "test-marketplace/plugins/android-engineering-ops"
         runtime = (
             codex_home
-            / "plugins/cache/android-codex-suite/android-engineering-ops/2.0.2"
+            / "plugins/cache/android-codex-suite/android-engineering-ops" / PLUGIN_VERSION
         )
         for plugin in (source, runtime):
             plugin.parent.mkdir(parents=True, exist_ok=True)
@@ -173,7 +174,7 @@ class RemotePatchSnapshotTests(unittest.TestCase):
                     "pluginId": "android-engineering-ops@android-codex-suite",
                     "name": "android-engineering-ops",
                     "marketplaceName": "android-codex-suite",
-                    "version": "2.0.2",
+                    "version": PLUGIN_VERSION,
                     "installed": True,
                     "enabled": True,
                     "source": {"source": "local", "path": str(source)},

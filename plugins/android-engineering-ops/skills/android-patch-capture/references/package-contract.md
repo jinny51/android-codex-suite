@@ -356,11 +356,15 @@ expected receipt shape is:
 }
 ```
 
-The top-level `PASS` in this automatic file means the build/delivery operation passed. It is not
-requirement acceptance. `capture_android_patch.py` preserves this fail-closed scope, including
-for older delivery files that lack the v2 fields. Manual capture arguments can still supplement
-the automatic file for historical or exceptional packages, but only explicit device-behavior or
-qualified equivalent verification can produce requirement acceptance.
+The top-level `PASS` in this automatic file means the build/delivery operation passed,
+not requirement acceptance. Explicit imports require the v2 `build_delivery/unverified`
+fields. Capture retains the complete producer object under `delivery_receipt` in a
+separate `deploy_result` evidence envelope named `build-delivery*.json`; the source
+file is not changed. The envelope carries capture component bindings and keeps the
+delivery scope and result. It cannot replace the generated feature verification.
+For multiple components, use `--evidence-component build-delivery:COMPONENT_ID` to
+associate the first such receipt without rewriting it. Only explicit device-behavior
+or qualified equivalent verification can produce requirement acceptance.
 
 ## Coding Standard Check
 

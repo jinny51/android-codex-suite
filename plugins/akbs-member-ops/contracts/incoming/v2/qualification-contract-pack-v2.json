@@ -159,6 +159,22 @@
         "result"
       ],
       "result": "matching_component_and_accepted_assertion_id_only"
+    },
+    "runtime_or_equivalent": {
+      "required_payload_fields": [
+        "result",
+        "component_ids"
+      ],
+      "result": "PASS_when_runtime_steps_nonempty_or_explicit_feature_equivalent",
+      "equivalent_required_nonempty": [
+        "equivalent_type",
+        "reason",
+        "coverage",
+        "remaining_risk"
+      ],
+      "equivalent_scope": "feature",
+      "equivalent_requirement_acceptance": "accepted",
+      "equivalent_contract_version": "akbs-verification-evidence/v2"
     }
   },
   "not_applicable": {
@@ -374,7 +390,7 @@
         "schema": "akbs-qualification-adapter-input-v2",
         "version": "2"
       },
-      "shape_family": "runtime",
+      "shape_family": "runtime_or_equivalent",
       "accepted_source_kinds": [
         "verification_result"
       ],
@@ -456,7 +472,7 @@
         "schema": "akbs-qualification-adapter-input-v2",
         "version": "2"
       },
-      "shape_family": "runtime",
+      "shape_family": "runtime_or_equivalent",
       "accepted_source_kinds": [
         "verification_result"
       ],
@@ -516,7 +532,7 @@
         "schema": "akbs-qualification-adapter-input-v2",
         "version": "2"
       },
-      "shape_family": "runtime",
+      "shape_family": "runtime_or_equivalent",
       "accepted_source_kinds": [
         "verification_result"
       ],

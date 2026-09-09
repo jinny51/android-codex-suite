@@ -104,7 +104,12 @@ def test_python_validator_components_use_parent_or_finally_cleanup() -> None:
     assert "validator_cleanup_install" in aggregate
     assert "validate_incoming_contract_gate.py\" --mode client-only" in aggregate
     assert "--mode remote-pilot" not in aggregate
-    assert 'choices=("client-only", "remote-pilot")' in incoming
+    assert 'choices=("client-only", "remote-pilot", "v2-release")' in incoming
+    v2 = (REPO_ROOT / "scripts/android_change_v2_contract_gate.py").read_text(encoding="utf-8")
+    assert "controlled-validation-output.sh" in v2
+    assert "bash scripts/run-tests.sh" in v2
+    assert "generate_packages" in v2 and "submit_package" in v2
+    assert "normalized_component_read" in v2
     assert 'default="client-only"' in incoming
 
 

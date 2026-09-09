@@ -12,6 +12,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 PLUGIN = ROOT / "plugins/android-engineering-ops"
+PLUGIN_VERSION = json.loads((PLUGIN / ".codex-plugin/plugin.json").read_text())["version"]
 
 
 @pytest.fixture(scope="session")
@@ -23,7 +24,7 @@ def installed_engineering_family(
     home = root / "codex-home"
     marketplace = "android-codex-suite"
     source = home / ".tmp/marketplaces" / marketplace / "plugins/android-engineering-ops"
-    runtime = home / "plugins/cache" / marketplace / "android-engineering-ops/2.0.2"
+    runtime = home / "plugins/cache" / marketplace / "android-engineering-ops" / PLUGIN_VERSION
     for target in (source, runtime):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(
@@ -41,7 +42,7 @@ def installed_engineering_family(
                 "pluginId": "android-engineering-ops@android-codex-suite",
                 "name": "android-engineering-ops",
                 "marketplaceName": marketplace,
-                "version": "2.0.2",
+                "version": PLUGIN_VERSION,
                 "installed": True,
                 "enabled": True,
                 "source": {"source": "local", "path": str(source)},

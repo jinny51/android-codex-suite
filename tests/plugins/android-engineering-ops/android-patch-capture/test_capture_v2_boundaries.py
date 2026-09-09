@@ -20,6 +20,10 @@ LEGACY_READER_PATH = (
     ROOT
     / "plugins/android-engineering-ops/skills/android-patch-capture/scripts/read_legacy_capture.py"
 )
+PUSH_PATH = (
+    ROOT
+    / "plugins/android-engineering-ops/skills/android-remote-build-deploy/scripts/push_artifacts.py"
+)
 
 
 def load(path: Path, name: str):
@@ -29,6 +33,138 @@ def load(path: Path, name: str):
     sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def producer_delivery_receipt(*, dry_run: bool = False) -> dict:
+    push = load(PUSH_PATH, "capture_build_delivery_producer")
+    manifest = push.RemoteArtifactManifest(
+        schema="android-remote-artifact-manifest-v1", version=1,
+        remote_path="/build/android/out/system/lib64/libtest.so", module="libtest",
+        profile="native", workspace_id="0123456789abcdef", command_id="build-001",
+        build_started_ns=1, build_finished_ns=3, size=42, mtime_ns=2, sha256="a" * 64,
+    )
+    return push.delivery_evidence(
+        argparse.Namespace(
+            adb_serial="device-01", reboot=True, wait_boot=True, dry_run=dry_run,
+            remote_build_host="builder", remote_source_root="/build/android",
+            remote_build_command="m libtest", remote_build_profile="native",
+            artifact_transfer="verified artifact bridge",
+        ),
+        [(Path("/artifacts/libtest.so"), "/system/lib64/libtest.so")],
+        [manifest],
+    )
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_formal_delivery_receipt_is_auxiliary_and_never_feature_acceptance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dry_run: bool,
+) -> None:
+    capture = load(CAPTURE_PATH, "capture_build_delivery_consumer")
+    receipt = producer_delivery_receipt(dry_run=dry_run)
+    source = tmp_path / "latest-build-delivery.json"
+    original = (json.dumps(receipt, ensure_ascii=False, indent=2) + "\n").encode()
+    source.write_bytes(original)
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    generated_feature = b'{"result":"INFO","scope":"feature"}\n'
+    (evidence_dir / "verification-result.json").write_bytes(generated_feature)
+    rows = capture.collect_external_evidence(
+        argparse.Namespace(
+            evidence_dir=[], build_result=[str(source)], components=[{"id": "native"}],
+            evidence_component=[],
+        ),
+        evidence_dir,
+    )
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["id"] == "build-delivery"
+    assert row["kind"] == "deploy_result"
+    payload = json.loads((tmp_path / row["path"]).read_text())
+    assert payload["delivery_receipt"] == receipt
+    assert payload["scope"] == "build_delivery"
+    assert payload["requirement_acceptance"] == "unverified"
+    assert payload["component_ids"] == ["native"]
+    assert payload["result"] == ("INFO" if dry_run else "PASS")
+    assert not capture.has_authoritative_requirement_result(payload, expected_result="PASS")
+    assert source.read_bytes() == original
+    assert (evidence_dir / "verification-result.json").read_bytes() == generated_feature
+
+    monkeypatch.setattr(sys, "argv", [str(CAPTURE_PATH), "--platform", "rk14",
+        "--change-id", "test-delivery", "--summary", "test delivery",
+        "--workflow-contract", "manual_import", "--status", "validated"])
+    args = capture.parse_args()
+    feature = capture.verification_result(args)
+    assert capture.validate_verification_for_status(args, feature)
+
+
+def test_multiple_delivery_receipts_have_distinct_ids_and_explicit_component_scope(
+    tmp_path: Path,
+) -> None:
+    capture = load(CAPTURE_PATH, "capture_multiple_delivery_receipts")
+    receipt = producer_delivery_receipt()
+    first, second = tmp_path / "first.json", tmp_path / "second.json"
+    first.write_text(json.dumps(receipt))
+    second.write_text(json.dumps({**receipt, "component_ids": ["settings"]}))
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    args = argparse.Namespace(
+        evidence_dir=[], build_result=[str(first), str(second)],
+        components=[{"id": "native"}, {"id": "settings"}],
+        evidence_component=["build-delivery:native"],
+    )
+    rows = capture.collect_external_evidence(args, evidence_dir)
+    assert len({row["id"] for row in rows}) == 2
+    assert all(row["id"] != "verification-result" for row in rows)
+    assert [row["component_ids"] for row in rows] == [["native"], ["settings"]]
+    assert json.loads((tmp_path / rows[0]["path"]).read_text())["delivery_receipt"] == receipt
+
+
+@pytest.mark.parametrize("mutation", [
+    {"scope": "feature", "requirement_acceptance": "accepted"},
+    {"requirement_acceptance": "accepted"},
+    {"contract_version": "unknown"},
+    {"steps": []},
+    {"local_delivery": {}},
+])
+def test_delivery_import_rejects_fake_feature_or_incomplete_receipts(
+    tmp_path: Path, mutation: dict,
+) -> None:
+    capture = load(CAPTURE_PATH, "capture_invalid_delivery_receipt")
+    source = tmp_path / "receipt.json"
+    source.write_text(json.dumps({**producer_delivery_receipt(), **mutation}))
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    args = argparse.Namespace(evidence_dir=[], build_result=[str(source)],
+        components=[{"id": "native"}], evidence_component=[])
+    with pytest.raises(SystemExit, match="build_delivery/unverified"):
+        capture.collect_external_evidence(args, evidence_dir)
+    assert list(evidence_dir.iterdir()) == []
+    with pytest.raises(SystemExit, match="build_delivery/unverified"):
+        capture.wrap_build_delivery_receipt({"kind": "verification_result", "result": "PASS"}, source)
+
+
+def test_formal_capture_materialize_prepare_samples_preserve_producer_boundaries(tmp_path: Path) -> None:
+    samples = load(ROOT / "scripts/android_change_v2_contract_samples.py", "formal_contract_samples_test")
+    packages, env = samples.generate_packages(tmp_path / "formal", ROOT)
+    assert set(packages) == {*samples.CASES, "platform-application"}
+    assert str(tmp_path) in env["CODEX_HOME"]
+    for name, package in packages.items():
+        manifest = json.loads((package / "manifest.json").read_text())
+        assert manifest["identity"]["member_alias"] == "wick"
+        if name == "platform-application":
+            assert {row["layer"] for row in manifest["components"]} == {"platform", "application"}
+        snapshot = json.loads((package / "evidence/remote-source-snapshot.json").read_text())
+        assert snapshot["schema"] == "android-remote-patch-snapshot-v1"
+        assert "component_ids" not in snapshot
+        delivery = json.loads((package / "evidence/build-delivery.json").read_text())
+        assert delivery["kind"] == "deploy_result"
+        assert delivery["delivery_receipt"]["kind"] == "verification_result"
+        assert delivery["requirement_acceptance"] == "unverified"
+        if name == "platform-resource-equivalent":
+            feature = json.loads((package / "evidence/verification-result.json").read_text())
+            assert feature["method"] == "equivalent"
+            assert feature["steps"] == []
+            assert feature["coverage"]
 
 
 def test_component_model_supports_all_layers_and_orthogonal_overrides() -> None:

@@ -21,6 +21,7 @@ SKILL_SCRIPTS = (
 ENTRY = SKILL_SCRIPTS / "remote-build-v2.py"
 LEGACY_GENERATOR = SKILL_SCRIPTS / "generate-build-push.sh"
 PLUGIN_SOURCE = REPO_ROOT / "plugins" / "android-engineering-ops"
+PLUGIN_VERSION = json.loads((PLUGIN_SOURCE / ".codex-plugin/plugin.json").read_text())["version"]
 
 
 def make_fake_channel(root: Path) -> Path:
@@ -124,7 +125,7 @@ class RemoteBuildV2Tests(unittest.TestCase):
         bundled_channel.chmod(bundled_channel.stat().st_mode | stat.S_IXUSR)
         self.plugin = (
             self.codex_home
-            / "plugins/cache/android-codex-suite/android-engineering-ops/2.0.2"
+            / "plugins/cache/android-codex-suite/android-engineering-ops" / PLUGIN_VERSION
         )
         self.plugin.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(self.plugin_source, self.plugin)
@@ -141,7 +142,7 @@ class RemoteBuildV2Tests(unittest.TestCase):
                     "pluginId": "android-engineering-ops@android-codex-suite",
                     "name": "android-engineering-ops",
                     "marketplaceName": "android-codex-suite",
-                    "version": "2.0.2",
+                    "version": PLUGIN_VERSION,
                     "installed": True,
                     "enabled": True,
                     "source": {"source": "local", "path": str(self.plugin_source)},

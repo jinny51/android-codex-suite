@@ -1,6 +1,6 @@
 {
   "name": "android-engineering-ops",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "Standalone Android engineering policy, workflow, source access, remote execution, build/deploy, and patch capture.",
   "author": {
     "name": "Jinny Android Team",

@@ -670,9 +670,20 @@ def configure_capture_layers(package: Path, layers: tuple[str, ...]) -> None:
     refresh_inventory(package, manifest)
 
 
-def legacy_qualification_contract() -> tuple:
+def prior_seven_layer_qualification_contract() -> tuple:
     _raw, pack, profiles, item_schema, collection_schema = materializer._load_qualification_contract()
     legacy_pack = copy.deepcopy(pack)
+    legacy_pack["shape_families"].pop("runtime_or_equivalent")
+    for rule in legacy_pack["groups"].values():
+        if rule["shape_family"] == "runtime_or_equivalent":
+            rule["shape_family"] = "runtime"
+    raw = (json.dumps(legacy_pack, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    assert hashlib.sha256(raw).hexdigest() == materializer.SEVEN_LAYER_QUALIFICATION_PACK_SHA256
+    return raw, legacy_pack, profiles, item_schema, collection_schema
+
+
+def legacy_qualification_contract() -> tuple:
+    _raw, legacy_pack, profiles, item_schema, collection_schema = prior_seven_layer_qualification_contract()
     legacy_pack["capability"]["executable_layers"] = ["application", "platform"]
     legacy_pack["capability"]["disabled_layers"] = {
         layer: "layer_not_enabled" for layer in ("native", "hal", "kernel", "device", "build")
@@ -1605,6 +1616,50 @@ class CaptureAdapterPreflightTest(unittest.TestCase):
                 for path in prepared_package.rglob("*") if path.is_file()
             }
             self.assertEqual(prepared_bytes, before)
+
+    def test_capture_21_upgrade_reuses_prior_seven_layer_package_bytes(self) -> None:
+        previous = prior_seven_layer_qualification_contract()
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            capture = build_capture_v21(workspace / "capture", layers=("native",))
+            with mock.patch.object(materializer, "_load_qualification_contract", return_value=previous):
+                original = materialize_capture(capture, member_alias="member01", output_root=workspace / "adapted")
+            package = Path(original["package"])
+            before = {p.relative_to(package).as_posix(): p.read_bytes() for p in package.rglob("*") if p.is_file()}
+            retried = materialize_capture(capture, member_alias="member01", output_root=workspace / "adapted")
+            self.assertTrue(retried["idempotent_reuse"])
+            self.assertEqual(retried["qualification_contract_sha256"], materializer.SEVEN_LAYER_QUALIFICATION_PACK_SHA256)
+            self.assertEqual(before, {p.relative_to(package).as_posix(): p.read_bytes() for p in package.rglob("*") if p.is_file()})
+
+    def test_explicit_equivalent_verification_does_not_require_fake_runtime_steps(self) -> None:
+        equivalent = {
+            "result": "PASS", "contract_version": "akbs-verification-evidence/v2",
+            "scope": "feature", "requirement_acceptance": "accepted", "method": "equivalent",
+            "equivalent_type": "artifact_static_check", "reason": "Resource-only change",
+            "coverage": ["Compiled resources and checked the affected resource value"],
+            "remaining_risk": "No claim about untested runtime behavior", "steps": [],
+        }
+        args = dict(component_id="platform-core", source_result="PASS", accepted_assertion_ids=set())
+        self.assertEqual(materializer._evaluate_shape("runtime_or_equivalent", equivalent, **args), ("PASS", None))
+        self.assertIsNone(materializer._evaluate_shape("runtime", equivalent, **args))
+        for field in ("equivalent_type", "reason", "coverage", "remaining_risk", "method", "scope", "requirement_acceptance"):
+            with self.subTest(missing=field):
+                invalid = dict(equivalent)
+                invalid.pop(field)
+                self.assertIsNone(materializer._evaluate_shape("runtime_or_equivalent", invalid, **args))
+        self.assertIsNone(materializer._evaluate_shape("runtime_or_equivalent", dict(equivalent, scope="build_delivery", requirement_acceptance="unverified"), **args))
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            capture = build_capture_v21(workspace / "capture", layers=("platform",))
+            verification = capture / "evidence/verification-platform-core.json"
+            payload = json.loads(verification.read_text())
+            payload.update(equivalent)
+            write_json(verification, payload)
+            manifest = json.loads((capture / "manifest.json").read_text())
+            refresh_inventory(capture, manifest)
+            result = materialize_capture(capture, member_alias="member01", output_root=workspace / "adapted")
+            self.assertEqual(validation.check_package(Path(result["package"]))["status"], "PASS")
+            self.assertEqual(json.loads(verification.read_text())["steps"], [])
 
     def test_capture_21_native_package_cannot_reuse_legacy_two_layer_hash(self) -> None:
         _raw, current_pack, profiles, item_schema, collection_schema = materializer._load_qualification_contract()

@@ -315,6 +315,10 @@ Pass the build/delivery receipt explicitly with `--build-result`, or provide the
 structured `--remote-build-*`, `--artifact-transfer`, `--local-artifact`, and
 `--adb-*` facts. Build delivery remains `scope=build_delivery` and
 `requirement_acceptance=unverified`; it cannot by itself satisfy `validated`.
+The formal delivery receipt is preserved inside a separate `build-delivery` auxiliary
+evidence entry, never merged into `verification-result`. For a multi-component
+capture, bind it explicitly with `--evidence-component build-delivery:COMPONENT_ID`;
+do not edit the original receipt to add capture metadata.
 
 `validated`, `candidate`, `draft`, `failed`, `blocked`, and platform labels are useful
 hints, not final truth. Capture can confirm the declared status or downgrade it; it

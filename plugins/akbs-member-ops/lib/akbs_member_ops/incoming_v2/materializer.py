@@ -53,9 +53,10 @@ GIT_OID_RE = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 ALIAS_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
 TOKEN_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 SEARCH_DECISIONS = {"reuse", "adapt", "reference_only", "not_applicable", "not_found"}
-# The released two-layer pack has identical evidence rules. Existing packages
-# retain its identity and exact bytes so an upgrade cannot break an upload retry.
+# Released packs retain their identity and exact bytes on upload retry. Their
+# runtime family is not retroactively reinterpreted as equivalent verification.
 LEGACY_QUALIFICATION_PACK_SHA256 = "ac064f0c6215ff9471b3b7c6ab8f9dab9fcec066b112cadfbb334985cd09b1a4"
+SEVEN_LAYER_QUALIFICATION_PACK_SHA256 = "f4d909382059f6db3a2007d1c6e9ab21ee08b2398a7de07c2292bf0826d4cb54"
 
 
 def _fail(code: str, detail: str) -> None:
@@ -407,6 +408,24 @@ def _evaluate_shape(
             and _nonempty_list(payload.get("build"))
             else None
         )
+    if family == "runtime_or_equivalent":
+        if source_result != "PASS" or payload.get("result") != "PASS":
+            return None
+        if _nonempty_list(payload.get("steps")):
+            return "PASS", None
+        if (
+            payload.get("contract_version") == "akbs-verification-evidence/v2"
+            and payload.get("scope") == "feature"
+            and payload.get("requirement_acceptance") == "accepted"
+            and payload.get("method") == "equivalent"
+            and all(
+                isinstance(payload.get(field), str) and payload[field].strip()
+                for field in ("equivalent_type", "reason", "remaining_risk")
+            )
+            and _nonempty_list(payload.get("coverage"))
+        ):
+            return "PASS", None
+        return None
     if family == "runtime":
         return (
             ("PASS", None)
@@ -906,12 +925,26 @@ def _existing_result(
     if not isinstance(extension, dict) or not isinstance(qualification, dict):
         _fail("idempotency_conflict", "existing capture or qualification extension differs")
     existing_contract_sha256 = qualification.get("contract_sha256")
-    if existing_contract_sha256 == LEGACY_QUALIFICATION_PACK_SHA256:
-        if any(
+    if existing_contract_sha256 in {
+        LEGACY_QUALIFICATION_PACK_SHA256, SEVEN_LAYER_QUALIFICATION_PACK_SHA256,
+    }:
+        if existing_contract_sha256 == LEGACY_QUALIFICATION_PACK_SHA256 and any(
             component["layer"] not in {"application", "platform"}
             for component in snapshot["details"]["components"]
         ):
             _fail("idempotency_conflict", "legacy qualification does not cover this component")
+        # Old runtime contracts required actual steps. Do not validate an old
+        # package under today's broader equivalent-verification semantics.
+        old_pack = json.loads(QUALIFICATION_PACK_PATH.read_bytes())
+        for rule in old_pack["groups"].values():
+            if rule["shape_family"] == "runtime_or_equivalent":
+                rule["shape_family"] = "runtime"
+        _, _, old_profiles, old_item_schema, _ = _load_qualification_contract()
+        old_outputs, _, old_claims = _qualification_outputs(
+            snapshot, old_pack, old_profiles, old_item_schema,
+        )
+        if old_outputs != expected_component_outputs or old_claims != derived_claims:
+            _fail("idempotency_conflict", "existing qualification semantics differ")
         expected_inputs = load_json_bytes(
             expected_adapter_inputs_raw, label="expected qualification adapter inputs"
         )

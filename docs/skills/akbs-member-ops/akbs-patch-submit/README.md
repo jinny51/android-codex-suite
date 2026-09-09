@@ -15,6 +15,8 @@ parser `--help` 可以跳过；`--` 后面的字面 `--help` 仍是业务输入�
 
 v2 的本地 PASS 只代表 `client_semantic_coherence_valid`。客户端 adapter outputs 仍是 untrusted input，服务端必须重新计算资格。submit 使用成员已有 profile，通过现有 incoming HTTP 入口提交，普通成员不需要试点 grant。服务器未启用写入或合同不兼容时明确报错，不回退 v1。
 
+服务端拒收时，提交输出保留 `reason_code`、`request_id` 及安全的 `details`。已知 v2 错误合同中的 `validator_code` 和组件/证据定位（例如 `$/components/surfaceflinger-native/remote-source-snapshot`）通过严格格式检查后显示；自由文本、凭据、绝对文件路径及不受支持的定位仍会脱敏。请按该定位核对原材料，不通过改名、重绑组件或伪造证据绕过拒收。
+
 所有 v2 真实动作先以 `codex plugin list --json` 证明 target-only active family，并严格绑定唯一 target 条目的 `pluginId`、version、absolute marketplace `source.path` 与当前进程的精确 versioned cache；两边 direct manifest 字节和完整发布内容及 regular-file executable-bit 的规范化树 hash 必须一致（只排除 `__pycache__`/`.pyc`）。命令失败、JSON/version 畸形、symlink、路径/身份/内容不符、混装或目标插件未激活时均 fail closed，`--help` 不受业务 gate 影响。组件只接受合同中的 canonical `layer`、`type`、`partition`、`ownership`；v1 的 `change_domain` 不会被用来推导这些 facet。
 
 ```bash

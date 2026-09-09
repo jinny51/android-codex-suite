@@ -40,7 +40,7 @@ from akbs_member_ops.incoming_v2.validation import (  # noqa: E402
 from akbs_member_ops.incoming_v2 import validation as incoming_v2_validation  # noqa: E402
 from akbs_member_ops.incoming_v2 import submission as incoming_v2_submission  # noqa: E402
 from akbs_member_ops.incoming_v2 import cli as incoming_v2_cli  # noqa: E402
-from akbs_member_ops.http_client import HttpClientFailure  # noqa: E402
+from akbs_member_ops.http_client import HttpClientFailure, parse_http_error  # noqa: E402
 from akbs_intake import version_gate  # noqa: E402
 
 
@@ -690,6 +690,138 @@ class AndroidChangeV2Test(unittest.TestCase):
                     with self.assertRaisesRegex(SystemExit, "无法读取 Codex active plugin 列表"):
                         module.main(["android-change-v2", action, "/must/not/be/read"])
                     v2_main.assert_not_called()
+
+
+class HttpErrorDiagnosticTest(unittest.TestCase):
+    CONTRACT = "akbs-android-change-v2-error/v1"
+    CODE = "android_change_v2_qualification_evidence_binding_invalid"
+    PATH = "$/components/surfaceflinger-native/remote-source-snapshot"
+    REQUEST_ID = "req_" + "b" * 32
+
+    def details(self, **updates: object) -> dict[str, object]:
+        return {
+            "contract": self.CONTRACT,
+            "validator_code": self.CODE,
+            "path": self.PATH,
+            "server_qualified": False,
+            **updates,
+        }
+
+    def http_error(self, details: dict[str, object]) -> urllib.error.HTTPError:
+        envelope = {
+            "schema": "akbs-error-envelope-v1",
+            "code": self.CODE,
+            "message": "unsafe-prose Bearer synthetic-bearer /home/private/error.log",
+            "request_id": self.REQUEST_ID,
+            "details": details,
+        }
+        return urllib.error.HTTPError(
+            "http://akbs.invalid", 422, "rejected",
+            {"X-Request-ID": self.REQUEST_ID}, io.BytesIO(json.dumps(envelope).encode()),
+        )
+
+    def test_http_error_preserves_only_known_v2_machine_diagnostics(self) -> None:
+        for path in (self.PATH, "$/components/component-2", "$/evidence/build-log-1/component_ids"):
+            with self.subTest(path=path):
+                result = parse_http_error(self.http_error(self.details(path=path)))
+                self.assertTrue(result.envelope_valid)
+                self.assertEqual(result.request_id, self.REQUEST_ID)
+                self.assertEqual(result.details, self.details(path=path))
+                self.assertNotIn("unsafe-prose", result.message)
+                self.assertNotIn("synthetic-bearer", result.message)
+                self.assertNotIn("/home/private", result.message)
+
+    def test_http_error_rejects_unsafe_or_unbounded_v2_locators(self) -> None:
+        paths = (
+            "/home/private/error.log", r"C:\Users\private\error.log",
+            "https://example.invalid/private", "file:///home/private/error.log",
+            "$/components/../private", "$/components/component-1/../../private",
+            "$/components/component..1/evidence-1", "$/components//private",
+            "$/components/component-1/evidence-1/private", "$/components/http:/private",
+            "$/components/component-1/Bearer synthetic-bearer",
+            "$/components/token-synthetic-secret/evidence-1",
+            "$/components/component-1/cookie", "$/components/component-1/%2e%2e",
+            "$/components/component-1/evidence-1\n", "$/components/component-1/\x00private",
+            "$/components/" + "a" * 129, "$/components/component-1/" + "b" * 129,
+            "components[0].evidence", "$/unknown/component-1/evidence-1",
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                result = parse_http_error(self.http_error(self.details(path=path)))
+                self.assertEqual(result.details["path"], "[REDACTED]")
+                self.assertEqual(result.details["validator_code"], self.CODE)
+
+    def test_http_error_requires_exact_root_contract_and_safe_validator_code(self) -> None:
+        for updates in (
+            {"contract": "akbs-other-error/v1"},
+            {"contract": self.CONTRACT + "\n"},
+            {"validator_code": "unknown_server_code"},
+            {"validator_code": "android_change_v2_token_synthetic_secret"},
+            {"validator_code": self.CODE + "\n"},
+            {"validator_code": "android_change_v2_" + "a" * 64},
+            {"validator_code": [self.CODE]},
+        ):
+            with self.subTest(updates=updates):
+                result = parse_http_error(self.http_error(self.details(**updates)))
+                self.assertEqual(result.details["contract"], "[REDACTED]")
+                self.assertEqual(result.details["path"], "[REDACTED]")
+        result = parse_http_error(self.http_error({"nested": self.details()}))
+        self.assertEqual(result.details["nested"]["contract"], "[REDACTED]")
+        self.assertEqual(result.details["nested"]["path"], "[REDACTED]")
+
+    def test_http_error_keeps_default_redaction_and_collection_limits(self) -> None:
+        details = self.details(
+            schema="untrusted-schema", code="untrusted-code", note="arbitrary-echo",
+            password="synthetic-password", authorization="Bearer synthetic-authorization",
+            message="synthetic-message", component_id="arbitrary-component-echo",
+            nested={"path": self.PATH, "note": "synthetic-nested", "deeper": {"path": self.PATH}},
+            items=["synthetic-item"] * 21,
+        )
+        result = parse_http_error(self.http_error(details))
+        self.assertEqual(result.details["path"], self.PATH)
+        self.assertEqual(result.details["nested"]["path"], "[REDACTED]")
+        self.assertEqual(result.details["nested"]["deeper"]["path"], "[TRUNCATED]")
+        self.assertEqual(result.details["items"], ["[REDACTED]"] * 20)
+        rendered = json.dumps(result.details) + result.safe_summary("upload")
+        for secret in (
+            "untrusted-schema", "untrusted-code", "arbitrary-echo", "synthetic-password",
+            "synthetic-authorization", "synthetic-message", "arbitrary-component-echo",
+            "synthetic-nested", "synthetic-item", "synthetic-bearer", "unsafe-prose",
+        ):
+            self.assertNotIn(secret, rendered)
+        many_fields = self.details(**{f"field{i}": "synthetic-value" for i in range(25)})
+        self.assertEqual(len(parse_http_error(self.http_error(many_fields)).details), 20)
+
+    def test_submit_cli_reports_safe_binding_location_without_leaking_server_text(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            source = build_package(workspace / "source")
+            error = self.http_error(self.details(
+                note="synthetic-private-note",
+                password="synthetic-password",
+                nested={"path": "/home/private/error.log", "authorization": "Bearer synthetic-nested"},
+            ))
+            output = io.StringIO()
+            with submission_environment(workspace), mock.patch.object(
+                urllib.request, "urlopen", side_effect=error
+            ) as urlopen, contextlib.redirect_stdout(output):
+                exit_code = incoming_v2_cli.main(["submit", str(source), "--profile", "selected"])
+            result = json.loads(output.getvalue())
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(result["http_status"], 422)
+            self.assertEqual(result["reason_code"], self.CODE)
+            self.assertEqual(result["request_id"], self.REQUEST_ID)
+            for key, value in self.details().items():
+                self.assertEqual(result["details"][key], value)
+            self.assertFalse(result["server_qualified"])
+            self.assertFalse(result["v1_fallback"])
+            self.assertEqual(result["network_requests"], 1)
+            urlopen.assert_called_once()
+            for secret in (
+                "synthetic-private-note", "synthetic-password", "synthetic-nested",
+                "synthetic-bearer", "unsafe-prose", "/home/private/error.log",
+            ):
+                self.assertNotIn(secret, output.getvalue())
 
 
 if __name__ == "__main__":

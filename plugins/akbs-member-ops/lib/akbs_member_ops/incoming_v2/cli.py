@@ -78,6 +78,7 @@ def main(argv: list[str] | None = None) -> int:
             "http_status": error.status_code,
             "request_id": error.request_id,
             "error_kind": error.kind.value,
+            "details": error.details,
             "retryable": error.retryable,
             "server_qualified": False,
             "v1_fallback": False,

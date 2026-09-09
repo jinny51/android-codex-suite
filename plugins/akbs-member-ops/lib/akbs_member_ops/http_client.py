@@ -35,6 +35,11 @@ SECRET_OPTION_RE = re.compile(
 )
 ENV_ASSIGNMENT_RE = re.compile(r"\b([A-Z][A-Z0-9_]{2,})=([^\s]+)")
 PATH_RE = re.compile(r"(?:[A-Za-z]:[\\/][^\s]+|(?:/[A-Za-z0-9_.@+-]+){2,})")
+V2_DIAGNOSTIC_CONTRACT = "akbs-android-change-v2-error/v1"
+V2_DIAGNOSTIC_PATH_RE = re.compile(
+    r"\$/(?:components|evidence)/[A-Za-z0-9][A-Za-z0-9_.-]{0,127}"
+    r"(?:/[A-Za-z0-9][A-Za-z0-9_.-]{0,127})?"
+)
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 
 
@@ -116,12 +121,34 @@ def sanitize_details(value: Any, *, depth: int = 0) -> Any:
     if depth >= 3:
         return "[TRUNCATED]"
     if isinstance(value, dict):
+        validator_code = value.get("validator_code")
+        v2_diagnostic = (
+            depth == 0
+            and value.get("contract") == V2_DIAGNOSTIC_CONTRACT
+            and isinstance(validator_code, str)
+            and validator_code.startswith("android_change_v2_")
+            and CODE_RE.fullmatch(validator_code) is not None
+            and SECRET_KEY_RE.search(validator_code) is None
+        )
         result: dict[str, Any] = {}
         for index, (raw_key, raw_value) in enumerate(list(value.items())[:20]):
             raw_key_text = str(raw_key)
             key = raw_key_text if re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,63}", raw_key_text) else f"field_{index}"
             if SECRET_KEY_RE.search(str(raw_key)):
                 result[f"field_{index}"] = "[REDACTED]"
+            elif v2_diagnostic and key in {"contract", "validator_code"}:
+                result[key] = raw_value
+            elif (
+                v2_diagnostic
+                and key == "path"
+                and isinstance(raw_value, str)
+                and V2_DIAGNOSTIC_PATH_RE.fullmatch(raw_value) is not None
+                and ".." not in raw_value
+                and SECRET_KEY_RE.search(raw_value) is None
+            ):
+                # This is a bounded component/evidence locator, not a file path.
+                # No URLs, drive prefixes, escapes, arbitrary nesting or prose.
+                result[key] = raw_value
             else:
                 result[key] = sanitize_details(raw_value, depth=depth + 1)
         return result
@@ -130,8 +157,8 @@ def sanitize_details(value: Any, *, depth: int = 0) -> Any:
     if isinstance(value, (bool, int, float)) or value is None:
         return value
     # Error details are server-controlled and can echo arbitrary request/session
-    # text. Preserve useful structure and numeric limits, but never retain a raw
-    # string leaf in the client error object.
+    # text. Outside the explicit root v2 diagnostic fields above, preserve useful
+    # structure and numeric limits but never retain a raw string leaf.
     return "[REDACTED]"
 
 

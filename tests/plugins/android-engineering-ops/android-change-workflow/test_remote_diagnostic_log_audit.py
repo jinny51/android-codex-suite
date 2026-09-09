@@ -43,7 +43,7 @@ class RemoteDiagnosticAuditTests(unittest.TestCase):
         bundled.chmod(bundled.stat().st_mode | stat.S_IXUSR)
         runtime = (
             codex_home
-            / "plugins/cache/android-codex-suite/android-engineering-ops/2.0.1"
+            / "plugins/cache/android-codex-suite/android-engineering-ops/2.0.2"
         )
         runtime.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source, runtime)
@@ -55,7 +55,7 @@ class RemoteDiagnosticAuditTests(unittest.TestCase):
                     "pluginId": "android-engineering-ops@android-codex-suite",
                     "name": "android-engineering-ops",
                     "marketplaceName": "android-codex-suite",
-                    "version": "2.0.1",
+                    "version": "2.0.2",
                     "installed": True,
                     "enabled": True,
                     "source": {"source": "local", "path": str(source)},

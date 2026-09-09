@@ -124,7 +124,7 @@ class RemoteBuildV2Tests(unittest.TestCase):
         bundled_channel.chmod(bundled_channel.stat().st_mode | stat.S_IXUSR)
         self.plugin = (
             self.codex_home
-            / "plugins/cache/android-codex-suite/android-engineering-ops/2.0.1"
+            / "plugins/cache/android-codex-suite/android-engineering-ops/2.0.2"
         )
         self.plugin.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(self.plugin_source, self.plugin)
@@ -141,7 +141,7 @@ class RemoteBuildV2Tests(unittest.TestCase):
                     "pluginId": "android-engineering-ops@android-codex-suite",
                     "name": "android-engineering-ops",
                     "marketplaceName": "android-codex-suite",
-                    "version": "2.0.1",
+                    "version": "2.0.2",
                     "installed": True,
                     "enabled": True,
                     "source": {"source": "local", "path": str(self.plugin_source)},

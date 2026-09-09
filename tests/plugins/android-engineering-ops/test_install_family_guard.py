@@ -29,7 +29,7 @@ def entry(name: str, root: Path = PLUGIN) -> dict[str, object]:
         "pluginId": f"{name}@{marketplace}",
         "name": name,
         "marketplaceName": marketplace,
-        "version": "2.0.1",
+        "version": "2.0.2" if name == "android-engineering-ops" else "2.0.1",
         "installed": True,
         "enabled": True,
         "source": {"source": "local", "path": str(root)},
@@ -40,7 +40,7 @@ def installed_core(tmp_path: Path) -> tuple[Path, Path, Path, dict[str, object]]
     home = tmp_path / "codex-home"
     marketplace = "android-codex-suite"
     source = home / ".tmp/marketplaces" / marketplace / "plugins/android-engineering-ops"
-    runtime = home / "plugins/cache" / marketplace / "android-engineering-ops/2.0.1"
+    runtime = home / "plugins/cache" / marketplace / "android-engineering-ops/2.0.2"
     for target in (source, runtime):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(
@@ -80,7 +80,7 @@ def test_target_only_inventory_is_required_and_legacy_coinstall_fails_closed(
     [
         ({"pluginId": "wrong@android-codex-suite"}, "pluginId"),
         ({"marketplaceName": "other"}, "marketplaceName must be"),
-        ({"version": "2.0.2"}, "inventory identity differs"),
+        ({"version": "2.0.1"}, "inventory identity differs"),
         ({"version": "not-a-version"}, "version is missing or malformed"),
     ],
 )
@@ -165,7 +165,7 @@ def test_real_inventory_source_and_runtime_cache_are_both_hash_bound(
     home = tmp_path / "codex-home"
     marketplace = "android-codex-suite"
     source = home / ".tmp/marketplaces" / marketplace / "plugins/android-engineering-ops"
-    runtime = home / "plugins/cache" / marketplace / "android-engineering-ops/2.0.1"
+    runtime = home / "plugins/cache" / marketplace / "android-engineering-ops/2.0.2"
     for target in (source, runtime):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(
@@ -194,7 +194,7 @@ def test_real_inventory_source_and_runtime_executable_mode_are_hash_bound(
     home = tmp_path / "codex-home"
     marketplace = "android-codex-suite"
     source = home / ".tmp/marketplaces" / marketplace / "plugins/android-engineering-ops"
-    runtime = home / "plugins/cache" / marketplace / "android-engineering-ops/2.0.1"
+    runtime = home / "plugins/cache" / marketplace / "android-engineering-ops/2.0.2"
     for target in (source, runtime):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(

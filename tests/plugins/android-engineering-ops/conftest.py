@@ -23,7 +23,7 @@ def installed_engineering_family(
     home = root / "codex-home"
     marketplace = "android-codex-suite"
     source = home / ".tmp/marketplaces" / marketplace / "plugins/android-engineering-ops"
-    runtime = home / "plugins/cache" / marketplace / "android-engineering-ops/2.0.1"
+    runtime = home / "plugins/cache" / marketplace / "android-engineering-ops/2.0.2"
     for target in (source, runtime):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(
@@ -41,7 +41,7 @@ def installed_engineering_family(
                 "pluginId": "android-engineering-ops@android-codex-suite",
                 "name": "android-engineering-ops",
                 "marketplaceName": marketplace,
-                "version": "2.0.1",
+                "version": "2.0.2",
                 "installed": True,
                 "enabled": True,
                 "source": {"source": "local", "path": str(source)},

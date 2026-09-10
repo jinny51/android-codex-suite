@@ -193,9 +193,8 @@ class RemotePatchSnapshotTests(unittest.TestCase):
         codex.chmod(0o755)
         return runtime
 
-    def capture_command(self, snapshot_path: Path, codex_home: Path) -> list[str]:
+    def capture_arguments(self, codex_home: Path) -> list[str]:
         codex_home.mkdir(parents=True, exist_ok=True)
-        plugin = self.install_plugin(codex_home)
         (codex_home / "android-knowledge-intake.toml").write_text(
             "default_profile = \"member01\"\n\n"
             "[profiles.member01]\n"
@@ -205,20 +204,6 @@ class RemotePatchSnapshotTests(unittest.TestCase):
             encoding="utf-8",
         )
         return [
-            sys.executable,
-            str(plugin / "skills/android-patch-capture/scripts/capture_android_patch.py"),
-            "--remote-snapshot",
-            str(snapshot_path),
-            "--snapshot-workspace-id",
-            self.workspace_id,
-            "--snapshot-command-id",
-            self.command_id,
-            "--snapshot-sha256",
-            str(self.snapshot["snapshot_sha256"]),
-            "--snapshot-max-age-seconds",
-            "86400",
-            "--remote-source-root",
-            self.remote_root.as_posix(),
             "--profile",
             "member01",
             "--out-dir",
@@ -249,6 +234,26 @@ class RemotePatchSnapshotTests(unittest.TestCase):
             "No candidate found",
             "--reuse-decision",
             "not_found",
+        ]
+
+    def capture_command(self, snapshot_path: Path, codex_home: Path) -> list[str]:
+        plugin = self.install_plugin(codex_home)
+        return [
+            sys.executable,
+            str(plugin / "skills/android-patch-capture/scripts/capture_android_patch.py"),
+            "--remote-snapshot",
+            str(snapshot_path),
+            "--snapshot-workspace-id",
+            self.workspace_id,
+            "--snapshot-command-id",
+            self.command_id,
+            "--snapshot-sha256",
+            str(self.snapshot["snapshot_sha256"]),
+            "--snapshot-max-age-seconds",
+            "86400",
+            "--remote-source-root",
+            self.remote_root.as_posix(),
+            *self.capture_arguments(codex_home),
         ]
 
     def test_snapshot_captures_git_repo_binary_diffs_and_untracked_inventory(self) -> None:
@@ -533,6 +538,105 @@ class RemotePatchSnapshotTests(unittest.TestCase):
         self.assertIn("exclusive", channel_arguments)
         self.assertIn(self.command_id, channel_arguments)
         self.assertTrue(any("remote_patch_snapshot" in item for item in channel_arguments))
+
+    def test_handoff_package_mode_immediately_builds_atomic_capture(self) -> None:
+        remote_snapshot = (
+            self.root
+            / "package-remote-home"
+            / ".codex"
+            / "android-remote-sessions"
+            / self.workspace_id
+            / "snapshots"
+            / self.command_id
+            / "snapshot.json"
+        )
+        self.write_snapshot(remote_snapshot)
+        bin_dir = self.root / "package-bin"
+        bin_dir.mkdir()
+        fake_channel = bin_dir / "fake-channel"
+        fake_channel.write_text(
+            "#!/bin/sh\n"
+            f"printf 'SNAPSHOT_REMOTE_PATH={remote_snapshot}\\n'\n"
+            f"printf 'SNAPSHOT_SHA256={self.snapshot['snapshot_sha256']}\\n'\n"
+            f"printf 'SNAPSHOT_WORKSPACE_ID={self.workspace_id}\\n'\n"
+            f"printf 'SNAPSHOT_COMMAND_ID={self.command_id}\\n'\n"
+            f"printf 'SNAPSHOT_REMOTE_ROOT={self.remote_root}\\n'\n",
+            encoding="utf-8",
+        )
+        fake_channel.chmod(0o755)
+        fake_scp = bin_dir / "scp"
+        fake_scp.write_text(
+            "#!/bin/sh\n"
+            "source_path=${2#*:}\n"
+            "cp \"$source_path\" \"$3\"\n",
+            encoding="utf-8",
+        )
+        fake_scp.chmod(0o755)
+        codex_home = self.root / "package-codex-home"
+        plugin = self.install_plugin(codex_home, channel=fake_channel, bin_dir=bin_dir)
+        handoff = plugin / "skills/android-patch-capture/scripts/capture_remote_snapshot.py"
+
+        result = run(
+            [
+                sys.executable,
+                str(handoff),
+                "--ssh-host",
+                "fake-host",
+                "--remote-root",
+                self.remote_root.as_posix(),
+                "--repo-path",
+                "frameworks/base",
+                "--command-id",
+                self.command_id,
+                "--max-age-seconds",
+                "86400",
+                "--package",
+                "--",
+                *self.capture_arguments(codex_home),
+            ],
+            self.root,
+            env={
+                "CODEX_HOME": str(codex_home),
+                "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        package = Path(json.loads(result.stdout)["package"])
+        self.assertTrue(package.is_dir())
+        manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["source_snapshot"]["workspace_id"], self.workspace_id)
+        self.assertEqual(manifest["source_snapshot"]["command_id"], self.command_id)
+        self.assertEqual(
+            manifest["source_snapshot"]["sha256"], self.snapshot["snapshot_sha256"]
+        )
+        self.assertTrue((package / "evidence/remote-source-snapshot.json").is_file())
+
+    def test_handoff_package_mode_rejects_snapshot_identity_overrides(self) -> None:
+        codex_home = self.root / "package-override-codex-home"
+        plugin = self.install_plugin(codex_home)
+        handoff = plugin / "skills/android-patch-capture/scripts/capture_remote_snapshot.py"
+        result = run(
+            [
+                sys.executable,
+                str(handoff),
+                "--ssh-host",
+                "unused-host",
+                "--remote-root",
+                self.remote_root.as_posix(),
+                "--repo-path",
+                "frameworks/base",
+                "--command-id",
+                self.command_id,
+                "--package",
+                "--",
+                "--remote-snapshot=/tmp/forbidden.json",
+            ],
+            self.root,
+            env={"CODEX_HOME": str(codex_home)},
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("不得覆盖一步流程绑定的 --remote-snapshot", result.stderr)
 
     def test_handoff_channel_failure_never_falls_back_to_transfer_or_source(self) -> None:
         bin_dir = self.root / "failure-bin"

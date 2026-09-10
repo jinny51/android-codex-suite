@@ -1,6 +1,6 @@
 # Android Engineering Ops
 
-`android-engineering-ops` 2.0.4 是可独立安装的 Android 工程核心。它不依赖
+`android-engineering-ops` 2.0.5 是可独立安装的 Android 工程核心。它不依赖
 `akbs-member-ops` 或任何 practices provider；未配置扩展时始终使用 core-direct。
 
 | Skill | 职责 |
@@ -69,6 +69,9 @@ layer/type hint，缺失 facet 保持 `unknown`；`vendor` 要求四字段显式
 做严格 v2 本地检查和 byte-preserving prepare。服务端 writer 关闭时网络提交
 capability-gated 且零副作用，绝不伪装或回落 Framework v1。既有 Framework v1 包只按
 永久 compatibility contract 读取/提交，不改写历史。
+
+Codex 编写的当前源码变更使用 `capture_remote_snapshot.py --package` 一步获取远端最新
+快照并立即调用原子打包器。旧两步接口继续兼容，但不再是默认人工流程。
 
 ## Source access
 

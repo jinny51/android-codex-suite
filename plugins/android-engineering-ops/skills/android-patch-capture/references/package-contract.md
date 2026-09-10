@@ -37,6 +37,11 @@ HEAD-relative binary diff, untracked inventory/content patch, changed files,
 per-blob hashes, generation time, and a canonical snapshot SHA-256. The local
 packager verifies every field and copies the validated snapshot into package
 evidence. It never accepts `--source-root` or a caller patch for this workflow.
+The preferred `capture_remote_snapshot.py --package` entry creates and transfers the
+snapshot under the remote-channel lock and immediately invokes that same packager with
+tool-owned identity arguments. This removes the human delay between snapshot and
+packaging without weakening the immutable handoff or atomic package publication. The
+split handoff remains a compatibility surface and retains the bounded age guard.
 
 The manifest `project` field stores only the normalized company model. Branch suffixes, customer suffixes, build branches, business labels, module labels, Chinese descriptions, and other non-standard trailing text must stay in `project_inference` evidence. For example, `TVE1067M1_H031` becomes `TVE1067M1`, `TVE1086U_MAIN_HANGYAN` becomes `TVE1086U`, and `TVE1091U福建移动高清` becomes `TVE1091U`.
 

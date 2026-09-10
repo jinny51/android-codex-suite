@@ -92,11 +92,14 @@ evidence belong under a safe `$CODEX_HOME/artifacts` location.
 Direct SSH is not permitted for capture. All remote source and Git operations go
 through `android-remote-channel`; a missing snapshot/channel is a hard stop.
 
-`capture_remote_snapshot.py` is the only current-workflow source entry. It embeds
-the deterministic snapshot generator in one protocol-v2 command, runs it with
-the exclusive workspace lock, transfers the resulting read-only JSON only after
-the channel command completes, and verifies its workspace id, command id,
-canonical remote root, age, closed schema, blob hashes, and snapshot SHA-256.
+`capture_remote_snapshot.py` is the only current-workflow source entry and owns the
+preferred one-step path. With `--package`, it embeds the deterministic snapshot
+generator in one protocol-v2 command, runs it with the exclusive workspace lock,
+transfers and validates the resulting read-only JSON, then immediately invokes the
+bundled local packager with the exact workspace, command, root, hash, and freshness
+bindings. The normal workflow therefore packages the source state just captured
+instead of asking the operator to race a freshness timer. The split handoff remains
+available for compatibility and retains its bounded age check.
 `capture_android_patch.py` rejects `--source-root` and caller patch files for
 `current_codex_skill`. `manual_import` and `historical_import` may instead
 consume an explicit immutable Git binary patch with `--patch-artifact` and its
@@ -136,8 +139,9 @@ their frozen read/submission contracts; they are not the canonical component mod
 
 ## Current Workflow
 
-First create and transfer one immutable snapshot. Repeat `--repo-path` when one
-change spans multiple repo-managed Git repositories:
+Capture the authoritative remote state and package it in one invocation. Repeat
+`--repo-path` when one change spans multiple repo-managed Git repositories, and put
+the ordinary `capture_android_patch.py` arguments after `--`:
 
 ```bash
 python3 "scripts/capture_remote_snapshot.py" \
@@ -145,21 +149,9 @@ python3 "scripts/capture_remote_snapshot.py" \
   --remote-root "$REMOTE_ROOT" \
   --repo-path frameworks/base \
   --repo-path packages/apps/Settings \
-  --command-id "$PATCH_SNAPSHOT_COMMAND_ID"
-```
-
-The command returns JSON containing `snapshot`, `snapshot_sha256`,
-`workspace_id`, `command_id`, and `remote_root`. Pass those exact values to the
-local packager:
-
-```bash
-python3 "scripts/capture_android_patch.py" \
+  --command-id "$PATCH_SNAPSHOT_COMMAND_ID" \
+  --package -- \
   --profile <profile_name> \
-  --remote-snapshot "$SNAPSHOT" \
-  --snapshot-sha256 "$SNAPSHOT_SHA256" \
-  --snapshot-workspace-id "$WORKSPACE_ID" \
-  --snapshot-command-id "$COMMAND_ID" \
-  --remote-source-root "$REMOTE_ROOT" \
   --platform rk14 \
   --component platform-core:platform:framework:system:aosp \
   --component settings-ui:application:system_app:system_ext:product \
@@ -193,6 +185,11 @@ python3 "scripts/capture_android_patch.py" \
   --reuse-outcome adapted_success \
   --build-result /path/to/build-result.json
 ```
+
+In `--package` mode, stdout is the ordinary local capture result. The local immutable
+snapshot is retained as package evidence, while package publication remains atomic;
+a failed packager never exposes a partial package. Omitting `--package` preserves the
+low-level two-step handoff JSON for existing automation, including its freshness gate.
 
 All new packages are written below the single root
 `$CODEX_HOME/artifacts/android-patch-capture/packages` and include the
@@ -276,7 +273,7 @@ Do not write generic labels such as `android16`, `Camera2`, or `mtk android16 Ca
 
 Before packaging, inspect `git status --short` for every source repository through the remote channel and preserve unrelated user work. Package only the intended coherent change set. If unrelated files are dirty, stop and ask whether to split, stash, or include them.
 
-One capture package represents one coherent change. If the change spans multiple repo-managed Git repositories, pass every affected remote repository with repeated `--repo-path` to `capture_remote_snapshot.py`; the package will contain one root `README.md` and one patch per affected repository. The skill, not the member, must write the function-boundary explanation into the generated README: change target, module scope, key anchors, and how each repository-level patch serves the same target. If those facts are missing or the relationship cannot be explained from source changes, summary, and evidence, stop and ask the member for the missing factual input before generating or uploading the package.
+One capture package represents one coherent change. If the change spans multiple repo-managed Git repositories, pass every affected remote repository with repeated `--repo-path` to the one-step `capture_remote_snapshot.py --package` path; the package will contain one root `README.md` and one patch per affected repository. The skill, not the member, must write the function-boundary explanation into the generated README: change target, module scope, key anchors, and how each repository-level patch serves the same target. If those facts are missing or the relationship cannot be explained from source changes, summary, and evidence, stop and ask the member for the missing factual input before generating or uploading the package.
 
 Before generating a package for intake, Codex must derive the actual requirement problem and implemented solution from the current request, diff, and verification evidence, then pass both `--problem-summary` and `--solution-summary`. The two arguments are a pair. They are not member-authored JSON overrides: the capture script validates them and writes the generated `patch-problem-summary.json`. Module-based inference remains a compatibility fallback for local draft or candidate material, but a generic low-confidence fallback is not sufficient reason to hand-edit generated JSON or stop permanently. Rerun the same capture command with the factual pair instead.
 

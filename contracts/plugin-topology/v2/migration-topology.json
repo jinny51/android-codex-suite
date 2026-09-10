@@ -173,7 +173,7 @@
         },
         {
           "id": "android-engineering-ops",
-          "version": "2.0.4",
+          "version": "2.0.5",
           "role": "android_engineering_controller_and_tools",
           "skills": [
             "android-change-policy",
@@ -356,7 +356,7 @@
         },
         {
           "id": "android-engineering-ops",
-          "version": "2.0.4",
+          "version": "2.0.5",
           "role": "android_engineering_controller_and_tools",
           "skills": [
             "android-change-policy",

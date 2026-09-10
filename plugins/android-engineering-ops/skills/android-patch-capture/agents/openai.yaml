@@ -1,4 +1,4 @@
 interface:
   display_name: "Android Patch Capture"
   short_description: "Package one coherent Android change and its evidence"
-  default_prompt: "Use $android-patch-capture to turn one coherent Android change into a canonical component-mapped android_change_capture; it may only preserve or downgrade status, and any later v2 network submission is capability-gated by $akbs-patch-submit."
+  default_prompt: "Use $android-patch-capture to acquire a fresh remote snapshot and atomically package one coherent Android change through the one-step path; it may only preserve or downgrade status, and any later v2 network submission is capability-gated by $akbs-patch-submit."

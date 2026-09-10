@@ -28,6 +28,13 @@ from android_engineering_ops.remote_patch_snapshot import (
 
 
 SNAPSHOT_MODULE = PLUGIN_LIB / "android_engineering_ops" / "remote_patch_snapshot.py"
+CAPTURE_SCRIPT = (
+    PLUGIN_ROOT
+    / "skills"
+    / "android-patch-capture"
+    / "scripts"
+    / "capture_android_patch.py"
+)
 CHANNEL_SCRIPT = (
     PLUGIN_ROOT
     / "skills"
@@ -38,6 +45,18 @@ CHANNEL_SCRIPT = (
 _ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 _WORKSPACE_RE = re.compile(r"[0-9a-f]{16}")
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
+_PACKAGER_OWNED_OPTIONS = (
+    "--patch-artifact",
+    "--patch-repo-path",
+    "--remote-snapshot",
+    "--remote-source-root",
+    "--snapshot-command-id",
+    "--snapshot-max-age-seconds",
+    "--snapshot-sha256",
+    "--snapshot-workspace-id",
+    "--source-root",
+    "--workflow-contract",
+)
 
 
 def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
@@ -124,9 +143,36 @@ def _require_codex_artifact_output(path: Path) -> Path:
     return resolved
 
 
+def _package_arguments(raw: list[str], *, enabled: bool) -> list[str]:
+    arguments = list(raw)
+    if arguments and arguments[0] == "--":
+        arguments.pop(0)
+    if not enabled:
+        if arguments:
+            raise SystemExit("capture 参数只能与 --package 一起使用")
+        return []
+    if not arguments:
+        raise SystemExit("--package 必须在 -- 后提供 capture_android_patch.py 参数")
+    for argument in arguments:
+        for option in _PACKAGER_OWNED_OPTIONS:
+            if argument == option or argument.startswith(option + "="):
+                raise SystemExit(f"--package 参数不得覆盖一步流程绑定的 {option}")
+    return arguments
+
+
+def _emit_completed_process(result: subprocess.CompletedProcess[str]) -> None:
+    if result.stdout:
+        sys.stdout.write(result.stdout)
+    if result.stderr:
+        sys.stderr.write(result.stderr)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Create a source snapshot through android-remote-channel v2 and transfer it locally."
+        description=(
+            "Create a source snapshot through android-remote-channel v2, transfer it locally, "
+            "and optionally package it immediately."
+        )
     )
     parser.add_argument("--ssh-host", required=True)
     parser.add_argument("--remote-root", required=True)
@@ -135,11 +181,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--channel-script", type=Path, default=CHANNEL_SCRIPT)
     parser.add_argument("--out", type=Path)
     parser.add_argument("--max-age-seconds", type=int, default=900)
+    parser.add_argument(
+        "--package",
+        action="store_true",
+        help=(
+            "Immediately invoke the bundled capture_android_patch.py with a freshly "
+            "transferred snapshot; put its arguments after --."
+        ),
+    )
+    parser.add_argument("package_args", nargs=argparse.REMAINDER)
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    package_arguments = _package_arguments(args.package_args, enabled=args.package)
+    if args.package and package_arguments == ["--help"]:
+        help_result = _run([sys.executable, str(CAPTURE_SCRIPT), "--help"])
+        _emit_completed_process(help_result)
+        return help_result.returncode
     require_target_install_family(PLUGIN_ROOT)
     if not _ID_RE.fullmatch(args.command_id):
         raise SystemExit("--command-id 必须符合 remote-channel v2 id 合同")
@@ -154,6 +214,8 @@ def main() -> int:
         raise SystemExit(f"bundled android-remote-channel 脚本不存在或不是普通文件: {channel_script}")
     if not SNAPSHOT_MODULE.is_file():
         raise SystemExit(f"remote snapshot 合同模块不存在: {SNAPSHOT_MODULE}")
+    if args.package and not CAPTURE_SCRIPT.is_file():
+        raise SystemExit(f"本地 capture packager 不存在: {CAPTURE_SCRIPT}")
 
     remote_command = _snapshot_command(args.repo_path)
     channel = _run(
@@ -234,8 +296,35 @@ def main() -> int:
         "command_id": handoff["SNAPSHOT_COMMAND_ID"],
         "remote_root": handoff["SNAPSHOT_REMOTE_ROOT"],
     }
-    print(json.dumps(result, ensure_ascii=False, sort_keys=True))
-    return 0
+    if not args.package:
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+        return 0
+
+    capture = _run(
+        [
+            sys.executable,
+            str(CAPTURE_SCRIPT),
+            "--remote-snapshot",
+            str(target),
+            "--snapshot-workspace-id",
+            handoff["SNAPSHOT_WORKSPACE_ID"],
+            "--snapshot-command-id",
+            handoff["SNAPSHOT_COMMAND_ID"],
+            "--snapshot-sha256",
+            handoff["SNAPSHOT_SHA256"],
+            "--snapshot-max-age-seconds",
+            str(args.max_age_seconds),
+            "--remote-source-root",
+            handoff["SNAPSHOT_REMOTE_ROOT"],
+            "--workflow-contract",
+            "current_codex_skill",
+            *package_arguments,
+        ]
+    )
+    _emit_completed_process(capture)
+    if capture.returncode != 0 and not capture.stdout.strip():
+        print(f"fresh snapshot 已保留供诊断: {target}", file=sys.stderr)
+    return capture.returncode
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 # AKBS Member Ops
 
-Standalone AKBS member plugin, version 2.0.7. It owns member setup, knowledge
+Standalone AKBS member plugin, version 2.1.0. It owns member setup, knowledge
 search and merge review, personal daily/weekly reports, and Android change
 package handling without depending on the engineering or optional practices
 plugins at runtime.
@@ -50,36 +50,18 @@ There is one incoming v1 implementation at
 The pinned public contract and verification reference stay byte-compatible with
 incoming v1.
 
-`akbs-patch-submit` also handles generic
-`akbs-android-change-package-v2/2/android_change` packages. It can strictly read,
-check, and byte-preserve them into the target artifact root. Client coherence is
-not server qualification. Explicit v2 submit uses the existing member profile
-and incoming HTTP endpoint, preserving bytes and using an idempotency key.
-The server must enable ordinary-member writing and independently qualify the
-package; a disabled or incompatible server returns an error with no v1 fallback.
+`akbs-patch-submit` also handles final
+`akbs-android-change-package-v2/2/android_change` directories produced directly by
+`android-patch-capture`. It strictly reads, checks, byte-preserves, and submits them
+for all seven component layers. V1 and v2 are two input formats on the same member
+profile, patch-upload endpoint, idempotency rule, and ordinary server receipt. There
+is no intermediate capture conversion, separate approval lifecycle, or v1 fallback.
 
-An `android-patch-capture-package-v2/2.0/android_change_capture` directory is a
-frozen read-only source contract and cannot be passed directly to v2 `prepare`.
-`android-change-v2 adapt-capture CAPTURE` preserves that 2.0 BLOCKED preflight.
-For additive capture 2.1, it evaluates the hash-pinned 37-group qualification
-pack and materializes a canonical v2 package offline for all seven component
-layers. Every component must satisfy its own evidence requirements. The source
-capture is unchanged, output is idempotent, and `server_qualified=false` until
-server acceptance. No path falls back to Framework v1.
-
-Capture 2.1 binds `platform_token`, canonical `platform`, and `android_version`
-as one target. New package manifests write only `mtk`, `rk`, or `unisoc` to
-`subject.target.platform`. Packages already produced by versions 2.0.0 through
-2.0.6 with a matching versioned value such as `mtk16` remain byte-preserving
-checkable and submittable; command output marks that narrow case for server
-normalization. Other versioned, mismatched, or uncontrolled platform values fail
-closed and are never generated as compatibility output.
-
-Deploy the matching seven-layer server contract before publishing this member
-update. The server also accepts the original two-layer qualification contract;
-existing packages retain their bytes and upload identities. Re-adapting an
-unchanged capture reuses an existing matching two-layer package instead of
-rewriting it or creating another upload identity.
+The v2 checker enforces exact file inventory and hashes, component/source/patch/
+evidence references, and per-component patch/evidence coverage. Formal target
+platform is only `mtk`, `rk`, or `unisoc`; Android version is a separate decimal
+field. Capture CLI inputs such as `mtk16` are split before the manifest is written,
+and a formal package containing `mtk16` is rejected.
 
 ## Install-family boundary
 

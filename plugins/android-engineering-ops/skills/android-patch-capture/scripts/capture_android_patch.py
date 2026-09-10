@@ -29,7 +29,7 @@ from android_engineering_ops.knowledge_rules import (
     classify_pre_change_search,
     find_company_project,
     find_company_projects,
-    parse_platform_arg,
+    parse_platform_input,
     template_leak_errors,
 )
 from android_engineering_ops.artifact_paths import require_safe_artifact_path
@@ -74,16 +74,9 @@ from android_engineering_ops.practices.schema import (
 )
 
 
-SCHEMA_VERSION = "2.1"
-CAPTURE_SCHEMA = (
+PACKAGE_SCHEMA = (
     PLUGIN_ROOT
-    / "contracts/android-patch-capture/v2/capture-package-v2.1.schema.json"
-)
-# Frozen capture 2.0 contract retained for read-only compatibility tooling.
-# New capture output is always validated against CAPTURE_SCHEMA above.
-LEGACY_CAPTURE_SCHEMA = (
-    PLUGIN_ROOT
-    / "contracts/android-patch-capture/v2/capture-package.schema.json"
+    / "contracts/incoming/v2/akbs-android-change-package.schema.json"
 )
 PATCH_NAME_RE = re.compile(r"^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patch$")
 FRAMEWORK_LOG_LITERAL_RE = re.compile(r"FrameworkLog\.(?:d|i|w|e)\s*\([^,]+,\s*\"")
@@ -112,7 +105,7 @@ LEGACY_CHANGE_DOMAINS = (
 )
 COMPONENT_LAYERS = ("application", "platform", "native", "hal", "kernel", "device", "build")
 COMPONENT_TOKEN_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
-RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+RUN_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{6}(?:-[A-Za-z0-9_.-]+)?$")
 AUTO_SCOPED_EVIDENCE_IDS = {
     "changed-files",
     "patch-diff-facts",
@@ -354,19 +347,11 @@ def bind_repository_components(
         capture.component_ids = mappings[capture.repo_path]
 
 
-def effective_capture_status(declared_status: str, errors: list[str]) -> str:
-    """Capture may preserve or downgrade a status, but it never promotes one."""
-    if errors and declared_status == "validated":
-        return "candidate"
-    return declared_status
-
-
 def validate_run_id(value: str) -> str:
     """Keep the package leaf inside the canonical package root."""
     if not RUN_ID_RE.fullmatch(value):
         raise SystemExit(
-            "--run-id must be one safe 1..128 character token: "
-            "first alphanumeric, then alphanumeric/dot/underscore/hyphen"
+            "--run-id must be YYYYMMDD-HHMMSS with an optional safe suffix"
         )
     return value
 
@@ -793,7 +778,9 @@ def evidence_kind_from_file(path: Path, payload: dict[str, Any]) -> str:
 
 def evidence_result(payload: dict[str, Any]) -> str:
     value = str(payload.get("result") or payload.get("status") or "").upper()
-    if value in {"PASS", "FAIL", "WARN", "INFO", "SKIPPED", "MISSING"}:
+    if value == "SKIPPED":
+        return "NOT_RUN"
+    if value in {"PASS", "FAIL", "WARN", "INFO", "NOT_RUN", "NOT_APPLICABLE"}:
         return value
     return "INFO"
 
@@ -990,16 +977,8 @@ def collect_external_evidence(args: argparse.Namespace, evidence_dir: Path) -> l
             raise SystemExit(
                 f"外部 evidence 必须精确声明非空 component_ids，且只能引用本包组件: {source}"
             )
-        declared_claims: list[str]
-        contract_id = "android-patch-capture-evidence"
         if kind == "component_assertion":
             validate_component_assertion_payload(payload, component_ids, source)
-            declared_claims = ["component_assertions_recorded"]
-            contract_id = "android-patch-capture-component-assertion"
-        elif is_delivery_receipt:
-            declared_claims = ["build_delivery_recorded_not_requirement_accepted"]
-        else:
-            declared_claims = ["external_evidence_recorded"]
         used_names.add(target_name)
         target = evidence_dir / target_name
         write_json(target, payload)
@@ -1009,11 +988,9 @@ def collect_external_evidence(args: argparse.Namespace, evidence_dir: Path) -> l
                 "kind": kind,
                 "path": f"evidence/{target.name}",
                 "result": evidence_result(payload),
-                "scope": "change",
+                "scope": "feature",
                 "summary": str(payload.get("summary") or payload.get("message") or f"{kind} evidence"),
                 "component_ids": component_ids,
-                "contract": {"id": contract_id, "version": "2.1"},
-                "declared_claims": declared_claims,
             }
         )
     return entries
@@ -1171,12 +1148,10 @@ def search_before_change(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def validate_search_decision_for_status(args: argparse.Namespace, search_payload: dict[str, Any]) -> tuple[list[str], list[str]]:
-    if args.status != "validated":
-        return [], []
     classification = classify_pre_change_search(
         search_payload,
         workflow_contract=str(args.workflow_contract or ""),
-        package_status=str(args.status or ""),
+        package_status="validated",
     )
     if not bool(classification.get("searched")):
         return [], [
@@ -1210,9 +1185,6 @@ def validate_patch_asset_names(captures: list[RepositoryCapture]) -> list[str]:
 
 
 def validate_verification_for_status(args: argparse.Namespace, payload: dict[str, Any]) -> list[str]:
-    if args.status != "validated":
-        return []
-
     errors: list[str] = []
     method = payload.get("method")
     if payload.get("result") != "PASS":
@@ -1292,78 +1264,70 @@ def aggregate_change_facts(captures: list[RepositoryCapture]) -> dict[str, Any]:
     return payload
 
 
-def package_file_inventory(package_dir: Path) -> list[dict[str, Any]]:
-    """Hash every completed payload file; manifest.json is explicitly self-excluded."""
-    inventory: list[dict[str, Any]] = []
-    for path in sorted(package_dir.rglob("*")):
-        if not path.is_file() or path == package_dir / "manifest.json":
-            continue
-        if path.is_symlink():
-            raise SystemExit(f"package payload must not contain symlinks: {path}")
-        raw = path.read_bytes()
-        inventory.append(
-            {
-                "path": path.relative_to(package_dir).as_posix(),
-                "size_bytes": len(raw),
-                "sha256": hashlib.sha256(raw).hexdigest(),
-            }
-        )
-    return inventory
+def payload_descriptor(package_dir: Path, relative: str) -> dict[str, Any]:
+    path = package_dir / relative
+    if path.is_symlink() or not path.is_file():
+        raise SystemExit(f"package payload is missing or unsafe: {relative}")
+    raw = path.read_bytes()
+    return {
+        "path": relative,
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "size_bytes": len(raw),
+    }
 
 
-def validate_capture_manifest(manifest: dict[str, Any], package_dir: Path) -> None:
-    """Validate the packaged schema and cross-reference every local capture fact."""
+def validate_final_manifest(manifest: dict[str, Any], package_dir: Path) -> None:
+    """Validate the final v2 schema, references, and exact payload inventory."""
     try:
-        validate_document(manifest, CAPTURE_SCHEMA)
+        validate_document(manifest, PACKAGE_SCHEMA)
     except (ContractValidationError, OSError) as exc:
-        raise SystemExit(f"capture manifest violates packaged v2 schema: {exc}") from exc
+        raise SystemExit(f"final package violates Android change v2 schema: {exc}") from exc
     components = manifest["components"]
     component_ids = [item["id"] for item in components]
     if len(component_ids) != len(set(component_ids)):
-        raise SystemExit("capture manifest repeats a component id")
-    if manifest["primary_component_id"] not in set(component_ids):
-        raise SystemExit("capture manifest primary_component_id does not resolve")
-    repositories = manifest["git_repositories"]
-    repository_ids = [item["id"] for item in repositories]
-    if len(repository_ids) != len(set(repository_ids)):
-        raise SystemExit("capture manifest repeats a repository id")
-    repository_components = {
-        item["id"]: set(item["component_ids"]) for item in repositories
-    }
-    if any(not ids or not ids.issubset(component_ids) for ids in repository_components.values()):
-        raise SystemExit("capture manifest repository component binding is invalid")
+        raise SystemExit("final package repeats a component id")
+    component_set = set(component_ids)
+    if manifest["subject"]["primary_component_id"] not in component_set:
+        raise SystemExit("final package primary_component_id does not resolve")
+    sources = {item["id"]: item for item in manifest["sources"]}
+    if len(sources) != len(manifest["sources"]):
+        raise SystemExit("final package repeats a source id")
     patches = manifest["patches"]
     patch_ids = [item["id"] for item in patches]
     if len(patch_ids) != len(set(patch_ids)):
-        raise SystemExit("capture manifest repeats a patch id")
+        raise SystemExit("final package repeats a patch id")
+    patched_components: set[str] = set()
+    used_sources: set[str] = set()
     for patch in patches:
-        repository = patch["repository_id"]
-        if repository not in repository_components:
-            raise SystemExit("capture manifest patch references an unknown repository")
-        if set(patch["component_ids"]) != repository_components[repository]:
-            raise SystemExit("capture manifest patch/repository component bindings differ")
-        if not (package_dir / patch["path"]).is_file():
-            raise SystemExit("capture manifest references a missing patch payload")
-    evidence_ids = {item["id"] for item in manifest["evidence"]}
-    if len(evidence_ids) != len(manifest["evidence"]):
-        raise SystemExit("capture manifest repeats an evidence id")
-    evidence_components = {
-        item["id"]: set(item["component_ids"]) for item in manifest["evidence"]
-    }
+        bound = set(patch["component_ids"])
+        if not bound or not bound.issubset(component_set):
+            raise SystemExit("final package patch references an unknown component")
+        if patch["source_id"] not in sources:
+            raise SystemExit("final package patch references an unknown source")
+        patched_components.update(bound)
+        used_sources.add(patch["source_id"])
+    if patched_components != component_set:
+        raise SystemExit("every final package component must have a patch")
+    if used_sources != set(sources):
+        raise SystemExit("every final package source must be used by a patch")
+    evidence_ids = [item["id"] for item in manifest["evidence"]]
+    if len(evidence_ids) != len(set(evidence_ids)):
+        raise SystemExit("final package repeats an evidence id")
+    evidenced_components: set[str] = set()
     for item in manifest["evidence"]:
-        if not set(item["component_ids"]) or not set(item["component_ids"]).issubset(
-            component_ids
-        ):
-            raise SystemExit("capture manifest evidence component binding is invalid")
+        bound = set(item["component_ids"])
+        if not bound or not bound.issubset(component_set):
+            raise SystemExit("final package evidence component binding is invalid")
+        evidenced_components.update(bound)
         evidence_path = package_dir / item["path"]
-        if not evidence_path.is_file():
-            raise SystemExit("capture manifest references missing evidence")
+        if evidence_path.is_symlink() or not evidence_path.is_file():
+            raise SystemExit("final package references missing evidence")
         payload = read_json(evidence_path)
         payload_component_ids = payload.get("component_ids")
         if payload_component_ids is not None and payload_component_ids != item["component_ids"]:
-            raise SystemExit("capture evidence payload/manifest component bindings differ")
+            raise SystemExit("final package evidence payload/manifest component bindings differ")
         if item["id"] in EXPLICIT_MULTI_COMPONENT_EVIDENCE_IDS and payload_component_ids is None:
-            raise SystemExit("capture component-scoped evidence payload is unbound")
+            raise SystemExit("final package component-scoped evidence payload is unbound")
         if item["kind"] == "component_assertion":
             validate_component_assertion_payload(
                 payload,
@@ -1377,36 +1341,29 @@ def validate_capture_manifest(manifest: dict[str, Any], package_dir: Path) -> No
         )
         if payload_result is None:
             if item["result"] != "INFO":
-                raise SystemExit("capture evidence result is not bound by its payload")
+                raise SystemExit("final package evidence result is not bound by its payload")
         elif payload_result != item["result"]:
-            raise SystemExit("capture evidence payload/manifest results differ")
-    qualifications = manifest["qualification_bindings"]
-    if {item["component_id"] for item in qualifications} != set(component_ids) or (
-        len(qualifications) != len(component_ids)
-    ):
-        raise SystemExit("capture manifest qualification bindings do not cover components")
-    for binding in qualifications:
-        component_id = binding["component_id"]
-        if not set(binding["repository_ids"]).issubset(repository_ids):
-            raise SystemExit("capture manifest qualification references an unknown repository")
-        if not set(binding["patch_ids"]).issubset(patch_ids):
-            raise SystemExit("capture manifest qualification references an unknown patch")
-        if not set(binding["evidence_ids"]).issubset(evidence_ids):
-            raise SystemExit("capture manifest qualification references unknown evidence")
-        if any(
-            component_id not in evidence_components[evidence_id]
-            for evidence_id in binding["evidence_ids"]
-        ):
-            raise SystemExit(
-                "capture manifest qualification borrows evidence from another component"
-            )
-        if not any(
-            component_id in repository_components[repository]
-            for repository in binding["repository_ids"]
-        ):
-            raise SystemExit("capture manifest qualification lacks a component repository")
-    if manifest["file_inventory"]["files"] != package_file_inventory(package_dir):
-        raise SystemExit("capture manifest file inventory differs from package bytes")
+            raise SystemExit("final package evidence payload/manifest results differ")
+    if evidenced_components != component_set:
+        raise SystemExit("every final package component must have evidence")
+    descriptors = [manifest["readme"], *patches, *manifest["evidence"]]
+    declared_paths = [item["path"] for item in descriptors]
+    if len(declared_paths) != len(set(declared_paths)):
+        raise SystemExit("final package payload paths must be unique")
+    expected = {
+        item["path"]: (item["sha256"], item["size_bytes"])
+        for item in descriptors
+    }
+    actual = {
+        item["path"]: (item["sha256"], item["size_bytes"])
+        for item in (
+            payload_descriptor(package_dir, path.relative_to(package_dir).as_posix())
+            for path in sorted(package_dir.rglob("*"))
+            if path.is_file() and path.name != "manifest.json"
+        )
+    }
+    if actual != expected:
+        raise SystemExit("final package inventory differs from manifest descriptors")
 
 
 def change_problem_and_risk_payloads(args: argparse.Namespace, captures: list[RepositoryCapture], facts: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -1537,13 +1494,6 @@ def coding_standard_check(args: argparse.Namespace, captures: list[RepositoryCap
             analysis = file_analysis.analysis
             file_errors = list(analysis.errors)
             file_exception = False
-            if args.allow_missing_author_date and file_errors == ["patch has no author/date marker"]:
-                file_errors.clear()
-                marker_exception = True
-                file_exception = True
-                repo_warnings.append(
-                    f"{file_analysis.path}: manual/historical local draft has no author/date marker"
-                )
             marker_errors.extend(
                 f"{file_analysis.path}: {error}" for error in file_errors
             )
@@ -1740,7 +1690,7 @@ def parse_args() -> argparse.Namespace:
         action="append",
         default=[],
         metavar="COMPONENT_ID:QUALIFIER",
-        help="Bind a controlled conditional-qualification facet to one component; repeatable.",
+        help="Bind a controlled facet to one component; repeatable.",
     )
     parser.add_argument(
         "--evidence-component",
@@ -1826,7 +1776,6 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--project", default="unknown", help="Project name for manifest/readme.")
-    parser.add_argument("--status", choices=["draft", "candidate", "validated", "failed", "blocked"], default="draft")
     parser.add_argument("--verification", action="append", default=[], help="Build verification fact. Repeatable.")
     parser.add_argument("--verification-result", choices=["PASS", "FAIL", "WARN", "INFO", "SKIPPED"], help="Overall verification result. Default: PASS when evidence is present, otherwise INFO.")
     parser.add_argument("--verification-method", choices=["device", "equivalent", "not_provided"], help="Verification method. Default inferred from verification arguments.")
@@ -1863,11 +1812,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device-restart", action="append", default=[], help="Device restart, remount, process restart, or reload action after delivery. Repeatable.")
     parser.add_argument("--risk", default="", help="Risk note for readme.")
     parser.add_argument("--rollback", default="", help="Rollback note for readme.")
-    parser.add_argument(
-        "--allow-missing-author-date",
-        action="store_true",
-        help="Legacy manual/historical local draft only: record a missing marker without blocking capture.",
-    )
     parser.add_argument("--allow-banned-logs", action="store_true", help="Allow package even when added lines contain direct Log/Slog calls.")
     args = parser.parse_args()
     args.problem_summary = args.problem_summary.strip()
@@ -1876,12 +1820,6 @@ def parse_args() -> argparse.Namespace:
         parser.error("--problem-summary 和 --solution-summary 必须同时提供")
     if args.snapshot_max_age_seconds <= 0 or args.snapshot_max_age_seconds > 86400:
         parser.error("--snapshot-max-age-seconds 必须在 1..86400 范围")
-    if args.allow_missing_author_date and (
-        args.status != "draft" or args.workflow_contract == "current_codex_skill"
-    ):
-        parser.error(
-            "--allow-missing-author-date 只能用于 manual/historical import 的本地 draft"
-        )
     snapshot_fields = (
         args.remote_snapshot,
         args.snapshot_workspace_id,
@@ -1909,17 +1847,17 @@ def parse_args() -> argparse.Namespace:
             parser.error("--source-root 与 --patch-artifact 不能混用")
         if args.patch_artifact and not args.patch_repo_path:
             parser.error("--patch-artifact 必须配套 --patch-repo-path")
+    args.status = "validated"
     args.policy_profile_name = ""
     args.policy_member_alias = ""
     args.policy_identity_source = ""
-    if args.workflow_contract == "current_codex_skill" or args.profile:
-        try:
-            member_profile = load_member_profile(args.profile or None)
-        except MemberProfileError as exc:
-            parser.error(str(exc))
-        args.policy_profile_name = member_profile.profile
-        args.policy_member_alias = member_profile.member_alias
-        args.policy_identity_source = member_profile.source
+    try:
+        member_profile = load_member_profile(args.profile or None)
+    except MemberProfileError as exc:
+        parser.error(str(exc))
+    args.policy_profile_name = member_profile.profile
+    args.policy_member_alias = member_profile.member_alias
+    args.policy_identity_source = member_profile.source
     return args
 
 
@@ -1960,12 +1898,11 @@ def main() -> int:
     args.component = next(
         component for component in components if component["id"] == primary_component_id
     )
-    declared_status = args.status
-    platform_token, platform_name, android_version = parse_platform_arg(args.platform)
-    if not platform_token:
+    patch_prefix, platform_name, android_version = parse_platform_input(args.platform)
+    if not patch_prefix:
         raise SystemExit("--platform 必须使用受控平台和 Android 版本，例如 rk14、mtk14、unisoc13；不能使用泛化或非规范令牌。")
 
-    platform = platform_token
+    platform = patch_prefix
     change_id = slug(args.change_id)
     args.change_id = change_id
     scope_errors = validate_change_scope(args)
@@ -2041,19 +1978,20 @@ def main() -> int:
     errors.extend(search_errors)
     warnings.extend(search_warnings)
 
-    effective_status = effective_capture_status(declared_status, errors)
-    if effective_status != declared_status:
-        warnings.append(
-            "declared validated was downgraded to candidate because local qualification failed"
-        )
-    args.status = effective_status
+    if errors:
+        print(json.dumps({
+            "status": "FAIL",
+            "operation": "capture",
+            "errors": errors,
+            "warnings": warnings,
+            "package": None,
+        }, ensure_ascii=False, indent=2), file=sys.stderr)
+        build_workspace.cleanup()
+        return 1
     package_check = {
-        "status": "FAIL" if errors else "PASS",
-        "errors": errors,
+        "status": "PASS",
+        "errors": [],
         "warnings": warnings,
-        "declared_package_status": declared_status,
-        "effective_package_status": effective_status,
-        "status_was_upgraded": False,
     }
     readme_path = package_dir / "README.md"
     readme_path.write_text(change_readme_text(args, captures, change_facts, package_check, coding_check, verification_payload), encoding="utf-8")
@@ -2194,178 +2132,6 @@ def main() -> int:
         ("package-check", package_check),
     ):
         payload["component_ids"] = evidence_components[evidence_id]
-
-    evidence_claims = {
-        "changed_files": ["repository_change_inventory"],
-        "verification_result": ["verification_recorded_not_server_accepted"],
-        "patch_diff_facts": ["patch_bytes_parsed"],
-        "patch_problem_summary": ["problem_solution_summary_recorded"],
-        "risk_surface": ["risk_surface_recorded"],
-        "coding_standard_check": ["local_policy_check_recorded"],
-        "rollback_plan": ["rollback_plan_recorded"],
-        "search_before_change": ["optional_search_decision_recorded"],
-        "import_provenance": ["hash_bound_import_provenance_recorded"],
-        "package_check": ["local_package_check_recorded"],
-        "remote_source_snapshot": ["immutable_source_snapshot_recorded"],
-    }
-    for evidence in evidence_items:
-        evidence.setdefault(
-            "contract",
-            {"id": "android-patch-capture-evidence", "version": "2.1"},
-        )
-        evidence.setdefault("declared_claims", evidence_claims.get(
-            str(evidence.get("kind")), ["external_evidence_recorded"]
-        ))
-
-    patch_items = [
-        {
-            "id": Path(capture.patch_name).stem,
-            "path": capture.patch_rel,
-            "repository_id": capture.repository_id,
-            "repo_path": capture.repo_path,
-            "component_ids": list(capture.component_ids),
-            "source_root": str(capture.source_root),
-            "content_sha1": capture.facts["content_sha1"],
-            "status": args.status,
-            "reuse_hint": args.status == "validated",
-            "project": args.project,
-            "platform_token": platform_token,
-            "platform": platform_name,
-            "android_version": android_version,
-            "implementation_origin": args.implementation_origin,
-            **(
-                {"component": {key: args.component[key] for key in ("layer", "type", "partition", "ownership")}}
-                if len(components) == 1 else {}
-            ),
-            **(
-                {"compatibility_route": {"legacy_change_domain": args.change_domain}}
-                if args.change_domain else {}
-            ),
-            "workflow_contract": args.workflow_contract,
-            "captured_by": "codex",
-            "facts": capture.facts,
-        }
-        for capture in captures
-    ]
-    manifest = {
-        "schema": "android-patch-capture-package-v2",
-        "schema_version": SCHEMA_VERSION,
-        "package_type": "android_change_capture",
-        "components": components,
-        "primary_component_id": primary_component_id,
-        **(
-            {"component": {key: args.component[key] for key in ("layer", "type", "partition", "ownership")}}
-            if len(components) == 1 else {}
-        ),
-        **(
-            {"compatibility_route": {"legacy_change_domain": args.change_domain}}
-            if args.change_domain else {}
-        ),
-        "change_id": change_id,
-        "readme": "README.md",
-        "project": args.project,
-        "platform_token": platform_token,
-        "platform": platform_name,
-        "android_version": android_version,
-        "summary": args.summary,
-        "status": effective_status,
-        "declared_status": declared_status,
-        "effective_status": effective_status,
-        "status_was_upgraded": False,
-        "implementation_origin": args.implementation_origin,
-        "workflow_contract": args.workflow_contract,
-        "captured_by": "codex",
-        "authority": {
-            "owner": "android-patch-capture",
-            "local_capture_only": True,
-            "can_confirm_or_downgrade_status_only": True,
-            "can_upload": False,
-            "can_allocate_server_package_id": False,
-            "can_materialize_knowledge": False,
-        },
-        "server_submission": {
-            "v2_writer": "disabled",
-            "v2_submission_allowed": False,
-            "server_qualified": False,
-            "note": "akbs-patch-submit and an enabled server capability are required",
-        },
-        "coding_standard_check": {
-            "required": implementation_review_required(args.implementation_origin),
-            "mode": implementation_review_mode(args.implementation_origin),
-            "path": "evidence/coding-standard-check.json",
-            "result": coding_check["result"],
-        },
-        "created_at": now.isoformat(timespec="seconds"),
-        "related_report_run_ids": args.related_report_run_id or [],
-        "source_roots": [str(capture.source_root) for capture in captures],
-        "git_repositories": [
-            {
-                "id": capture.repository_id,
-                "repo_path": capture.repo_path,
-                "root": str(capture.source_root),
-                "component_ids": list(capture.component_ids),
-                "git": capture.git_info,
-            }
-            for capture in captures
-        ],
-        "project_inference": project_inference,
-        "verification_chain": {
-            "remote_build": bool(
-                verification_payload.get("remote_build", {}).get("host")
-                or verification_payload.get("remote_build", {}).get("source_root")
-                or verification_payload.get("remote_build", {}).get("command")
-                or verification_payload.get("remote_build", {}).get("artifacts")
-            ),
-            "local_delivery": bool(
-                verification_payload.get("local_delivery", {}).get("transfer")
-                or verification_payload.get("local_delivery", {}).get("local_artifacts")
-                or verification_payload.get("local_delivery", {}).get("adb_serial")
-                or verification_payload.get("local_delivery", {}).get("adb_actions")
-            ),
-            "device_verification": bool(verification_payload.get("device") or verification_payload.get("steps")),
-        },
-        "patches": patch_items,
-        "evidence": evidence_items,
-        "qualification_bindings": [
-            {
-                "component_id": component["id"],
-                "repository_ids": [
-                    capture.repository_id
-                    for capture in captures
-                    if component["id"] in capture.component_ids
-                ],
-                "patch_ids": [
-                    Path(capture.patch_name).stem
-                    for capture in captures
-                    if component["id"] in capture.component_ids
-                ],
-                "evidence_ids": [
-                    evidence["id"]
-                    for evidence in evidence_items
-                    if component["id"] in evidence["component_ids"]
-                ],
-                "contract": "android-patch-capture-local-qualification-v2",
-                "declared_claims": list(
-                    dict.fromkeys(
-                        claim
-                        for evidence in evidence_items
-                        if component["id"] in evidence["component_ids"]
-                        for claim in evidence["declared_claims"]
-                    )
-                ),
-            }
-            for component in components
-        ],
-    }
-    if snapshot_payload is not None:
-        manifest["source_snapshot"] = {
-            "path": "evidence/remote-source-snapshot.json",
-            "schema": snapshot_payload["schema"],
-            "workspace_id": snapshot_payload["workspace_id"],
-            "command_id": snapshot_payload["command_id"],
-            "remote_root": snapshot_payload["remote_root"],
-            "sha256": snapshot_payload["snapshot_sha256"],
-        }
     write_json(
         evidence_dir / "changed-files.json",
         {
@@ -2393,13 +2159,79 @@ def main() -> int:
     write_json(evidence_dir / "rollback-plan.json", rollback_payload)
     write_json(evidence_dir / "search-before-change.json", search_payload)
     write_json(evidence_dir / "package-check.json", package_check)
-    manifest["file_inventory"] = {
-        "algorithm": "sha256",
-        "scope": "all_regular_package_files_except_manifest.json",
-        "manifest_self_hash_excluded": True,
-        "files": package_file_inventory(package_dir),
+
+    sources: list[dict[str, Any]] = []
+    patch_items: list[dict[str, Any]] = []
+    for patch_index, capture in enumerate(captures, start=1):
+        head = str(capture.git_info.get("head") or "").lower()
+        if re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", head):
+            source: dict[str, Any] = {
+                "id": capture.repository_id,
+                "kind": "git",
+                "repo_path": capture.repo_path,
+                "base_revision": head,
+                "head_revision": head,
+            }
+            branch = str(capture.git_info.get("branch") or "").strip()
+            if branch:
+                source["branch"] = branch
+        else:
+            patch_facts = payload_descriptor(package_dir, capture.patch_rel)
+            source = {
+                "id": capture.repository_id,
+                "kind": "external",
+                "repo_path": capture.repo_path,
+                "external_reference": "sha256:" + patch_facts["sha256"],
+            }
+        sources.append(source)
+        patch_items.append({
+            "id": f"patch-{patch_index:03d}",
+            "component_ids": list(capture.component_ids),
+            "source_id": capture.repository_id,
+            **payload_descriptor(package_dir, capture.patch_rel),
+            "format": "git_diff",
+        })
+
+    final_evidence: list[dict[str, Any]] = []
+    for evidence in evidence_items:
+        evidence["scope"] = "feature"
+        final_evidence.append({
+            **evidence,
+            **payload_descriptor(package_dir, evidence["path"]),
+        })
+    manifest = {
+        "schema": "akbs-android-change-package-v2",
+        "schema_version": "2",
+        "package_kind": "android_change",
+        "package_status": "validated",
+        "identity": {
+            "member_alias": args.policy_member_alias,
+            "run_id": run_id,
+            "created_at": now.isoformat(timespec="seconds"),
+        },
+        "subject": {
+            "title": args.summary,
+            "summary": args.summary,
+            "feature_key": change_id,
+            "primary_component_id": primary_component_id,
+            "target": {
+                "project": args.project,
+                "platform": platform_name,
+                "android_version": android_version,
+            },
+        },
+        "workflow": {
+            "contract": args.workflow_contract,
+            "implementation_origins": [args.implementation_origin],
+            "capture_tool": {"id": "android-patch-capture", "version": "2"},
+        },
+        "components": components,
+        "sources": sources,
+        "readme": payload_descriptor(package_dir, "README.md"),
+        "patches": patch_items,
+        "evidence": final_evidence,
     }
-    validate_capture_manifest(manifest, package_dir)
+    validate_final_manifest(manifest, package_dir)
     write_json(package_dir / "manifest.json", manifest)
     try:
         publish_tree_atomic(package_dir, final_package_dir)
@@ -2407,6 +2239,8 @@ def main() -> int:
         raise SystemExit(f"capture package atomic publish failed: {exc}") from exc
 
     result = {
+        "status": "PASS",
+        "operation": "capture",
         "package": str(final_package_dir),
         "patches": [str(final_package_dir / capture.patch_rel) for capture in captures],
         "readme": str(final_package_dir / "README.md"),
@@ -2414,17 +2248,13 @@ def main() -> int:
         "workflow_contract": args.workflow_contract,
         "components": components,
         "primary_component_id": primary_component_id,
-        **(
-            {"component": {key: args.component[key] for key in ("layer", "type", "partition", "ownership")}}
-            if len(components) == 1 else {}
-        ),
-        "declared_status": declared_status,
-        "effective_status": effective_status,
+        "package_status": "validated",
+        "target": manifest["subject"]["target"],
         "local_check": package_check,
     }
     build_workspace.cleanup()
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0 if not errors else 1
+    return 0
 
 
 if __name__ == "__main__":

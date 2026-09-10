@@ -52,9 +52,11 @@
     "history_rewrite": false
   },
   "submission": {
-    "canonical_package_type": "android_change_capture",
+    "canonical_package_type": "akbs-android-change-package-v2",
+    "v2_final_package_owner": "android-patch-capture",
     "v2_local_prepare_owner": "akbs-patch-submit",
-    "writer_off_behavior": "capability_gated_zero_network_side_effects",
+    "upload_lifecycle": "common_patch_upload",
+    "v1_v2_relationship": "input_formats_only",
     "fallback_to_framework_v1": false,
     "legacy_framework_v1": "permanent_compatibility_contract"
   }

@@ -1,6 +1,6 @@
 ---
 name: android-change-workflow
-description: "Use when implementing, diagnosing, modifying, or verifying Android source changes across application, platform, native, HAL, kernel, device, or build layers. Orchestrates canonical component facets and source authority, optional AKBS knowledge search, policy, an explicit optional practices provider, build-route selection, layer-aware verification, local patch capture, and capability-gated submission."
+description: "Use when implementing, diagnosing, modifying, or verifying Android source changes across application, platform, native, HAL, kernel, device, or build layers. Orchestrates canonical component facets and source authority, optional AKBS knowledge search, policy, an explicit optional practices provider, build-route selection, layer-aware verification, final v2 package capture, and submission."
 ---
 
 # Android Change Workflow
@@ -179,16 +179,17 @@ Use `android-patch-capture --component-layer ... --component-type ...
 reviewable `android_change_capture`. Capture verifies policy/evidence and determines an
 effective local status, but does not repair code after the fact.
 
-A validated capture from any supported layer continues through
-`akbs-patch-submit android-change-v2 adapt-capture` to become a canonical upload
-package; do not pass a capture directly to `prepare`. The member adapter and server
-must both support its qualification contract. Adaptation, local package checks, and
-server acceptance are separate results. After adaptation, a validated package from any supported layer
-uses strict v2 local validation and byte-preserving prepare. When the server v2 writer is
-off, network submission is capability-gated with zero side effects; never relabel a
-non-Framework component or fall back to v1. Existing legacy Framework v1 packages
-remain eligible only through their permanent compatibility contract and preserve their
-original bytes, package identity, provenance, and wire behavior.
+`android-patch-capture` directly emits the final validated package. The same validated package from any supported layer
+goes to `akbs-patch-submit android-change-v2 check`, `prepare`, or `submit`; there is
+no conversion step or intermediate package state.
+
+V1 and v2 are input formats on the common patch upload lifecycle. The member side
+uses strict v2 local validation and byte-preserving prepare, then submits through the
+same profile, patch endpoint, idempotent retry rules, and ordinary receipt used by v1.
+Local rejection has zero side effects. Never relabel a non-Framework component or fall back to v1.
+Existing legacy Framework
+v1 packages remain eligible only through their permanent compatibility contract and
+preserve their original bytes, package identity, provenance, and wire behavior.
 
 ## Hard Stops
 
@@ -200,7 +201,7 @@ Stop before claiming completion when:
 - mandatory policy or member identity is missing;
 - build, boot, device behavior, safety, or nearby regression verification failed;
 - temporary diagnostics have no cleanup decision;
-- a v2 writer-off package would attempt network submission or fall back to Framework v1.
+- a v2 package would be relabelled or routed through Framework v1.
 
 ## Final Report
 

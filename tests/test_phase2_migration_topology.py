@@ -217,7 +217,7 @@ def test_identity_test_map_binds_contract_and_matrix_semantics() -> None:
     ).hexdigest()
 
 
-def test_phase_lifecycle_separates_materialization_experiment_pilot_and_migration() -> None:
+def test_phase_lifecycle_separates_materialization_experiment_validation_and_migration() -> None:
     phases = MATRIX["phase_contract"]
     assert list(phases) == [
         "phase0", "phase1", "phase2", "phase3", "phase4", "phase5", "phase6",
@@ -234,7 +234,7 @@ def test_phase_lifecycle_separates_materialization_experiment_pilot_and_migratio
     assert {
         "real_wsl_engineering_member", "real_macos_engineering_member",
         "real_gms_report_only_member", "none_jinny_custom_modes",
-        "v1_framework_v2_and_non_framework_v2",
+        "v1_v2_common_patch_upload_lifecycle",
         "capture_submit_queue_curation_knowledge_search_loop",
     } <= set(phases["phase4"]["required"])
 
@@ -244,12 +244,15 @@ def test_phase_lifecycle_separates_materialization_experiment_pilot_and_migratio
         "plugin.jinny-android-practices", "skill.android-source-access",
         "cli.akbs-member", "cli.android-engineering",
         "cli.android-practices-provider", "cli.source-access",
-        "state.source-access", "artifact.android-patch-capture",
-        "artifact.android-remote-build-deploy", "package.android-change-v2",
+        "state.source-access", "artifact.android-remote-build-deploy",
     ):
         activation = rows[surface_id]["activation"]
         assert activation["materialization_phase"] == "phase2"
         assert activation["real_activation_phase"] == "phase4"
+    for surface_id in ("artifact.android-patch-capture", "package.android-change-v2"):
+        activation = rows[surface_id]["activation"]
+        assert activation["materialization_phase"] == "phase2"
+        assert activation["real_activation_phase"] == "phase2"
     assert rows["config.android-engineering-extension"]["activation"]["real_activation_phase"] == "phase3"
     assert rows["cache.legacy-installations"]["activation"]["real_activation_phase"] == "phase5"
     assert rows["marketplace.entries"]["activation"]["real_activation_phase"] == "phase5"

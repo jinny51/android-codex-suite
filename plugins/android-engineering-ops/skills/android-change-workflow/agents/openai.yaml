@@ -1,4 +1,4 @@
 interface:
   display_name: "Android Change Workflow"
   short_description: "Seven-layer Android component workflow and final acceptance controller"
-  default_prompt: "Use $android-change-workflow to select canonical component layer/type/partition/ownership facts, optionally search prior knowledge, implement or diagnose, verify by component, capture local evidence, and submit only when the current server capability allows it."
+  default_prompt: "Use $android-change-workflow to select canonical component layer/type/partition/ownership facts, optionally search prior knowledge, implement or diagnose, verify by component, directly capture the final v2 package, and submit it through the common patch upload lifecycle."

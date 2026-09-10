@@ -93,6 +93,30 @@ def test_vendored_error_schema_and_incoming_pin_are_exact() -> None:
     assert len(public["reason_code_families"]["archive"]) == 12
 
 
+def test_client_only_gate_builds_the_frozen_v1_package_flow() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPTS_ROOT / "validate_incoming_contract_gate.py"),
+            "--mode",
+            "client-only",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    payload = json.loads(result.stdout)
+    assert payload == {
+        "status": "PASS",
+        "contract": "incoming-v1-client",
+        "execution": "local-fixture-only",
+        "packages": ["daily", "patch", "weekly"],
+    }
+
+
 @pytest.mark.parametrize(
     ("status", "code", "contract_codes", "kind", "retryable"),
     [

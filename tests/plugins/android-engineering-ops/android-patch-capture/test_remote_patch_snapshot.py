@@ -209,7 +209,7 @@ class RemotePatchSnapshotTests(unittest.TestCase):
             "--out-dir",
             str(codex_home / "artifacts/android-patch-capture/packages"),
             "--run-id",
-            "remote-snapshot-package",
+            "20260910-120000-remote-snapshot-package",
             "--platform",
             "unisoc14",
             "--component-layer",
@@ -226,8 +226,12 @@ class RemotePatchSnapshotTests(unittest.TestCase):
             "TVE1088U remote display policy",
             "--project",
             "TVE1088U",
-            "--status",
-            "candidate",
+            "--verification",
+            "framework build PASS",
+            "--device",
+            "synthetic-device",
+            "--device-verification",
+            "remote display policy PASS",
             "--search-query",
             "display policy",
             "--search-result",
@@ -354,9 +358,10 @@ class RemotePatchSnapshotTests(unittest.TestCase):
         self.assertIn("DisplayPolicy.java", patch)
         self.assertIn("Framework.java", patch)
         self.assertIn("NewPolicy.java", patch)
-        self.assertEqual(manifest["source_snapshot"]["workspace_id"], self.workspace_id)
-        self.assertEqual(manifest["source_snapshot"]["command_id"], self.command_id)
-        self.assertTrue((package / "evidence" / "remote-source-snapshot.json").is_file())
+        snapshot = json.loads((package / "evidence/remote-source-snapshot.json").read_text())
+        self.assertEqual(snapshot["workspace_id"], self.workspace_id)
+        self.assertEqual(snapshot["command_id"], self.command_id)
+        self.assertEqual(manifest["subject"]["target"]["platform"], "unisoc")
         package.relative_to(codex_home / "artifacts")
 
     def test_current_capture_works_with_clean_engineering_only_identity(self) -> None:
@@ -427,6 +432,11 @@ class RemotePatchSnapshotTests(unittest.TestCase):
         shutil.rmtree(self.remote_root)
         codex_home = self.root / "manual-codex-home"
         plugin = self.install_plugin(codex_home)
+        (codex_home / "android-knowledge-intake.toml").write_text(
+            'default_profile = "member01"\n[profiles.member01]\n'
+            'member_alias = "member01"\nmember_name = "Member 01"\n',
+            encoding="utf-8",
+        )
         output_root = codex_home / "artifacts/android-patch-capture/packages"
         result = run(
             [
@@ -443,7 +453,7 @@ class RemotePatchSnapshotTests(unittest.TestCase):
                 "--out-dir",
                 str(output_root),
                 "--run-id",
-                "manual-package",
+                "20260910-120001-manual-package",
                 "--platform",
                 "unisoc14",
                 "--component-layer",
@@ -458,6 +468,12 @@ class RemotePatchSnapshotTests(unittest.TestCase):
                 "manual-display-policy",
                 "--summary",
                 "manual display policy import",
+                "--verification",
+                "manual review PASS",
+                "--device",
+                "synthetic-device",
+                "--device-verification",
+                "manual display policy PASS",
             ],
             self.root,
             env={"CODEX_HOME": str(codex_home)},
@@ -466,9 +482,9 @@ class RemotePatchSnapshotTests(unittest.TestCase):
         manifest = json.loads(
             (Path(json.loads(result.stdout)["package"]) / "manifest.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(manifest["workflow_contract"], "manual_import")
-        self.assertNotIn("source_snapshot", manifest)
-        self.assertIn("patch_artifact_sha256", manifest["git_repositories"][0]["git"])
+        self.assertEqual(manifest["workflow"]["contract"], "manual_import")
+        self.assertEqual(manifest["sources"][0]["kind"], "external")
+        self.assertTrue(manifest["sources"][0]["external_reference"].startswith("sha256:"))
 
     def test_handoff_uses_channel_exclusive_then_scp_and_validates(self) -> None:
         remote_snapshot = (
@@ -605,12 +621,10 @@ class RemotePatchSnapshotTests(unittest.TestCase):
         package = Path(json.loads(result.stdout)["package"])
         self.assertTrue(package.is_dir())
         manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["source_snapshot"]["workspace_id"], self.workspace_id)
-        self.assertEqual(manifest["source_snapshot"]["command_id"], self.command_id)
-        self.assertEqual(
-            manifest["source_snapshot"]["sha256"], self.snapshot["snapshot_sha256"]
-        )
-        self.assertTrue((package / "evidence/remote-source-snapshot.json").is_file())
+        snapshot = json.loads((package / "evidence/remote-source-snapshot.json").read_text())
+        self.assertEqual(snapshot["workspace_id"], self.workspace_id)
+        self.assertEqual(snapshot["command_id"], self.command_id)
+        self.assertEqual(snapshot["snapshot_sha256"], self.snapshot["snapshot_sha256"])
 
     def test_handoff_package_mode_rejects_snapshot_identity_overrides(self) -> None:
         codex_home = self.root / "package-override-codex-home"

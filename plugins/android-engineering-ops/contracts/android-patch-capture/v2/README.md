@@ -1,15 +1,17 @@
-# Android patch capture package v2
+# Android patch capture v2 contract
 
-`capture-package.schema.json` is the frozen 2.0 read/preflight contract.
-`capture-package-v2.1.schema.json` is the additive materializer input contract. It
-adds versioned evidence contracts, component-precise evidence membership,
-conditional qualifiers, and N/A basis fields without redefining old 2.0 bytes.
+`android-patch-capture` directly produces the final
+`akbs-android-change-package-v2/2/android_change` package for any supported layer.
+The packaged schema is
+`../../incoming/v2/akbs-android-change-package.schema.json`; there is no separate
+capture schema or conversion phase.
 
-The capture runtime writes 2.1 and validates cross-references, local-only
-authority, status, and the full file inventory before an atomic local publish.
-It records neutral, versioned evidence facts and exact component membership; it
-does not bundle or interpret AKBS qualification groups or adapter contracts.
-Neither version grants upload, server ID, server qualification, or
-knowledge-materialization authority. The engineering writer and local validator
-accept any supported layer in the seven-layer capture taxonomy. A downstream
-consumer owns any narrower, independently versioned acceptance gate.
+The capture CLI may accept `mtk16`, `rk14`, or `unisoc13` as transient input. The
+formal manifest stores only canonical `mtk`, `rk`, or `unisoc` in
+`subject.target.platform` and stores Android version separately. Every payload is
+hash/size bound, every component is covered by patch and evidence, every source is
+used, and publication is atomic.
+
+A successful final package continues through member-side read/check/prepare/submit on
+the common patch upload lifecycle. It must never fall back to Framework v1. Existing
+genuine v1 packages remain on their historical input route.

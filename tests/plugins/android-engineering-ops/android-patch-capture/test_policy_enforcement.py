@@ -79,7 +79,6 @@ def arguments(**overrides: object) -> argparse.Namespace:
             }
         ],
         "primary_component_id": "framework-core",
-        "allow_missing_author_date": False,
         "allow_banned_logs": False,
     }
     values.update(overrides)
@@ -200,7 +199,7 @@ def test_mixed_change_accepts_historical_marker_and_requires_current_pair() -> N
     ]
 
 
-def test_missing_marker_exception_is_warn_only_for_legacy_import_draft() -> None:
+def test_final_historical_import_rejects_missing_marker() -> None:
     module = load_capture_module()
     result = module.coding_standard_check(
         arguments(
@@ -208,14 +207,13 @@ def test_missing_marker_exception_is_warn_only_for_legacy_import_draft() -> None
             implementation_origin="historical",
             policy_member_alias="",
             policy_profile_name="",
-            allow_missing_author_date=True,
         ),
         [capture_for(module, diff_with("historicalChange();"))],
     )
-    assert result["result"] == "WARN"
+    assert result["result"] == "FAIL"
     repository = result["repositories"][0]
-    assert repository["marker_exception"] == "missing_marker_import_draft"
-    assert repository["marker_files"][0]["result"] == "WARN"
+    assert repository["marker_exception"] is None
+    assert repository["marker_files"][0]["result"] == "FAIL"
 
 
 def test_capture_rejects_string_forgery_empty_pair_and_unwrapped_added_code() -> None:

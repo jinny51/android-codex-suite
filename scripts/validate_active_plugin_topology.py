@@ -42,8 +42,8 @@ TARGET_PLUGINS = {
     ),
 }
 TARGET_PLUGIN_VERSIONS = {
-    "akbs-member-ops": "2.0.7",
-    "android-engineering-ops": "2.0.5",
+    "akbs-member-ops": "2.1.0",
+    "android-engineering-ops": "2.1.0",
     "jinny-android-practices": "2.0.1",
 }
 MIGRATION_ALIASES = {
@@ -223,14 +223,14 @@ SURFACE_PHASE_BINDINGS = {
     "config.android-engineering-extension": ("phase2", "phase3"),
     "state.source-access": ("phase2", "phase4"),
     "artifact.akbs-member": ("phase2", "phase4"),
-    "artifact.android-patch-capture": ("phase2", "phase4"),
+    "artifact.android-patch-capture": ("phase2", "phase2"),
     "artifact.android-remote-build-deploy": ("phase2", "phase4"),
     "package.framework-change-v1": ("current", "current"),
-    "package.android-change-v2": ("phase2", "phase4"),
+    "package.android-change-v2": ("phase2", "phase2"),
     "cache.legacy-installations": ("phase5", "phase5"),
     "marketplace.entries": ("phase2", "phase5"),
 }
-PHASE_CONTRACT_SHA256 = "0c7f34e467f59e69d49d3ee74f3a6bd3fda96c054fd3420a8ba89afb7c8a4f84"
+PHASE_CONTRACT_SHA256 = "cbebbcd80b3226a973d83480ca86ffff04e69734b48f0d3b9e6eb3a97651960a"
 ENGINEERING_IDENTITY_RESOLUTION_SHA256 = (
     "a51a3d17279c26c04d5ba23f7e8fe5ead5964687219df231a7be99012556ab87"
 )
@@ -242,7 +242,7 @@ ENGINEERING_IDENTITY_MATRIX_SHA256 = (
     "1956a123cccb1ffece974d9f8d430bb728d03a72c24da9ab9785fa579b56f666"
 )
 SURFACE_ACTIVATION_SHA256 = {
-    "plugin.akbs-member-ops": "c7adb056dd9eb73322d17d370d431c50ff7bc902ee3c87257055f7e3c3297a80",
+    "plugin.akbs-member-ops": "e8e462b6872cfe198d73b8da5967c7fead70de76fb29dc059ee269e6dd37b3e9",
     "plugin.android-engineering-ops": "94033cd811852dad2eb7d3cb22f079fc0b3fdf3d3dd801739761759c8f8a40f2",
     "plugin.jinny-android-practices": "17545c4dd13c20f219d23a39f675387da13166de9ec2f4ec0881cee96987ae88",
     "plugin.legacy-android-ops": "f841247cff744c068f07fb1dbdd5f4123065ac4a6349663e8bbce520385df6ac",
@@ -252,7 +252,7 @@ SURFACE_ACTIVATION_SHA256 = {
     "skill.android-source-access": "739ebe560dfcdcaa934aa47535819b345e6521ce4cbeede5358e1dd6882d5bb6",
     "skill.jinny-provider-family": "af6374a382c0960f0b0749e37a477f3ca0122b56d70844c05a4ad09db592b707",
     "skill.android-knowledge-intake": "f436ee73f6c81b46705899994f0e57d11da76725c964fd9893ba759fd2e78133",
-    "cli.akbs-member": "7f188bc18e00fef552c6bf60d62c436ee9dbe4c2115cada8c6b8db24b154812d",
+    "cli.akbs-member": "151d2f0ae4676f9e94334d6f25a7faa5e12681ddfb60e0a931bf4156d5e61e7a",
     "cli.android-engineering": "d3dc379ace0e396c0deab3a768ec5f3d135612510e32bf5f7bda6f7a09d98d48",
     "cli.android-practices-provider": "add7c3eeb94670d9d770318abb9aaa284dd7407efb09f889e0354b519b274d3d",
     "cli.source-access": "d7a1207f69c845a7184f1bb35f40db6336948da56884bcd1fd9a1de21f498e98",
@@ -260,10 +260,10 @@ SURFACE_ACTIVATION_SHA256 = {
     "config.android-engineering-extension": "34c2f8dcd7f37eeabce048d0f02338976728f27e69ee4dead845da1c55236c57",
     "state.source-access": "059f7b598e8fcbba81911336e0b9ccd34a1e990fc37e2c5bc45024b4cd825f46",
     "artifact.akbs-member": "fcdc229e403d574bd28c04136d1d371df63fcfdf1b59af62c23dfd00559e05e3",
-    "artifact.android-patch-capture": "3ba6d4538b7d8c36eda38728fcb6835a9d0b679979e8703dcb8c5ff005256380",
+    "artifact.android-patch-capture": "381d078d0b28c57d40da1e86263cb0b72ab15d96e29951be11026fb54ac314b9",
     "artifact.android-remote-build-deploy": "b0c9b6b85f8213974fde9dcfe694fcf694c35ab386a4b437b5583309dfc0630e",
     "package.framework-change-v1": "d5c012849422e3d4e59f6928d451e574727032bbec4872377eac5ac57896dccc",
-    "package.android-change-v2": "f8d8986b4d46a523f0c42e26e5ca6195b9002da395f68c45a88053d9f4590444",
+    "package.android-change-v2": "c8618f71512f707fe36e94415b81f60e0f6343a3f852b31b9b0a119f3dd0448a",
     "cache.legacy-installations": "5d3abc52e67e2ecf73eed490ee140eac4bba2fafedac461940395804613f7d61",
     "marketplace.entries": "05ac96f642e211b2f00e5194e7895192f9f79a9f59273b70337065d3e498d1f5",
 }
@@ -289,7 +289,7 @@ SURFACE_DEFAULT_BINDINGS = {
     "artifact.android-patch-capture": (("legacy-capture",), ("legacy-capture",), ("android-patch-capture",), ("android-patch-capture",)),
     "artifact.android-remote-build-deploy": (("android-framework-ops",), ("android-framework-ops",), ("android-engineering-ops",), ("android-engineering-ops",)),
     "package.framework-change-v1": (("framework-change-v1",), ("framework-change-v1",), ("framework-change-v1",), ("server-policy",)),
-    "package.android-change-v2": ((), (), (), ("capability-gated-v2",)),
+    "package.android-change-v2": ((), (), ("server-policy",), ("server-policy",)),
     "cache.legacy-installations": (("legacy-install-family",), ("legacy-install-family",), ("target-install-family",), ("target-install-family",)),
     "marketplace.entries": (("android-framework-ops",), ("android-framework-ops",), ("role-selected-target",), ("role-selected-target",)),
 }
@@ -615,7 +615,7 @@ def validate_marketplace_entries(marketplace: dict[str, Any], expected: tuple[st
 
 
 def validate_packaged_contract_parity(root: Path) -> None:
-    """Keep standalone plugin copies byte-identical to the frozen suite contracts."""
+    """Keep standalone plugin copies byte-identical to suite contracts."""
 
     pairs = {
         "contracts/android-practices-provider/v1/provider.schema.json": (
@@ -645,14 +645,6 @@ def validate_packaged_contract_parity(root: Path) -> None:
             "plugins/akbs-member-ops/contracts/incoming/v2/"
             "akbs-android-change-package.schema.json"
         ),
-        "contracts/incoming/v2/client-adapter-outputs.schema.json": (
-            "plugins/akbs-member-ops/contracts/incoming/v2/"
-            "client-adapter-outputs.schema.json"
-        ),
-        "contracts/incoming/v2/component-evidence-profiles.json": (
-            "plugins/akbs-member-ops/contracts/incoming/v2/"
-            "component-evidence-profiles.json"
-        ),
         "contracts/incoming/v1/verification-acceptance-v2.json": (
             "plugins/akbs-member-ops/internal/incoming-v1/references/"
             "verification-acceptance-v2.json"
@@ -675,6 +667,13 @@ def validate_packaged_contract_parity(root: Path) -> None:
             )
     if not engineering_acceptance.is_file() or acceptance.read_bytes() != engineering_acceptance.read_bytes():
         raise TopologyError("engineering verification acceptance contract drifted")
+    v2_authority = root / "contracts/incoming/v2/akbs-android-change-package.schema.json"
+    v2_engineering = (
+        root
+        / "plugins/android-engineering-ops/contracts/incoming/v2/akbs-android-change-package.schema.json"
+    )
+    if not v2_engineering.is_file() or v2_authority.read_bytes() != v2_engineering.read_bytes():
+        raise TopologyError("engineering Android change v2 package contract drifted")
 
 
 def _state_map(topology: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -775,10 +774,10 @@ def _validate_phase_lifecycle_contract(matrix: dict[str, Any]) -> None:
     if not {
         "real_wsl_engineering_member", "real_macos_engineering_member",
         "real_gms_report_only_member", "none_jinny_custom_modes",
-        "v1_framework_v2_and_non_framework_v2",
+        "v1_v2_common_patch_upload_lifecycle",
         "capture_submit_queue_curation_knowledge_search_loop",
     }.issubset(phases["phase4"]["required"]):
-        raise TopologyError("Phase 4 real pilot scope differs")
+        raise TopologyError("Phase 4 real workflow scope differs")
     if "per_member_target_only_receipt" not in phases["phase5"]["required"]:
         raise TopologyError("Phase 5 lacks per-member target-only receipts")
     if not {
@@ -1260,23 +1259,19 @@ def validate_contract_documents(
         raise TopologyError("Framework v1 permanent-read contract differs")
     android_v2 = by_id["package.android-change-v2"]
     if android_v2["write"] != {
-        "current": "disabled",
-        "migration": "feature flag default off",
-        "target": "capability and per-layer pilot gated",
+        "current": "unsupported",
+        "migration": "common patch upload lifecycle",
+        "target": "common patch upload lifecycle",
     }:
-        raise TopologyError("Android change v2 writer is not default-off")
-    if not {
-        "client_output_hash_binding",
-        "complete_server_adapter_input_contracts",
-        "server_adapter_recalculation",
-    }.issubset(android_v2["activation"]["gates_by_phase"]["phase4"]):
-        raise TopologyError("Android change v2 qualification activation gates differ")
-    if not {
-        "client-output-cross-package-replay",
-        "client-output-source-hash-mismatch",
-        "server-recalculation-mismatch",
-    }.issubset(android_v2["test"]["negative_ids"]):
-        raise TopologyError("Android change v2 qualification negative tests differ")
+        raise TopologyError("Android change v2 does not use the common patch lifecycle")
+    if android_v2["activation"]["gates_by_phase"] != {
+        "phase2": ["direct_final_v2_schema", "seven_component_layers", "common_patch_endpoint"]
+    }:
+        raise TopologyError("Android change v2 direct input gates differ")
+    if set(android_v2["test"]["negative_ids"]) != {
+        "versioned-platform-formal-field", "silent-v1-fallback"
+    }:
+        raise TopologyError("Android change v2 negative tests differ")
 
 
 def validate_compatibility_test_map(root: Path, matrix: dict[str, Any]) -> None:
@@ -1348,7 +1343,7 @@ def validate_compatibility_test_map(root: Path, matrix: dict[str, Any]) -> None:
     if payload.get("proof_requirements") != {
         "phase2": "target_and_rollback_plugin_test_suites_plus_final_plugin_validation_receipt",
         "phase3": "isolated_model_routing_experiment_receipt",
-        "phase4": "real_pilot_receipts_for_wsl_macos_gms_modes_and_v1_v2_knowledge_loop",
+        "phase4": "real_workflow_receipts_for_wsl_macos_gms_modes_and_v1_v2_knowledge_loop",
         "phase5": "per_member_target_only_migration_and_rollback_receipts",
         "phase6": "new_repository_target_only_and_legacy_repository_receipts",
     }:
@@ -1742,226 +1737,12 @@ def validate_worker_result_semantics(
         if (check.get("status") == "not_run") != (receipt is None):
             raise TopologyError("worker result check receipt semantics differ")
 
-
-def validate_evidence_profile_registry(profiles: dict[str, Any]) -> None:
-    registry = profiles.get("evidence_group_registry") or {}
-    groups = registry.get("groups") or {}
-    referenced = set(profiles.get("common_required_groups") or [])
-    for values in (profiles.get("workflow_requirements") or {}).values():
-        referenced.update(values)
-    for layer in (profiles.get("layers") or {}).values():
-        referenced.update(layer.get("required_groups") or [])
-        for values in (layer.get("conditional_groups") or {}).values():
-            referenced.update(values)
-    if set(groups) != referenced:
-        raise TopologyError("evidence group registry does not exactly cover profile groups")
-    claims: set[str] = set()
-    for group_id, group in groups.items():
-        expected = {
-            "adapter_contract", "adapter_version", "claim",
-            "allowed_adapter_results", "not_applicable",
-        }
-        if set(group) != expected or not group["allowed_adapter_results"]:
-            raise TopologyError(f"evidence group adapter contract differs: {group_id}")
-        if (
-            not all(
-                isinstance(group[field], str) and group[field].strip()
-                for field in ("adapter_contract", "adapter_version", "claim")
-            )
-            or len(group["allowed_adapter_results"]) != len(set(group["allowed_adapter_results"]))
-            or not set(group["allowed_adapter_results"]).issubset({"PASS", "INFO", "NOT_APPLICABLE"})
-            or not set(group["allowed_adapter_results"]) & {"PASS", "INFO"}
-        ):
-            raise TopologyError(f"evidence group adapter result contract differs: {group_id}")
-        if group["claim"] in claims:
-            raise TopologyError("evidence group client claims must be unique")
-        claims.add(group["claim"])
-        has_na = "NOT_APPLICABLE" in group["allowed_adapter_results"]
-        if has_na != (group["not_applicable"] is True):
-            raise TopologyError(f"evidence group N/A contract differs: {group_id}")
-        if group_id in {"change_diff_facts", "risk_surface", "pre_change_search"}:
-            expected_results = ["PASS", "INFO"]
-        elif group["not_applicable"] is True:
-            expected_results = ["PASS", "NOT_APPLICABLE"]
-        else:
-            expected_results = ["PASS"]
-        if group["allowed_adapter_results"] != expected_results:
-            raise TopologyError(f"evidence group result binding differs: {group_id}")
-
-    predicate_ids = {
-        f"{layer_id}.{predicate_id}"
-        for layer_id, layer in (profiles.get("layers") or {}).items()
-        for predicate_id in (layer.get("conditional_groups") or {})
-    }
-    if set(profiles.get("conditional_predicates") or {}) != predicate_ids:
-        raise TopologyError("evidence conditional predicates do not exactly cover profile conditions")
-    output_contract = profiles.get("client_adapter_output_contract") or {}
-    document_contract = profiles.get("client_adapter_outputs_document_contract") or {}
-    server_boundary = profiles.get("server_qualification_boundary") or {}
-    archive_integrity = profiles.get("archive_integrity") or {}
-    writer_activation = profiles.get("writer_activation") or {}
-    qualification_hash = document_contract.get("qualification_input_hash") or {}
-    server_decision = server_boundary.get("server_decision_contract") or {}
-    expected_server_bindings = [
-        "source_package_key", "authenticated_actor", "manifest_sha256",
-        "directory_payload_sha256", "qualification_input_sha256",
-        "client_adapter_outputs_file_sha256", "profile_id",
-        "profile_artifact_sha256", "adapter_registry_sha256",
-        "component_group_results", "reason_codes", "validator_version",
-    ]
-    expected_writer_group_fields = [
-        "versioned input schema", "evidence authority and source",
-        "deterministic derivation", "allowed result and not-applicable rules",
-        "adapter contract artifact SHA", "server implementation",
-    ]
-    if (
-        registry.get("adapter_output_schema") != "akbs-client-adapter-output-v1"
-        or set(registry.get("required_adapter_binding_fields") or ())
-        != {"adapter_contract", "adapter_version", "source_evidence_sha256", "claim", "adapter_result"}
-        or set(output_contract)
-        != {
-            "schema", "required_fields", "additional_fields",
-            "additional_properties", "hash_binding",
-        }
-        or output_contract.get("schema") != "akbs-client-adapter-output-v1"
-        or output_contract.get("additional_properties") is not False
-        or output_contract.get("hash_binding") != "manifest_declared_metadata_file_sha256"
-        or output_contract.get("required_fields")
-        != [
-            "schema", "component_id", "group_id", "source_evidence_id",
-            "source_evidence_sha256", "adapter_contract", "adapter_version",
-            "claim", "adapter_result",
-        ]
-        or output_contract.get("additional_fields") != ["not_applicable_basis"]
-        or set(document_contract)
-        != {
-            "schema", "authority", "manifest_binding", "file_role", "media_type",
-            "profile_id_binding", "profile_artifact_hash_binding",
-            "declared_status_binding", "source_package_key_binding",
-            "qualification_input_hash",
-        }
-        or document_contract.get("schema") != "akbs-client-adapter-outputs-v1"
-        or document_contract.get("authority") != "untrusted_client_input"
-        or document_contract.get("manifest_binding")
-        != "qualification.client_adapter_outputs_file_id"
-        or document_contract.get("profile_artifact_hash_binding")
-        != "qualification.profile_artifact_sha256"
-        or document_contract.get("source_package_key_binding")
-        != "manifest_identity_member_alias_and_run_id"
-        or document_contract.get("file_role") != "metadata"
-        or document_contract.get("media_type") != "application/json"
-        or document_contract.get("declared_status_binding") != "manifest.package_status"
-        or set(qualification_hash)
-        != {
-            "field", "algorithm_id", "algorithm", "encoding", "ensure_ascii",
-            "object_key_order", "separators", "trailing_newline",
-            "unicode_normalization", "numeric_domain", "non_finite_numbers",
-            "input", "exclude",
-        }
-        or qualification_hash.get("field") != "qualification_input_sha256"
-        or qualification_hash.get("algorithm_id") != "akbs-canonical-json-sha256-v1"
-        or qualification_hash.get("algorithm") != "sha256"
-        or qualification_hash.get("encoding") != "UTF-8"
-        or qualification_hash.get("ensure_ascii") is not False
-        or qualification_hash.get("object_key_order") != "unicode_code_point_ascending"
-        or qualification_hash.get("separators") != [",", ":"]
-        or qualification_hash.get("trailing_newline") is not False
-        or qualification_hash.get("unicode_normalization") != "none_exact_code_points"
-        or qualification_hash.get("numeric_domain")
-        != "JSON integers only; floating-point values are forbidden"
-        or qualification_hash.get("non_finite_numbers") != "forbidden"
-        or qualification_hash.get("input") != "complete_manifest_semantics"
-        or qualification_hash.get("exclude")
-        != [
-            "the files row named by qualification.client_adapter_outputs_file_id",
-            "server-owned submit envelope and receipt fields",
-        ]
-        or set(server_boundary)
-        != {
-            "client_outputs_trust", "server_must_recalculate",
-            "server_decision_contract", "member_archive_rewrite",
-            "curation_consumes", "server_must_not_upgrade_declared_package_status",
-            "writer_activation_requires_complete_adapter_input_contracts",
-            "deterministic_recalculation_scope",
-        }
-        or server_boundary.get("client_outputs_trust") != "untrusted_input"
-        or server_boundary.get("server_must_recalculate") is not True
-        or server_boundary.get("member_archive_rewrite") is not False
-        or server_boundary.get("curation_consumes") != "server_decision_only"
-        or server_boundary.get("server_must_not_upgrade_declared_package_status") is not True
-        or server_boundary.get("writer_activation_requires_complete_adapter_input_contracts")
-        is not True
-        or server_boundary.get("deterministic_recalculation_scope")
-        != "evidence_acceptance_contracts_only_not_build_device_or_ai_reexecution"
-        or set(server_decision)
-        != {"schema", "authority", "authority_scope", "decision", "required_bindings"}
-        or server_decision.get("schema") != "akbs-server-qualification-decision-v1"
-        or server_decision.get("authority") != "server_authoritative"
-        or server_decision.get("authority_scope") != "incoming_contract_qualification"
-        or server_decision.get("decision") != ["accept", "reject"]
-        or server_decision.get("required_bindings") != expected_server_bindings
-        or set(archive_integrity)
-        != {
-            "actual_paths_equal", "manifest_in_files",
-            "file_id_and_normalized_path_unique", "declared_sha256_and_size_match_bytes",
-            "directory_payload_hash", "strict_json_for", "strict_json_rejects",
-        }
-        or archive_integrity.get("actual_paths_equal")
-        != "manifest.json plus every manifest.files path exactly once"
-        or archive_integrity.get("manifest_in_files") is not False
-        or archive_integrity.get("file_id_and_normalized_path_unique") is not True
-        or archive_integrity.get("declared_sha256_and_size_match_bytes") is not True
-        or archive_integrity.get("directory_payload_hash")
-        != "sha256_of_sorted_normalized_path_sha256_size_tuples"
-        or set(archive_integrity.get("strict_json_for") or ())
-        != {"manifest", "client adapter outputs", "declared JSON evidence"}
-        or set(archive_integrity.get("strict_json_rejects") or ())
-        != {"duplicate keys", "NaN", "Infinity"}
-        or writer_activation.get("phase1_state") != "blocked"
-        or set(writer_activation) != {"phase1_state", "block_reason", "required_per_group"}
-        or writer_activation.get("block_reason")
-        != "versioned adapter input contracts and complete server implementations are not yet frozen"
-        or writer_activation.get("required_per_group") != expected_writer_group_fields
-    ):
-        raise TopologyError("client/server evidence qualification boundary differs")
-
-
-def _predicate_matches(
-    predicate: dict[str, Any], component: dict[str, Any],
-) -> bool:
-    if predicate.get("always") is True:
-        return True
-    if "type_in" in predicate:
-        return component.get("type") in set(predicate["type_in"])
-    if "qualifier_contains" in predicate:
-        return predicate["qualifier_contains"] in set(component.get("qualifiers") or [])
-    raise TopologyError("unknown evidence conditional predicate")
-
-
-def required_evidence_groups(
-    component: dict[str, Any], workflow_contract: str, profiles: dict[str, Any],
-) -> set[str]:
-    layer_id = component.get("layer")
-    layer = (profiles.get("layers") or {}).get(layer_id)
-    if not isinstance(layer, dict):
-        raise TopologyError("component layer has no evidence profile")
-    groups = set(profiles.get("common_required_groups") or [])
-    groups.update((profiles.get("workflow_requirements") or {}).get(workflow_contract) or [])
-    groups.update(layer.get("required_groups") or [])
-    predicates = profiles.get("conditional_predicates") or {}
-    for predicate_id, conditional_groups in (layer.get("conditional_groups") or {}).items():
-        predicate = predicates.get(f"{layer_id}.{predicate_id}")
-        if not isinstance(predicate, dict):
-            raise TopologyError("component evidence predicate is missing")
-        if _predicate_matches(predicate, component):
-            groups.update(conditional_groups)
-    return groups
-
-
 def _require_canonical_json_v1_domain(value: Any, *, path: str = "$") -> None:
     if value is None or isinstance(value, (bool, str, int)):
         return
     if isinstance(value, float):
+        if not math.isfinite(value):
+            raise TopologyError(f"AKBS canonical JSON v1 forbids non-finite numbers: {path}")
         raise TopologyError(f"AKBS canonical JSON v1 forbids floating-point numbers: {path}")
     if isinstance(value, list):
         for index, item in enumerate(value):
@@ -1978,108 +1759,54 @@ def _require_canonical_json_v1_domain(value: Any, *, path: str = "$") -> None:
 
 def canonical_json_sha256_v1(value: Any) -> str:
     _require_canonical_json_v1_domain(value)
-    encoded = json.dumps(
+    raw = json.dumps(
         value,
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
         allow_nan=False,
     ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
-
-
-def qualification_input_sha256(package: dict[str, Any]) -> str:
-    candidate = copy.deepcopy(package)
-    qualification = candidate.get("qualification") or {}
-    output_file_id = qualification.get("client_adapter_outputs_file_id")
-    files = candidate.get("files")
-    if not isinstance(output_file_id, str) or not isinstance(files, list):
-        raise TopologyError("Android change v2 client output binding is missing")
-    retained = [row for row in files if row.get("id") != output_file_id]
-    if len(retained) != len(files) - 1:
-        raise TopologyError("Android change v2 client output file must resolve exactly once")
-    candidate["files"] = retained
-    return canonical_json_sha256_v1(candidate)
+    return hashlib.sha256(raw).hexdigest()
 
 
 def normalized_archive_path(value: object) -> str:
     if not isinstance(value, str) or not value or value.startswith("/") or "\\" in value:
         raise TopologyError("Android change v2 archive path is unsafe")
     path = PurePosixPath(value)
-    normalized = path.as_posix()
     if (
-        value != normalized
+        path.as_posix() != value
         or value in {".", ".."}
         or any(part in {"", ".", ".."} for part in path.parts)
     ):
         raise TopologyError("Android change v2 archive path is not canonical")
-    return normalized
-
-
-def archive_inventory(
-    entries: list[tuple[str, str, int]],
-) -> dict[str, tuple[str, int]]:
-    if not isinstance(entries, list) or not entries:
-        raise TopologyError("Android change v2 archive inventory is missing")
-    result: dict[str, tuple[str, int]] = {}
-    for entry in entries:
-        if not isinstance(entry, tuple) or len(entry) != 3:
-            raise TopologyError("Android change v2 archive inventory entry differs")
-        path = normalized_archive_path(entry[0])
-        sha256 = entry[1]
-        size_bytes = entry[2]
-        if (
-            path in result
-            or not isinstance(sha256, str)
-            or not re.fullmatch(r"[0-9a-f]{64}", sha256)
-            or not isinstance(size_bytes, int)
-            or isinstance(size_bytes, bool)
-            or size_bytes < 0
-        ):
-            raise TopologyError("Android change v2 archive inventory entry differs")
-        result[path] = (sha256, size_bytes)
-    return result
+    return value
 
 
 def source_package_key(package: dict[str, Any]) -> str:
     identity = package.get("identity") or {}
     member_alias = identity.get("member_alias")
     run_id = identity.get("run_id")
-    if (
-        not isinstance(member_alias, str)
-        or not isinstance(run_id, str)
-        or not re.fullmatch(r"[0-9]{8}-[0-9]{6}(?:-[A-Za-z0-9_.-]+)?", run_id)
-    ):
+    if not isinstance(member_alias, str) or not isinstance(run_id, str):
         raise TopologyError("Android change v2 source package identity differs")
     return f"{run_id[:8]}/{member_alias}/{run_id}"
 
 
-def validate_client_patch_package_semantics(
-    manifest_bytes: bytes,
-    profile_artifact_bytes: bytes,
-    client_adapter_outputs_bytes: bytes,
-    *,
-    archive_entries: list[tuple[str, str, int]],
-) -> dict[str, Any]:
-    """Validate untrusted client package coherence, never server qualification."""
+def _rows_by_id(package: dict[str, Any], name: str) -> dict[str, dict[str, Any]]:
+    rows = package.get(name)
+    if not isinstance(rows, list) or not rows or any(not isinstance(row, dict) for row in rows):
+        raise TopologyError(f"Android change v2 {name} must be non-empty objects")
+    identifiers = [row.get("id") for row in rows]
+    if any(not isinstance(item, str) for item in identifiers) or len(identifiers) != len(set(identifiers)):
+        raise TopologyError(f"Android change v2 {name} IDs must be unique")
+    return {str(row["id"]): row for row in rows}
 
-    if not all(
-        isinstance(value, bytes)
-        for value in (manifest_bytes, profile_artifact_bytes, client_adapter_outputs_bytes)
-    ):
-        raise TopologyError("Android change v2 client validator requires exact artifact bytes")
-    package = load_json_bytes(manifest_bytes, label="manifest.json")
-    profiles = load_json_bytes(
-        profile_artifact_bytes, label="component-evidence-profiles.json"
-    )
-    client_adapter_outputs = load_json_bytes(
-        client_adapter_outputs_bytes, label="client-adapter-outputs.json"
-    )
-    profile_artifact_sha256 = hashlib.sha256(profile_artifact_bytes).hexdigest()
-    client_adapter_outputs_file_sha256 = hashlib.sha256(
-        client_adapter_outputs_bytes
-    ).hexdigest()
-    client_adapter_outputs_size_bytes = len(client_adapter_outputs_bytes)
+
+def validate_android_change_package_semantics(
+    manifest_bytes: bytes,
+    archive_entries: dict[str, tuple[str, int]],
+) -> dict[str, Any]:
+    """Validate the minimal server-facing v2 references and file/hash rules."""
+    package = load_json_bytes(manifest_bytes, label="Android change v2 manifest")
     if (
         package.get("schema") != "akbs-android-change-package-v2"
         or package.get("schema_version") != "2"
@@ -2087,204 +1814,73 @@ def validate_client_patch_package_semantics(
         or package.get("package_status") != "validated"
     ):
         raise TopologyError("Android change v2 package identity differs")
-    if profiles.get("schema") != "akbs-component-evidence-profiles-v1":
-        raise TopologyError("Android change v2 evidence profile identity differs")
-    validate_evidence_profile_registry(profiles)
-    collections: dict[str, list[dict[str, Any]]] = {}
-    for name in ("components", "sources", "files", "changes", "evidence"):
-        rows = package.get(name)
-        if not isinstance(rows, list) or not rows:
-            raise TopologyError(f"Android change v2 {name} must be non-empty")
-        identifiers = [row.get("id") for row in rows if isinstance(row, dict)]
-        if len(identifiers) != len(rows) or len(identifiers) != len(set(identifiers)):
-            raise TopologyError(f"Android change v2 {name} IDs must be unique")
-        collections[name] = rows
-    components = {row["id"]: row for row in collections["components"]}
-    sources = {row["id"]: row for row in collections["sources"]}
-    files = {row["id"]: row for row in collections["files"]}
-    evidence = {row["id"]: row for row in collections["evidence"]}
+    if {"qualification", "files", "changes", "extensions"} & set(package):
+        raise TopologyError("Android change v2 contains a retired control-plane field")
+    target = (package.get("subject") or {}).get("target") or {}
+    if target.get("platform") not in {"mtk", "rk", "unisoc"}:
+        raise TopologyError("Android change v2 target.platform must be canonical")
+    if not re.fullmatch(r"(?:0|[1-9][0-9]*)(?:\.[0-9]+)?", str(target.get("android_version") or "")):
+        raise TopologyError("Android change v2 target.android_version must be canonical")
+
+    components = _rows_by_id(package, "components")
+    sources = _rows_by_id(package, "sources")
+    patches = _rows_by_id(package, "patches")
+    evidence = _rows_by_id(package, "evidence")
+    allowed_layers = {"application", "platform", "native", "hal", "kernel", "device", "build"}
+    if any(component.get("layer") not in allowed_layers for component in components.values()):
+        raise TopologyError("Android change v2 component layer differs")
     if (package.get("subject") or {}).get("primary_component_id") not in components:
-        raise TopologyError("Android change v2 primary component is unresolved")
-    for source in sources.values():
-        path = source.get("repo_path")
-        if path != "." and (
-            not isinstance(path, str) or path.startswith("/") or "\\" in path
-            or ".." in Path(path).parts
-        ):
-            raise TopologyError("Android change v2 source path is unsafe")
-    declared_paths: set[str] = set()
-    for file_row in files.values():
-        path = normalized_archive_path(file_row.get("path"))
-        if path == "manifest.json" or path in declared_paths:
-            raise TopologyError("Android change v2 file path is unsafe or duplicated")
-        declared_paths.add(path)
-    changed_components: set[str] = set()
-    for change in collections["changes"]:
-        component_ids = set(change.get("component_ids") or [])
-        if (
-            not component_ids
-            or not component_ids.issubset(components)
-            or change.get("source_id") not in sources
-            or change.get("file_id") not in files
-            or files[change["file_id"]].get("role") != "patch"
-        ):
-            raise TopologyError("Android change v2 change references differ")
-        changed_components.update(component_ids)
+        raise TopologyError("Android change v2 primary component does not resolve")
+
+    patched_components: set[str] = set()
+    evidenced_components: set[str] = set()
+    used_sources: set[str] = set()
+    for patch in patches.values():
+        bound = set(patch.get("component_ids") or [])
+        if not bound or not bound.issubset(components):
+            raise TopologyError("Android change v2 patch component references differ")
+        if patch.get("source_id") not in sources:
+            raise TopologyError("Android change v2 patch source reference differs")
+        patched_components.update(bound)
+        used_sources.add(str(patch["source_id"]))
     for item in evidence.values():
-        component_ids = set(item.get("component_ids") or [])
+        bound = set(item.get("component_ids") or [])
+        if not bound or not bound.issubset(components):
+            raise TopologyError("Android change v2 evidence component references differ")
+        evidenced_components.update(bound)
+    if patched_components != set(components):
+        raise TopologyError("every Android change v2 component must have a patch")
+    if evidenced_components != set(components):
+        raise TopologyError("every Android change v2 component must have evidence")
+    if used_sources != set(sources):
+        raise TopologyError("every Android change v2 source must be used by a patch")
+
+    descriptors = [package.get("readme"), *patches.values(), *evidence.values()]
+    if any(not isinstance(row, dict) for row in descriptors):
+        raise TopologyError("Android change v2 payload descriptor differs")
+    paths = [normalized_archive_path(row.get("path")) for row in descriptors]
+    if len(paths) != len(set(paths)):
+        raise TopologyError("Android change v2 payload paths must be unique")
+    expected: dict[str, tuple[str, int]] = {}
+    for row, path in zip(descriptors, paths):
+        digest = row.get("sha256")
+        size = row.get("size_bytes")
         if (
-            not component_ids
-            or not component_ids.issubset(components)
-            or item.get("file_id") not in files
-            or files[item["file_id"]].get("role") != "evidence"
+            not isinstance(digest, str)
+            or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+            or type(size) is not int
+            or size < 0
         ):
-            raise TopologyError("Android change v2 evidence references differ")
-        if item.get("result") == "NOT_APPLICABLE" and not item.get("not_applicable_basis"):
-            raise TopologyError("Android change v2 N/A evidence lacks basis and limits")
-    qualification = package.get("qualification") or {}
-    if (
-        qualification.get("profile_id") != profiles.get("schema")
-        or qualification.get("profile_artifact_sha256") != profile_artifact_sha256
-        or not re.fullmatch(r"[0-9a-f]{64}", profile_artifact_sha256)
-    ):
-        raise TopologyError("Android change v2 qualification profile differs")
-    output_file_id = qualification.get("client_adapter_outputs_file_id")
-    output_file = files.get(output_file_id)
-    if (
-        not isinstance(output_file, dict)
-        or output_file.get("role") != "metadata"
-        or output_file.get("media_type") != "application/json"
-        or output_file.get("sha256") != client_adapter_outputs_file_sha256
-        or output_file.get("size_bytes") != client_adapter_outputs_size_bytes
-        or not re.fullmatch(r"[0-9a-f]{64}", client_adapter_outputs_file_sha256)
-        or not isinstance(client_adapter_outputs_size_bytes, int)
-        or isinstance(client_adapter_outputs_size_bytes, bool)
-        or client_adapter_outputs_size_bytes < 1
-    ):
-        raise TopologyError("Android change v2 client adapter output file binding differs")
-    bindings = qualification.get("component_evidence_bindings")
-    if not isinstance(bindings, list) or not bindings:
-        raise TopologyError("Android change v2 qualification bindings are missing")
-    bound_components: set[str] = set()
-    binding_evidence: dict[str, set[str]] = {}
-    for binding in bindings:
-        component_id = binding.get("component_id")
-        evidence_ids = set(binding.get("evidence_ids") or [])
-        if (
-            component_id not in components or component_id in bound_components
-            or not evidence_ids or not evidence_ids.issubset(evidence)
-            or any(component_id not in evidence[item]["component_ids"] for item in evidence_ids)
-        ):
-            raise TopologyError("Android change v2 qualification references differ")
-        bound_components.add(component_id)
-        binding_evidence[component_id] = evidence_ids
-    if changed_components != set(components) or bound_components != set(components):
-        raise TopologyError("every Android change v2 component must be changed and qualified")
-    registry = profiles["evidence_group_registry"]["groups"]
-    output_contract = profiles["client_adapter_output_contract"]
-    required_fields = set(output_contract["required_fields"])
-    allowed_fields = required_fields | set(output_contract.get("additional_fields") or [])
-    workflow_contract = (package.get("workflow") or {}).get("contract")
-    expected_document_fields = {
-        "schema", "authority", "source_package_key", "qualification_input_sha256",
-        "profile_id", "profile_artifact_sha256", "declared_package_status", "components",
-    }
-    if not isinstance(client_adapter_outputs, dict):
-        raise TopologyError("Android change v2 client adapter output document must be an object")
-    document_components = client_adapter_outputs.get("components")
-    if (
-        set(client_adapter_outputs) != expected_document_fields
-        or client_adapter_outputs.get("schema") != "akbs-client-adapter-outputs-v1"
-        or client_adapter_outputs.get("authority") != "untrusted_client_input"
-        or client_adapter_outputs.get("source_package_key") != source_package_key(package)
-        or client_adapter_outputs.get("qualification_input_sha256")
-        != qualification_input_sha256(package)
-        or client_adapter_outputs.get("profile_id") != profiles.get("schema")
-        or client_adapter_outputs.get("profile_artifact_sha256") != profile_artifact_sha256
-        or client_adapter_outputs.get("declared_package_status") != package.get("package_status")
-        or not isinstance(document_components, list)
-        or not document_components
-    ):
-        raise TopologyError("Android change v2 client adapter output document differs")
-    client_outputs_by_component: dict[str, list[dict[str, Any]]] = {}
-    for item in document_components:
-        if (
-            not isinstance(item, dict)
-            or set(item) != {"component_id", "outputs"}
-            or not isinstance(item.get("component_id"), str)
-            or item.get("component_id") in client_outputs_by_component
-            or not isinstance(item.get("outputs"), list)
-            or not item["outputs"]
-        ):
-            raise TopologyError("Android change v2 client component outputs differ")
-        client_outputs_by_component[item["component_id"]] = item["outputs"]
-    if set(client_outputs_by_component) != set(components):
-        raise TopologyError("client adapter outputs must cover every component exactly")
-    for component_id, component in components.items():
-        outputs = client_outputs_by_component.get(component_id)
-        if not isinstance(outputs, list) or not outputs:
-            raise TopologyError("client adapter outputs are missing")
-        if any(not isinstance(item, dict) for item in outputs):
-            raise TopologyError("client adapter output fields differ")
-        groups = [item.get("group_id") for item in outputs]
-        expected_groups = required_evidence_groups(component, workflow_contract, profiles)
-        if len(groups) != len(set(groups)) or set(groups) != expected_groups:
-            raise TopologyError("client adapter output groups do not satisfy the component profile")
-        for output in outputs:
-            if (
-                not isinstance(output, dict)
-                or set(output) - allowed_fields
-                or not required_fields.issubset(output)
-            ):
-                raise TopologyError("client adapter output fields differ")
-            if (
-                output.get("schema") != output_contract["schema"]
-                or output.get("component_id") != component_id
-                or output.get("source_evidence_id") not in binding_evidence[component_id]
-            ):
-                raise TopologyError("client adapter output binding differs")
-            source = evidence[output["source_evidence_id"]]
-            source_file = files[source["file_id"]]
-            group = registry.get(output.get("group_id"))
-            if not isinstance(group, dict) or (
-                output.get("source_evidence_sha256") != source_file.get("sha256")
-                or output.get("claim") not in set(source.get("declared_claims") or ())
-                or output.get("adapter_contract") != group["adapter_contract"]
-                or output.get("adapter_version") != group["adapter_version"]
-                or output.get("claim") != group["claim"]
-                or output.get("adapter_result") not in group["allowed_adapter_results"]
-            ):
-                raise TopologyError("client evidence adapter output differs")
-            is_na = output.get("adapter_result") == "NOT_APPLICABLE"
-            basis = output.get("not_applicable_basis")
-            valid_basis = (
-                isinstance(basis, dict)
-                and set(basis) == {"basis", "limits"}
-                and all(isinstance(basis[key], str) and basis[key].strip() for key in basis)
-            )
-            if is_na != valid_basis or (is_na and not group["not_applicable"]):
-                raise TopologyError("client evidence N/A output differs")
-    expected = {
-        "manifest.json": (hashlib.sha256(manifest_bytes).hexdigest(), len(manifest_bytes)),
-        **{
-            row["path"]: (row.get("sha256"), row.get("size_bytes"))
-            for row in files.values()
-        },
-    }
-    if archive_inventory(archive_entries) != expected:
+            raise TopologyError("Android change v2 payload hash or size differs")
+        expected[path] = (digest, size)
+    if archive_entries != expected:
         raise TopologyError("Android change v2 archive inventory or file integrity differs")
     return {
-        "schema": "akbs-client-package-coherence-v1",
-        "authority": "untrusted_client_input",
-        "client_semantic_coherence_valid": True,
-        "schema_validation_required": True,
+        "schema": "akbs-android-change-package-coherence-v2",
+        "source_package_key": source_package_key(package),
+        "component_layers": sorted({item["layer"] for item in components.values()}),
+        "reference_integrity_valid": True,
         "archive_inventory_binding_valid": True,
-        "archive_extractor_validation_required": True,
-        "server_qualified": False,
-        "server_decision_required": "akbs-server-qualification-decision-v1",
-        "profile_artifact_sha256": profile_artifact_sha256,
-        "client_adapter_outputs_file_sha256": client_adapter_outputs_file_sha256,
-        "qualification_input_sha256": qualification_input_sha256(package),
     }
 
 
@@ -2297,7 +1893,6 @@ def validate_phase0_schema_documents(root: Path) -> None:
         "contracts/android-change-workflow/v1/worker-assignment.schema.json": "worker-assignment-v1",
         "contracts/android-change-workflow/v1/worker-result.schema.json": "worker-result-v1",
         "contracts/incoming/v2/akbs-android-change-package.schema.json": "akbs-android-change-package-v2",
-        "contracts/incoming/v2/client-adapter-outputs.schema.json": "akbs-client-adapter-outputs-v1",
     }
     documents: dict[str, dict[str, Any]] = {}
     for relative, schema_name in expected.items():
@@ -2336,51 +1931,23 @@ def validate_phase0_schema_documents(root: Path) -> None:
     if set(result["properties"]["outcome"]["enum"]) != {"completed", "partial", "blocked", "failed"}:
         raise TopologyError("worker result outcome can impersonate acceptance")
     package = documents["contracts/incoming/v2/akbs-android-change-package.schema.json"]
-    qualification_required = set(package["$defs"]["qualification"]["required"])
     if (
         package["properties"]["schema_version"].get("const") != "2"
         or package["properties"]["package_kind"].get("const") != "android_change"
         or package["properties"]["package_status"].get("const") != "validated"
         or set(package["$defs"]["component"]["properties"]["layer"]["enum"])
         != {"application", "platform", "native", "hal", "kernel", "device", "build"}
-        or qualification_required
+        or package["$defs"]["subject"]["properties"]["target"]["properties"]["platform"].get("enum")
+        != ["mtk", "rk", "unisoc"]
+        or set(package.get("required") or ())
         != {
-            "profile_id", "profile_artifact_sha256",
-            "client_adapter_outputs_file_id", "component_evidence_bindings",
+            "schema", "schema_version", "package_kind", "package_status", "identity",
+            "subject", "workflow", "components", "sources", "readme", "patches", "evidence",
         }
+        or {"qualification", "files", "changes", "extensions"}
+        & set(package.get("properties") or {})
     ):
         raise TopologyError("Android change v2 package identity or layers differ")
-    client_outputs = documents["contracts/incoming/v2/client-adapter-outputs.schema.json"]
-    if (
-        client_outputs["properties"]["authority"].get("const") != "untrusted_client_input"
-        or client_outputs["properties"]["schema"].get("const")
-        != "akbs-client-adapter-outputs-v1"
-        or client_outputs["$defs"]["adapterOutput"]["properties"]["schema"].get("const")
-        != "akbs-client-adapter-output-v1"
-    ):
-        raise TopologyError("client adapter output schema authority differs")
-    profiles = load_json(root / "contracts/incoming/v2/component-evidence-profiles.json")
-    if (
-        profiles.get("schema") != "akbs-component-evidence-profiles-v1"
-        or profiles.get("client_output_source")
-        != "client_contract_adapter_output_file_untrusted_until_server_recalculation"
-        or set(profiles.get("layers", {}))
-        != {"application", "platform", "native", "hal", "kernel", "device", "build"}
-        or profiles.get("legacy_v1", {}).get("read_compatibility") != "permanent"
-        or profiles.get("legacy_v1", {}).get("history_rewrite") is not False
-        or profiles.get("writer_activation", {}).get("phase1_state") != "blocked"
-    ):
-        raise TopologyError("component evidence profile or v1 compatibility differs")
-    validate_evidence_profile_registry(profiles)
-    legacy_read = profiles["legacy_v1"].get("normalized_read_projection") or {}
-    facets = (legacy_read.get("component_fields") or {})
-    if (
-        legacy_read.get("schema") != "akbs-normalized-component-read-v1"
-        or facets.get("partition", {}).get("nullable") is not True
-        or facets.get("ownership", {}).get("nullable") is not True
-        or legacy_read.get("write_back") is not False
-    ):
-        raise TopologyError("legacy v1 normalized read projection differs")
     core_contracts = [
         value for path, value in documents.items()
         if path.startswith("contracts/android-practices-provider")

@@ -480,6 +480,136 @@ def init_framework_source(root: Path) -> Path:
     return source_root
 
 
+def build_legacy_framework_capture_fixture(
+    env: dict[str, str], source_root: Path, patch_artifact: Path
+) -> Path:
+    """Build a frozen v1 capture fixture without converting a final v2 package."""
+    capture = (
+        Path(env["CODEX_HOME"])
+        / "artifacts/android-framework-patch-capture/packages"
+        / "20260711-110000-patch"
+    )
+    patch_rel = "patches/mtk15-frameworks-base@incoming-contract-gate.patch"
+    verification_rel = "evidence/verification-result.json"
+    (capture / "patches").mkdir(parents=True)
+    (capture / "evidence").mkdir()
+    patch_bytes = patch_artifact.read_bytes()
+    (capture / patch_rel).write_bytes(patch_bytes)
+    (capture / "README.md").write_text(
+        """# incoming-contract-gate
+
+## 功能描述
+
+验证 legacy Framework v1 补丁仍通过原有成员上传生命周期。
+
+## 修改点
+
+- 修改 SystemUI 测试属性，用于验证 v1 capture reader 和提交路由。
+
+## 日志控制
+
+无新增运行时日志。
+
+## SystemProperties
+
+`persist.sys.contract_gate`
+
+## 字符串国际化
+
+无新增字符串资源。
+
+## 可回滚性
+
+反向应用测试补丁即可回滚。
+""",
+        encoding="utf-8",
+    )
+    (capture / verification_rel).write_text(
+        json.dumps(
+            {
+                "kind": "verification_result",
+                "contract_version": "akbs-verification-evidence/v2",
+                "scope": "feature",
+                "requirement_acceptance": "accepted",
+                "result": "PASS",
+                "method": "device",
+                "device": "TVE8402M",
+                "build": ["SystemUI 编译通过"],
+                "steps": ["incoming 合同验证通过"],
+            },
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    manifest = {
+        "package_type": "framework_feature_patch",
+        "change_domain": "framework",
+        "summary": "incoming v1 跨仓合同门禁",
+        "feature": "incoming-contract-gate",
+        "project": "TVE8402M",
+        "platform_token": "mtk15",
+        "platform": "mtk",
+        "android_version": "15",
+        "implementation_origin": "historical",
+        "workflow_contract": "historical_import",
+        "captured_by": "codex",
+        "coding_standard_check": {
+            "required": True,
+            "mode": "capture_gate",
+            "result": "PASS",
+        },
+        "readme": "README.md",
+        "git_repositories": [
+            {
+                "root": str(source_root),
+                "repo_path": ".",
+                "git": {"branch": "main"},
+            }
+        ],
+        "patches": [
+            {
+                "path": patch_rel,
+                "repo_path": ".",
+                "source_root": str(source_root),
+                "content_sha1": hashlib.sha1(patch_bytes).hexdigest(),
+                "status": "validated",
+                "reuse_hint": True,
+                "project": "TVE8402M",
+                "platform_token": "mtk15",
+                "platform": "mtk",
+                "android_version": "15",
+                "implementation_origin": "historical",
+                "workflow_contract": "historical_import",
+                "captured_by": "codex",
+                "facts": {
+                    "modified_files": [
+                        "frameworks/base/packages/SystemUI/src/com/android/systemui/volume/VolumeDialogImpl.java"
+                    ],
+                    "modules": ["SystemUI"],
+                    "system_properties": ["persist.sys.contract_gate"],
+                },
+            }
+        ],
+        "evidence": [
+            {
+                "id": "verification-result",
+                "kind": "verification_result",
+                "path": verification_rel,
+                "result": "PASS",
+                "summary": "legacy Framework v1 contract verification",
+            }
+        ],
+    }
+    (capture / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return capture
+
+
 def generate_real_packages(
     root: Path,
     env: dict[str, str],
@@ -502,82 +632,8 @@ def generate_real_packages(
             stdout=subprocess.PIPE,
         ).stdout
     )
-    capture_script = (
-        runtimes["android-engineering-ops"]
-        / "skills/android-patch-capture/scripts/capture_android_patch.py"
-    )
-    capture = run_json(
-        [
-            sys.executable,
-            str(capture_script),
-            "--patch-artifact",
-            str(patch_artifact),
-            "--patch-repo-path",
-            ".",
-            "--out-dir",
-            str(
-                Path(env["CODEX_HOME"])
-                / "artifacts/android-patch-capture/packages"
-            ),
-            "--run-id",
-            "20260711-110000-patch",
-            "--platform",
-            "mtk15",
-            "--component-layer",
-            "platform",
-            "--component-type",
-            "framework",
-            "--component-partition",
-            "system",
-            "--component-ownership",
-            "aosp",
-            "--change-id",
-            "incoming-contract-gate",
-            "--summary",
-            "incoming v1 跨仓合同门禁",
-            "--workflow-contract",
-            "manual_import",
-            "--implementation-origin",
-            "historical",
-            "--project",
-            "TVE8402M",
-            "--status",
-            "validated",
-            "--verification",
-            "SystemUI 编译通过",
-            "--device",
-            "TVE8402M",
-            "--device-verification",
-            "incoming 合同验证通过",
-            "--search-query",
-            "incoming v1 contract",
-            "--search-result",
-            "未发现可直接复用补丁",
-        ],
-        source_root,
-        env,
-    )
-    target_capture = (
-        Path(env["CODEX_HOME"])
-        / "artifacts/android-framework-patch-capture/packages"
-        / "20260711-110000-patch"
-    )
-    target_capture.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(Path(capture["package"]), target_capture)
-    legacy_manifest_path = target_capture / "manifest.json"
-    legacy_manifest = load_json(legacy_manifest_path)
-    legacy_manifest["package_type"] = "framework_feature_patch"
-    legacy_manifest["change_domain"] = "framework"
-    legacy_readme_path = target_capture / str(legacy_manifest["readme"])
-    legacy_readme_path.write_text(
-        legacy_readme_path.read_text(encoding="utf-8").replace(
-            "## 变更描述", "## 功能描述", 1
-        ),
-        encoding="utf-8",
-    )
-    legacy_manifest_path.write_text(
-        json.dumps(legacy_manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
+    target_capture = build_legacy_framework_capture_fixture(
+        env, source_root, patch_artifact
     )
     patch = run_json(
         common
@@ -989,12 +1045,12 @@ def retarget_member(package: Path, manifest: dict[str, Any], member: str, run_id
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate incoming compatibility; v2-release runs the formal capture-to-server chain in isolation.")
+    parser = argparse.ArgumentParser(description="Validate the legacy incoming v1 compatibility contract.")
     parser.add_argument(
         "--mode",
-        choices=("client-only", "remote-pilot", "v2-release"),
+        choices=("client-only", "remote-pilot"),
         default="client-only",
-        help="Local v1 checks are the default; remote-pilot checks v1 and v2-release is the paired v2 release gate.",
+        help="Local v1 checks are the default; remote-pilot checks the legacy v1 server contract.",
     )
     parser.add_argument("--system-root", type=Path, help="Read-only AKBS system repository root")
     parser.add_argument("--server-host", default="test35", help="SSH host providing the authoritative system Python runtime")
@@ -1007,12 +1063,6 @@ def main() -> int:
     parser.add_argument("--server-packages-root", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--plugin-suite-root", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
-    if args.mode == "v2-release":
-        from android_change_v2_contract_gate import run_remote
-
-        result = run_remote(REPO_ROOT, host=args.server_host, system_root=args.server_runtime_root)
-        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
-        return 0
     if (REPO_ROOT / ".git").exists():
         from validator_hygiene import repository_cleanup
 

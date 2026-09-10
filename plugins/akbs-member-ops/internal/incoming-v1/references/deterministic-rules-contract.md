@@ -12,7 +12,7 @@ needed to validate historical v1 material; it is not a second public policy owne
 | --- | --- |
 | Source capability versions | `current_plugin_version`, `source_version_compatibility_matrix`, `source_version_errors` |
 | Project normalization | `valid_project_model`, `find_company_project`, `complete_company_project_with_platform`, `parse_company_project` |
-| Platform and Android version parsing | `parse_known_platform_token`, `find_platform_tokens`, `parse_platform_arg`, `normalize_android_version` |
+| Platform and Android version parsing | `parse_known_platform_token`, `find_platform_tokens`, `normalize_android_version` |
 | Patch asset names | `patch_asset_name_prefix`, `has_uncontrolled_patch_asset_prefix`, `classify_patch_asset_names` |
 | Function scope | `aggregate_package_scope_errors`, `classify_function_scope`, `curation_text_missing_fields` |
 | Pre-change search evidence | `classify_pre_change_search`, `normalize_reuse_decision`, `search_results_need_usage_decision` |

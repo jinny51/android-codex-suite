@@ -1,7 +1,7 @@
 interface:
   display_name: "AKBS Patch Submit"
   short_description: "Prepare and submit Android change packages"
-  default_prompt: "Use $akbs-patch-submit to check the exact package contract, run adapt-capture for capture 2.1 when needed, and submit with my existing member profile; preserve legacy v1 compatibility, enabled-layer limits, original patch bytes, and server-owned qualification."
+  default_prompt: "Use $akbs-patch-submit to read, check, prepare, or submit a final Android change v2 package with my existing member profile; preserve legacy v1 compatibility, exact package bytes, canonical platform fields, and the common patch-upload lifecycle."
 
 policy:
   allow_implicit_invocation: true

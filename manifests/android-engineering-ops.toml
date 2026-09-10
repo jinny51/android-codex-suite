@@ -28,4 +28,4 @@ summary = "执行受控远端构建、artifact 校验、检查点和本地 adb �
 [[skills]]
 name = "android-patch-capture"
 category = "Android Workflow"
-summary = "生成七层 component 标注的 android_change_capture，并仅确认或降级 effective status"
+summary = "从已验证源码与证据直接生成七层 component 标注的最终 Android change v2 包"

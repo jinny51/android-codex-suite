@@ -67,7 +67,6 @@ class SkillSurfaceTest(unittest.TestCase):
             ["android-change-v2", "check", "--help"],
             ["android-change-v2", "prepare", "--help"],
             ["android-change-v2", "submit", "--help"],
-            ["android-change-v2", "adapt-capture", "--help"],
         ):
             with self.subTest(arguments=arguments):
                 completed = subprocess.run(
@@ -102,7 +101,7 @@ class SkillSurfaceTest(unittest.TestCase):
         family_gate.assert_called_once_with()
         business.assert_not_called()
 
-    def test_capture_adapter_phase_boundary_is_aligned_across_public_surfaces(self) -> None:
+    def test_direct_v2_boundary_is_aligned_across_public_surfaces(self) -> None:
         surfaces = (
             PLUGIN / "README.md",
             PLUGIN / ".codex-plugin" / "plugin.json",
@@ -114,15 +113,16 @@ class SkillSurfaceTest(unittest.TestCase):
         for surface in surfaces:
             with self.subTest(surface=surface):
                 text = surface.read_text(encoding="utf-8")
-                self.assertIn("adapt-capture", text)
+                self.assertNotIn("adapt-capture", text)
+                self.assertNotIn("qualification", text.lower())
         skill = surfaces[2].read_text(encoding="utf-8")
         docs = surfaces[4].read_text(encoding="utf-8")
         for text in (skill, docs):
             normalized = " ".join(text.split())
-            self.assertIn("BLOCKED", normalized)
+            self.assertIn("最终 v2", normalized)
             for layer in ("application", "platform", "native", "hal", "kernel", "device", "build"):
                 self.assertIn(layer, normalized)
-            self.assertIn("versioned adapter input", normalized)
+            self.assertIn("同一补丁上传生命周期", normalized)
 
     def test_canonical_search_covers_non_framework_android_changes(self) -> None:
         skill = (PLUGIN / "skills" / "akbs-knowledge-search" / "SKILL.md").read_text(

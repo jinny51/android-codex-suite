@@ -105,29 +105,19 @@ def test_concurrent_publish_has_one_complete_winner(tmp_path: Path) -> None:
 
 
 def test_capture_v2_schema_is_packaged_with_the_runtime() -> None:
-    legacy_schema = (
-        PLUGIN / "contracts/android-patch-capture/v2/capture-package.schema.json"
-    )
-    writer_schema = (
-        PLUGIN / "contracts/android-patch-capture/v2/capture-package-v2.1.schema.json"
-    )
-    assert legacy_schema.is_file()
-    assert writer_schema.is_file()
+    package_schema = PLUGIN / "contracts/incoming/v2/akbs-android-change-package.schema.json"
+    assert package_schema.is_file()
     script = (
         PLUGIN
         / "skills/android-patch-capture/scripts/capture_android_patch.py"
     ).read_text(encoding="utf-8")
-    assert "capture-package.schema.json" in script
-    assert 'SCHEMA_VERSION = "2.1"' in script
-    assert "capture-package-v2.1.schema.json" in script
-    assert "validate_capture_manifest(manifest, package_dir)" in script
+    assert "akbs-android-change-package.schema.json" in script
+    assert "validate_final_manifest(manifest, package_dir)" in script
+    assert "capture-package-v2.1.schema.json" not in script
+    assert "qualification" not in script
     reference = (
         PLUGIN
         / "skills/android-patch-capture/references/package-contract.md"
     ).read_text(encoding="utf-8")
-    assert '"schema_version": "2.1"' in reference
-    assert "frozen 2.0 contract" in reference
-    assert "android-patch-capture-component-assertion" in reference
-    assert "capture-package.schema.json" in script  # frozen 2.0 remains packaged
-    assert 'CAPTURE_SCHEMA = (' in script
-    assert "validate_document(manifest, CAPTURE_SCHEMA)" in script
+    assert "akbs-android-change-package-v2" in reference
+    assert "adapt-capture" not in reference

@@ -31,8 +31,8 @@ def _is_parser_help(arguments: list[str]) -> bool:
 def main(argv: list[str] | None = None) -> int:
     arguments = sys.argv[1:] if argv is None else argv
     if arguments and arguments[0] == "android-change-v2":
-        # Select the independent v2 surface before any v1 configuration,
-        # contract, archive, or HTTP workflow. Never fall through to v1.
+        # v2 has a distinct local payload parser; both formats submit to the
+        # same server patch upload lifecycle.
         if _is_parser_help(arguments[1:]):
             return incoming_v2_main(arguments[1:])
         family = installed_plugin_family_status()
@@ -42,7 +42,7 @@ def main(argv: list[str] | None = None) -> int:
     if arguments == ["--help"]:
         print(
             "Android change v2: akbs_patch_submit.py android-change-v2 "
-            "{read,check,prepare,submit} PACKAGE | adapt-capture CAPTURE\n"
+            "{read,check,prepare,submit} PACKAGE\n"
             "Legacy Framework v1 options follow:\n"
         )
     return incoming_main(route_arguments("patch", arguments))

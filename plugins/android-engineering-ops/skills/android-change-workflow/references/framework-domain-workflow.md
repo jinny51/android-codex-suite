@@ -54,8 +54,8 @@ It coordinates with adjacent Android skills:
 - `android-remote-channel` is the mandatory source execution gateway for analysis, search, edits, `git`, `repo`, checkpoints, patch capture, and builds.
 - `android-remote-build-deploy` uses `android-remote-channel` for remote build work and uses the mounted path only as a confirmed product-output artifact bridge for local `adb` delivery.
 - `android-patch-capture` turns one implemented, failed, blocked, or stage-worthy Android change into a change README, repository-level patches, and evidence after this workflow has produced concrete material. Use it before `akbs-patch-submit` whenever such a change should be preserved, regardless of Android layer.
-- `akbs-patch-submit` owns strict v2 local validation and byte-preserving prepare; when
-  the server writer is off it gates network submission with zero side effects.
+- `akbs-patch-submit` owns strict v2 local validation, byte-preserving prepare, and
+  submission through the common patch upload lifecycle.
 - This skill proves the framework change satisfies the requirement or diagnosis outcome on device.
 
 ## Core Contract
@@ -230,23 +230,22 @@ For UI/windowing/input/surface changes, use repeated mixed interactions and visu
 
 This workflow is not complete after code and verification when the work produced reviewable or cautionary Framework engineering material. Member-side Codex should preserve materials automatically first and rank by package status later. It must not produce curation decisions or claim that the material has entered the knowledge repository.
 
-After Gate 5 or a terminal failure/blocked state:
+After Gate 5:
 
-1. Decide package status:
-   - `validated`: requirement met, build/deploy passed, target behavior verified, and no blocking nearby regression was found.
-   - `candidate`: change is coherent and likely useful, but verification is partial, equivalent-only, or missing some target coverage.
-   - `draft`: Framework change or investigation is stage-worthy but unfinished.
-   - `failed`: an attempted change or diagnosis path failed and the failure teaches a reviewable constraint.
-   - `blocked`: work could not continue because required environment, source, device, credentials, or acceptance evidence was unavailable.
-2. If local source changes exist and are not unrelated dirty files, invoke `android-patch-capture` to package the intended change set with:
-   - platform/version token, project, change ID, summary, package status, implementation origin, modified files, artifacts, risk notes, verification evidence, search-before-change evidence, and explicit `related_report_run_ids` when a daily/weekly run id is known.
-3. Only when the canonical capture status is `validated`, invoke
-   `akbs-patch-submit` for v2 local validation and byte-preserving prepare. Network
-   submission requires an enabled v2 writer; never fall back to v1. A pre-existing
-   legacy Framework v1 package stays on its frozen compatibility contract.
-4. Keep `candidate`, `draft`, `failed`, and `blocked` captures local or in report context. They are engineering evidence, not queue-ready patch packages, and must not invoke patch intake.
-5. If no patch package can be made, do not pretend the material was captured. Record exactly why, and rely on the daily/weekly incoming automation to preserve the work as `work_findings`.
-6. Do not upload unrelated diffs, credentials, logs with sensitive data, mixed task changes, or a `validated` package without qualifying verification.
+1. Confirm that the requirement is met, build/deploy passed, target behavior is
+   verified, and no blocking nearby regression remains.
+2. If the intended source changes are isolated, invoke `android-patch-capture` with
+   the platform/version input, project, change ID, summary, implementation origin,
+   component mappings, risk/rollback, verification, search evidence, and explicit
+   `related_report_run_ids` when a daily/weekly run ID is known.
+3. Capture directly emits the final v2 package. Invoke `akbs-patch-submit` on that
+   same directory for local check, byte-preserving prepare, or submit. V1 and v2 use
+   the common patch upload lifecycle; never fall back to v1.
+4. Failed, blocked, draft, or partially verified work is not an upload package. Keep
+   its honest diagnostics in the engineering task or daily/weekly report.
+5. If no package can be made, state exactly why. Do not claim capture or upload.
+6. Do not upload unrelated diffs, credentials, sensitive logs, mixed task changes, or
+   material without full verification.
 
 The normal successful `validated` chain is:
 

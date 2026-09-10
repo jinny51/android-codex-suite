@@ -45,11 +45,13 @@ def test_legacy_routes_only_hint_layer_and_type_without_fabricating_facets() -> 
     ]
 
 
-def test_submission_boundary_is_general_v2_prepare_with_legacy_v1_compatibility() -> None:
+def test_submission_boundary_is_direct_v2_with_common_lifecycle_and_v1_compatibility() -> None:
     contract = component_contract()["submission"]
-    assert contract["canonical_package_type"] == "android_change_capture"
+    assert contract["canonical_package_type"] == "akbs-android-change-package-v2"
+    assert contract["v2_final_package_owner"] == "android-patch-capture"
     assert contract["v2_local_prepare_owner"] == "akbs-patch-submit"
-    assert contract["writer_off_behavior"] == "capability_gated_zero_network_side_effects"
+    assert contract["upload_lifecycle"] == "common_patch_upload"
+    assert contract["v1_v2_relationship"] == "input_formats_only"
     assert contract["fallback_to_framework_v1"] is False
     workflow = (WORKFLOW / "SKILL.md").read_text(encoding="utf-8")
     capture = (CAPTURE / "SKILL.md").read_text(encoding="utf-8")
@@ -58,9 +60,8 @@ def test_submission_boundary_is_general_v2_prepare_with_legacy_v1_compatibility(
     ).read_text(encoding="utf-8")
     for text in (workflow, capture):
         assert "any supported layer" in text.lower()
-        assert "byte-preserving prepare" in text
-        assert "zero side effects" in text
         assert "never" in text.lower() and "fall back" in text.lower()
+        assert "common patch upload lifecycle" in text.lower()
     for text in (capture, capture_contract):
         assert "layer_not_enabled" not in text
         assert "any supported layer" in text.lower()

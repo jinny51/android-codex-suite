@@ -3,39 +3,79 @@
   "schema_version": "2",
   "package_kind": "android_change",
   "package_status": "validated",
-  "identity": {"member_alias": "member1", "run_id": "20260901-000000-test", "created_at": "2026-09-01T00:00:00Z"},
+  "identity": {
+    "member_alias": "member1",
+    "run_id": "20260910-120000-example",
+    "created_at": "2026-09-10T12:00:00+08:00"
+  },
   "subject": {
-    "title": "System app change",
-    "summary": "Change one application component",
-    "primary_component_id": "component-1",
-    "target": {"project": "generic", "platform": "rk", "android_version": "15"}
+    "title": "Example application change",
+    "summary": "Example application change",
+    "primary_component_id": "app",
+    "target": {
+      "project": "TVE8402M",
+      "platform": "rk",
+      "android_version": "14"
+    }
   },
   "workflow": {
     "contract": "current_codex_skill",
-    "implementation_origins": ["codex"],
-    "capture_tool": {"id": "android-patch-capture", "version": "1.0.0"}
+    "implementation_origins": [
+      "codex"
+    ],
+    "capture_tool": {
+      "id": "android-patch-capture",
+      "version": "2"
+    }
   },
   "components": [
-    {"id": "component-1", "layer": "application", "type": "system_app", "partition": "system_ext", "ownership": "aosp"}
+    {
+      "id": "app",
+      "layer": "application",
+      "type": "system_app",
+      "partition": "system_ext",
+      "ownership": "product"
+    }
   ],
   "sources": [
-    {"id": "source-1", "kind": "git", "repo_path": ".", "base_revision": "1111111111111111111111111111111111111111", "head_revision": "2222222222222222222222222222222222222222"}
+    {
+      "id": "source-1",
+      "kind": "git",
+      "repo_path": ".",
+      "base_revision": "1111111111111111111111111111111111111111",
+      "head_revision": "1111111111111111111111111111111111111111"
+    }
   ],
-  "files": [
-    {"id": "patch-1", "role": "patch", "path": "patches/change.patch", "sha256": "3333333333333333333333333333333333333333333333333333333333333333", "size_bytes": 10},
-    {"id": "evidence-1-file", "role": "evidence", "path": "evidence/result.json", "sha256": "4444444444444444444444444444444444444444444444444444444444444444", "size_bytes": 20},
-    {"id": "qualification-client-output", "role": "metadata", "path": "metadata/client-adapter-outputs.json", "sha256": "818af25055aae7ea3f352ea0e2b5a30ab52df774e8f050a50cca885768c8ec18", "size_bytes": 4684, "media_type": "application/json"}
-  ],
-  "changes": [
-    {"id": "change-1", "component_ids": ["component-1"], "source_id": "source-1", "file_id": "patch-1", "format": "git_diff"}
+  "readme": {
+    "path": "README.md",
+    "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "size_bytes": 20
+  },
+  "patches": [
+    {
+      "id": "patch-001",
+      "component_ids": [
+        "app"
+      ],
+      "source_id": "source-1",
+      "path": "patches/change.patch",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "size_bytes": 10,
+      "format": "git_diff"
+    }
   ],
   "evidence": [
-    {"id": "evidence-1", "kind": "feature_acceptance", "component_ids": ["component-1"], "file_id": "evidence-1-file", "scope": "component", "result": "PASS", "contract": {"id": "feature-check", "version": "1"}, "declared_claims": ["source_integrity", "change_diff_facts", "risk_surface", "android_change_policy", "feature_acceptance", "regression", "rollback", "pre_change_search", "application_build", "application_runtime_or_integration", "permission_and_signing"]}
-  ],
-  "qualification": {
-    "profile_id": "akbs-component-evidence-profiles-v1",
-    "profile_artifact_sha256": "5e2f0eb8341d3b6ef58084adcaeebfb6627c83807776b13f1e709fbec847dc4c",
-    "client_adapter_outputs_file_id": "qualification-client-output",
-    "component_evidence_bindings": [{"component_id": "component-1", "evidence_ids": ["evidence-1"]}]
-  }
+    {
+      "id": "evidence-1",
+      "kind": "verification_result",
+      "component_ids": [
+        "app"
+      ],
+      "path": "evidence/result.json",
+      "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "size_bytes": 20,
+      "scope": "feature",
+      "result": "PASS"
+    }
+  ]
 }

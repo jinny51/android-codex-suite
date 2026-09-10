@@ -200,7 +200,7 @@ def test_compatibility_rows_cover_every_declared_surface_and_behavior() -> None:
         assert item["test"]["negative_ids"]
 
 
-def test_android_v2_writer_contract_stays_exactly_gated() -> None:
+def test_android_v2_uses_the_common_patch_lifecycle() -> None:
     module = validator_module()
     current = load(CURRENT)
     topology = load(TOPOLOGY)
@@ -208,8 +208,8 @@ def test_android_v2_writer_contract_stays_exactly_gated() -> None:
     android_v2 = next(
         item for item in matrix["rows"] if item["surface_id"] == "package.android-change-v2"
     )
-    android_v2["write"]["current"] = "enabled"
-    with pytest.raises(module.TopologyError, match="writer is not default-off"):
+    android_v2["write"]["target"] = "independent v2 control plane"
+    with pytest.raises(module.TopologyError, match="common patch lifecycle"):
         module.validate_contract_documents(
             current, topology, matrix, current_sha256=current_sha256()
         )
@@ -428,33 +428,15 @@ def test_patch_v2_uses_orthogonal_components_and_keeps_v1_read_only() -> None:
         "build",
     }
     assert "system_app" not in component["properties"]["layer"]["enum"]
-    profiles = load(ROOT / "contracts/incoming/v2/component-evidence-profiles.json")
-    assert profiles["evaluation_scope"] == "per_component"
-    assert profiles["all_components_must_qualify"] is True
-    assert profiles["client_output_source"] == (
-        "client_contract_adapter_output_file_untrusted_until_server_recalculation"
-    )
-    assert profiles["server_qualification_boundary"]["server_must_recalculate"] is True
-    assert profiles["server_qualification_boundary"]["member_archive_rewrite"] is False
-    assert profiles["writer_activation"]["phase1_state"] == "blocked"
-    qualification = package["$defs"]["qualification"]
-    assert set(qualification["required"]) == {
-        "profile_id",
-        "profile_artifact_sha256",
-        "client_adapter_outputs_file_id",
-        "component_evidence_bindings",
+    target = package["$defs"]["subject"]["properties"]["target"]["properties"]
+    assert target["platform"]["enum"] == ["mtk", "rk", "unisoc"]
+    assert set(package["required"]) == {
+        "schema", "schema_version", "package_kind", "package_status", "identity",
+        "subject", "workflow", "components", "sources", "readme", "patches", "evidence",
     }
-    client_outputs = load(ROOT / "contracts/incoming/v2/client-adapter-outputs.schema.json")
-    assert client_outputs["properties"]["authority"]["const"] == "untrusted_client_input"
-    assert profiles["legacy_v1"]["projection"] == {
-        "layer": "platform",
-        "type": "framework",
-        "partition": None,
-        "ownership": None,
-    }
-    assert profiles["legacy_v1"]["normalized_read_projection"]["component_fields"]["partition"]["nullable"] is True
-    assert profiles["legacy_v1"]["normalized_read_projection"]["component_fields"]["ownership"]["nullable"] is True
-    assert profiles["legacy_v1"]["normalized_read_projection"]["write_back"] is False
+    assert not ({"qualification", "files", "changes", "extensions"} & set(package["properties"]))
+    assert not (ROOT / "contracts/incoming/v2/component-evidence-profiles.json").exists()
+    assert not (ROOT / "contracts/incoming/v2/client-adapter-outputs.schema.json").exists()
 
 
 def test_migration_target_candidate_owns_legacy_skill_wrappers() -> None:
@@ -915,454 +897,155 @@ def test_worker_result_semantics_bind_assignment_and_receipts() -> None:
         )
 
 
-def valid_patch_package() -> dict:
-    return {
+
+def valid_patch_package(*, layers: tuple[str, ...] = ("application",)) -> tuple[dict, dict]:
+    components = []
+    sources = []
+    patches = []
+    evidence = []
+    inventory: dict[str, tuple[str, int]] = {
+        "README.md": ("1" * 64, 10),
+    }
+    for index, layer in enumerate(layers, start=1):
+        component_id = f"component-{index}"
+        source_id = f"source-{index}"
+        patch_path = f"patches/change-{index}.patch"
+        evidence_path = f"evidence/result-{index}.json"
+        components.append({
+            "id": component_id,
+            "layer": layer,
+            "type": "component",
+            "partition": "system",
+            "ownership": "aosp",
+        })
+        sources.append({
+            "id": source_id,
+            "kind": "git",
+            "repo_path": f"repo/{index}",
+            "base_revision": str(index) * 40,
+            "head_revision": str(index) * 40,
+        })
+        patches.append({
+            "id": f"patch-{index}",
+            "component_ids": [component_id],
+            "source_id": source_id,
+            "path": patch_path,
+            "sha256": "2" * 64,
+            "size_bytes": 20,
+            "format": "git_diff",
+        })
+        evidence.append({
+            "id": f"evidence-{index}",
+            "kind": "verification_result",
+            "component_ids": [component_id],
+            "path": evidence_path,
+            "sha256": "3" * 64,
+            "size_bytes": 30,
+            "scope": "feature",
+            "result": "PASS",
+        })
+        inventory[patch_path] = ("2" * 64, 20)
+        inventory[evidence_path] = ("3" * 64, 30)
+    package = {
         "schema": "akbs-android-change-package-v2",
         "schema_version": "2",
         "package_kind": "android_change",
         "package_status": "validated",
-        "identity": {"member_alias": "member1", "run_id": "20260901-000000-test", "created_at": "2026-09-01T00:00:00Z"},
+        "identity": {
+            "member_alias": "member1",
+            "run_id": "20260910-120000-test",
+            "created_at": "2026-09-10T12:00:00Z",
+        },
         "subject": {
-            "title": "System app change",
-            "summary": "Change one application component",
+            "title": "Android change",
+            "summary": "One coherent Android change",
             "primary_component_id": "component-1",
-            "target": {"project": "generic", "platform": "rk", "android_version": "15"},
+            "target": {"project": "TVE8402M", "platform": "rk", "android_version": "14"},
         },
         "workflow": {
             "contract": "current_codex_skill",
             "implementation_origins": ["codex"],
-            "capture_tool": {"id": "android-patch-capture", "version": "1.0.0"},
+            "capture_tool": {"id": "android-patch-capture", "version": "2"},
         },
-        "components": [
-            {"id": "component-1", "layer": "application", "type": "system_app", "partition": "system_ext", "ownership": "aosp"}
-        ],
-        "sources": [
-            {"id": "source-1", "kind": "git", "repo_path": ".", "base_revision": "1" * 40, "head_revision": "2" * 40}
-        ],
-        "files": [
-            {"id": "patch-1", "role": "patch", "path": "patches/change.patch", "sha256": "3" * 64, "size_bytes": 10},
-            {"id": "evidence-1-file", "role": "evidence", "path": "evidence/result.json", "sha256": "4" * 64, "size_bytes": 20},
-            {"id": "qualification-client-output", "role": "metadata", "path": "metadata/client-adapter-outputs.json", "sha256": "0" * 64, "size_bytes": 1, "media_type": "application/json"},
-        ],
-        "changes": [
-            {"id": "change-1", "component_ids": ["component-1"], "source_id": "source-1", "file_id": "patch-1", "format": "git_diff"}
-        ],
-        "evidence": [
-            {"id": "evidence-1", "kind": "feature_acceptance", "component_ids": ["component-1"], "file_id": "evidence-1-file", "scope": "component", "result": "PASS", "contract": {"id": "feature-check", "version": "1"}, "declared_claims": ["source_integrity", "change_diff_facts", "risk_surface", "android_change_policy", "feature_acceptance", "regression", "rollback", "pre_change_search", "application_build", "application_runtime_or_integration", "permission_and_signing"]}
-        ],
-        "qualification": {
-            "profile_id": "akbs-component-evidence-profiles-v1",
-            "profile_artifact_sha256": "0" * 64,
-            "client_adapter_outputs_file_id": "qualification-client-output",
-            "component_evidence_bindings": [
-                {"component_id": "component-1", "evidence_ids": ["evidence-1"]}
-            ],
-        },
-    }
-
-
-def client_adapter_outputs_for(
-    module, package: dict, profiles: dict, profile_artifact_sha256: str,
-) -> dict:
-    files = {item["id"]: item for item in package["files"]}
-    evidence = {item["id"]: item for item in package["evidence"]}
-    bindings = {
-        item["component_id"]: item["evidence_ids"]
-        for item in package["qualification"]["component_evidence_bindings"]
-    }
-    registry = profiles["evidence_group_registry"]["groups"]
-    components = []
-    for component in package["components"]:
-        component_id = component["id"]
-        source_evidence_id = bindings[component_id][0]
-        source_file = files[evidence[source_evidence_id]["file_id"]]
-        groups = module.required_evidence_groups(
-            component, package["workflow"]["contract"], profiles
-        )
-        outputs = [
-            {
-                "schema": "akbs-client-adapter-output-v1",
-                "component_id": component_id,
-                "group_id": group_id,
-                "source_evidence_id": source_evidence_id,
-                "source_evidence_sha256": source_file["sha256"],
-                "adapter_contract": registry[group_id]["adapter_contract"],
-                "adapter_version": registry[group_id]["adapter_version"],
-                "claim": registry[group_id]["claim"],
-                "adapter_result": next(
-                    item for item in registry[group_id]["allowed_adapter_results"]
-                    if item != "NOT_APPLICABLE"
-                ),
-            }
-            for group_id in sorted(groups)
-        ]
-        components.append({"component_id": component_id, "outputs": outputs})
-    return {
-        "schema": "akbs-client-adapter-outputs-v1",
-        "authority": "untrusted_client_input",
-        "source_package_key": module.source_package_key(package),
-        "qualification_input_sha256": module.qualification_input_sha256(package),
-        "profile_id": profiles["schema"],
-        "profile_artifact_sha256": profile_artifact_sha256,
-        "declared_package_status": package["package_status"],
         "components": components,
+        "sources": sources,
+        "readme": {"path": "README.md", "sha256": "1" * 64, "size_bytes": 10},
+        "patches": patches,
+        "evidence": evidence,
     }
+    return package, inventory
 
 
-def json_artifact_bytes(document: dict) -> bytes:
-    return (
-        json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-        + "\n"
-    ).encode("utf-8")
+def manifest_bytes(package: dict) -> bytes:
+    return (json.dumps(package, ensure_ascii=False, sort_keys=True) + "\n").encode()
 
 
-def bind_client_adapter_outputs(package: dict, document: dict) -> bytes:
-    raw = json_artifact_bytes(document)
-    digest = hashlib.sha256(raw).hexdigest()
-    file_id = package["qualification"]["client_adapter_outputs_file_id"]
-    file_row = next(item for item in package["files"] if item["id"] == file_id)
-    file_row["sha256"] = digest
-    file_row["size_bytes"] = len(raw)
-    return raw
-
-
-def validate_client_contract(
-    module,
-    package: dict,
-    profile_artifact_bytes: bytes,
-    document: dict,
-    *,
-    archive_entries: list[tuple[str, str, int]] | None = None,
-) -> dict:
-    client_bytes = bind_client_adapter_outputs(package, document)
-    manifest_bytes = json_artifact_bytes(package)
-    selected_entries = archive_entries if archive_entries is not None else [
-        ("manifest.json", hashlib.sha256(manifest_bytes).hexdigest(), len(manifest_bytes)),
-        *[
-            (item["path"], item["sha256"], item["size_bytes"])
-            for item in package["files"]
-        ],
-    ]
-    return module.validate_client_patch_package_semantics(
-        manifest_bytes,
-        profile_artifact_bytes,
-        client_bytes,
-        archive_entries=selected_entries,
-    )
-
-
-def test_qualification_input_hash_is_non_circular_and_package_bound() -> None:
+def test_minimal_android_change_semantics_cover_all_seven_layers() -> None:
     module = validator_module()
-    assert module.canonical_json_sha256_v1(
-        {"z": 1, "标题": "系统🔧", "a": [True, None, "/"]}
-    ) == "61a4ce657524f70304ab18050766ad390d17d6bdac95eb61bbc73fbef830d007"
-    with pytest.raises(module.TopologyError, match="floating-point"):
-        module.canonical_json_sha256_v1({"value": 1.0})
-    package = valid_patch_package()
-    original = module.qualification_input_sha256(package)
-    output_file_id = package["qualification"]["client_adapter_outputs_file_id"]
-    output_file = next(item for item in package["files"] if item["id"] == output_file_id)
-    output_file["sha256"] = "f" * 64
-    output_file["size_bytes"] = 999
-    assert module.qualification_input_sha256(package) == original
-
-    changed_source = copy.deepcopy(package)
-    changed_source["files"][0]["sha256"] = "e" * 64
-    assert module.qualification_input_sha256(changed_source) != original
-    changed_subject = copy.deepcopy(package)
-    changed_subject["subject"]["title"] = "Another package"
-    assert module.qualification_input_sha256(changed_subject) != original
-    assert module.source_package_key(package) == (
-        "20260901/member1/20260901-000000-test"
+    layers = ("application", "platform", "native", "hal", "kernel", "device", "build")
+    package, inventory = valid_patch_package(layers=layers)
+    result = module.validate_android_change_package_semantics(
+        manifest_bytes(package), inventory
     )
-
-
-def test_patch_semantics_resolve_refs_roles_inventory_and_repo_root() -> None:
-    module = validator_module()
-    package = valid_patch_package()
-    profile_path = ROOT / "contracts/incoming/v2/component-evidence-profiles.json"
-    profile_bytes = profile_path.read_bytes()
-    profiles = load(profile_path)
-    profile_sha256 = hashlib.sha256(profile_bytes).hexdigest()
-    package["qualification"]["profile_artifact_sha256"] = profile_sha256
-    client_outputs = client_adapter_outputs_for(
-        module, package, profiles, profile_sha256
-    )
-    client_bytes = bind_client_adapter_outputs(package, client_outputs)
-    manifest_bytes = json_artifact_bytes(package)
-    archive_entries = [
-        ("manifest.json", hashlib.sha256(manifest_bytes).hexdigest(), len(manifest_bytes)),
-        *[
-            (item["path"], item["sha256"], item["size_bytes"])
-            for item in package["files"]
-        ],
-    ]
-    result = module.validate_client_patch_package_semantics(
-        manifest_bytes,
-        profile_bytes,
-        client_bytes,
-        archive_entries=archive_entries,
-    )
-    assert result["authority"] == "untrusted_client_input"
-    assert result["client_semantic_coherence_valid"] is True
-    assert result["schema_validation_required"] is True
+    assert result["component_layers"] == sorted(layers)
+    assert result["reference_integrity_valid"] is True
     assert result["archive_inventory_binding_valid"] is True
-    assert result["archive_extractor_validation_required"] is True
-    assert result["server_qualified"] is False
-    duplicate = copy.deepcopy(package)
-    duplicate["components"].append(copy.deepcopy(duplicate["components"][0]))
-    with pytest.raises(module.TopologyError, match="IDs must be unique"):
-        validate_client_contract(module, duplicate, profile_bytes, client_outputs)
-    wrong_role = copy.deepcopy(package)
-    wrong_role["files"][0]["role"] = "evidence"
-    with pytest.raises(module.TopologyError, match="change references"):
-        validate_client_contract(module, wrong_role, profile_bytes, client_outputs)
-    bad_file_path = copy.deepcopy(package)
-    bad_file_path["files"][0]["path"] = "."
-    with pytest.raises(module.TopologyError, match="archive path"):
-        validate_client_contract(module, bad_file_path, profile_bytes, client_outputs)
-    for invalid_archive in (
-        archive_entries[1:],
-        [*archive_entries, ("extra.txt", "f" * 64, 1)],
-        [*archive_entries, archive_entries[-1]],
-    ):
-        with pytest.raises(module.TopologyError, match="archive inventory"):
-            module.validate_client_patch_package_semantics(
-                manifest_bytes,
-                profile_bytes,
-                client_bytes,
-                archive_entries=invalid_archive,
-            )
-    wrong_evidence_archive = list(archive_entries)
-    evidence_index = next(
-        index
-        for index, item in enumerate(wrong_evidence_archive)
-        if item[0] == "evidence/result.json"
-    )
-    wrong_evidence_archive[evidence_index] = ("evidence/result.json", "f" * 64, 20)
-    with pytest.raises(module.TopologyError, match="archive inventory"):
-        module.validate_client_patch_package_semantics(
-            manifest_bytes,
-            profile_bytes,
-            client_bytes,
-            archive_entries=wrong_evidence_archive,
-        )
-    normalized_collision = copy.deepcopy(package)
-    normalized_collision["files"][0]["path"] = "patches/./change.patch"
-    with pytest.raises(module.TopologyError, match="not canonical"):
-        validate_client_contract(
-            module, normalized_collision, profile_bytes, client_outputs
-        )
-    for field, value in (("role", "evidence"), ("media_type", "text/plain")):
-        wrong_output_file = copy.deepcopy(package)
-        output_id = wrong_output_file["qualification"]["client_adapter_outputs_file_id"]
-        output_row = next(item for item in wrong_output_file["files"] if item["id"] == output_id)
-        output_row[field] = value
-        with pytest.raises(module.TopologyError, match="file binding differs"):
-            validate_client_contract(
-                module, wrong_output_file, profile_bytes, client_outputs
-            )
-    for field, value in (("sha256", "f" * 64), ("size_bytes", 999999)):
-        wrong_output_file = copy.deepcopy(package)
-        wrong_client_bytes = bind_client_adapter_outputs(
-            wrong_output_file, client_outputs
-        )
-        output_id = wrong_output_file["qualification"]["client_adapter_outputs_file_id"]
-        output_row = next(item for item in wrong_output_file["files"] if item["id"] == output_id)
-        output_row[field] = value
-        with pytest.raises(module.TopologyError, match="file binding differs"):
-            module.validate_client_patch_package_semantics(
-                json_artifact_bytes(wrong_output_file),
-                profile_bytes,
-                wrong_client_bytes,
-                archive_entries=archive_entries,
-            )
-    with pytest.raises(module.TopologyError, match="qualification profile differs"):
-        module.validate_client_patch_package_semantics(
-            manifest_bytes,
-            profile_bytes + b" ",
-            client_bytes,
-            archive_entries=archive_entries,
-        )
-    with pytest.raises(module.TopologyError, match="file binding differs"):
-        module.validate_client_patch_package_semantics(
-            manifest_bytes,
-            profile_bytes,
-            client_bytes + b" ",
-            archive_entries=archive_entries,
-        )
-    missing_output = copy.deepcopy(client_outputs)
-    missing_output["components"][0]["outputs"] = [
-        item
-        for item in missing_output["components"][0]["outputs"]
-        if item["group_id"] != "feature_acceptance"
-    ]
-    missing_package = copy.deepcopy(package)
-    with pytest.raises(module.TopologyError, match="do not satisfy"):
-        validate_client_contract(module, missing_package, profile_bytes, missing_output)
-    duplicate_component = copy.deepcopy(client_outputs)
-    duplicate_component["components"].append(
-        copy.deepcopy(duplicate_component["components"][0])
-    )
-    duplicate_component_package = copy.deepcopy(package)
-    with pytest.raises(module.TopologyError, match="component outputs differ"):
-        validate_client_contract(
-            module, duplicate_component_package, profile_bytes, duplicate_component
-        )
-    duplicate_group = copy.deepcopy(client_outputs)
-    duplicate_group["components"][0]["outputs"].append(
-        copy.deepcopy(duplicate_group["components"][0]["outputs"][0])
-    )
-    duplicate_group_package = copy.deepcopy(package)
-    with pytest.raises(module.TopologyError, match="groups do not satisfy"):
-        validate_client_contract(
-            module, duplicate_group_package, profile_bytes, duplicate_group
-        )
-    bad_na = copy.deepcopy(client_outputs)
-    permission = next(
-        item for item in bad_na["components"][0]["outputs"]
-        if item["group_id"] == "permission_and_signing"
-    )
-    permission["adapter_result"] = "NOT_APPLICABLE"
-    permission["not_applicable_basis"] = None
-    bad_na_package = copy.deepcopy(package)
-    with pytest.raises(module.TopologyError, match="N/A output"):
-        validate_client_contract(module, bad_na_package, profile_bytes, bad_na)
-
-    valid_na = copy.deepcopy(client_outputs)
-    permission = next(
-        item
-        for item in valid_na["components"][0]["outputs"]
-        if item["group_id"] == "permission_and_signing"
-    )
-    permission["adapter_result"] = "NOT_APPLICABLE"
-    permission["not_applicable_basis"] = {
-        "basis": "fixture is not privileged",
-        "limits": "does not prove runtime permission behavior",
-    }
-    valid_na_result = validate_client_contract(
-        module, copy.deepcopy(package), profile_bytes, valid_na
-    )
-    assert valid_na_result["server_qualified"] is False
-
-    mandatory_na = copy.deepcopy(client_outputs)
-    feature = next(
-        item
-        for item in mandatory_na["components"][0]["outputs"]
-        if item["group_id"] == "feature_acceptance"
-    )
-    feature["adapter_result"] = "NOT_APPLICABLE"
-    feature["not_applicable_basis"] = {"basis": "invalid", "limits": "invalid"}
-    with pytest.raises(module.TopologyError, match="adapter output differs"):
-        validate_client_contract(
-            module, copy.deepcopy(package), profile_bytes, mandatory_na
-        )
-
-    pass_with_basis = copy.deepcopy(client_outputs)
-    pass_with_basis["components"][0]["outputs"][0]["not_applicable_basis"] = {
-        "basis": "invalid on PASS",
-        "limits": "invalid on PASS",
-    }
-    with pytest.raises(module.TopologyError, match="N/A output"):
-        validate_client_contract(
-            module, copy.deepcopy(package), profile_bytes, pass_with_basis
-        )
-
-    for field, value in (
-        ("source_package_key", "20260901/member2/20260901-000000-test"),
-        ("qualification_input_sha256", "f" * 64),
-    ):
-        replay = copy.deepcopy(client_outputs)
-        replay[field] = value
-        replay_package = copy.deepcopy(package)
-        with pytest.raises(module.TopologyError, match="document differs"):
-            validate_client_contract(module, replay_package, profile_bytes, replay)
-
-    source_mismatch = copy.deepcopy(client_outputs)
-    source_mismatch["components"][0]["outputs"][0]["source_evidence_sha256"] = "f" * 64
-    mismatch_package = copy.deepcopy(package)
-    with pytest.raises(module.TopologyError, match="adapter output differs"):
-        validate_client_contract(
-            module, mismatch_package, profile_bytes, source_mismatch
-        )
-
-    undeclared_package = copy.deepcopy(package)
-    undeclared_package["evidence"][0]["declared_claims"].remove("source_integrity")
-    undeclared_output = client_adapter_outputs_for(
-        module, undeclared_package, profiles, profile_sha256
-    )
-    with pytest.raises(module.TopologyError, match="adapter output differs"):
-        validate_client_contract(
-            module, undeclared_package, profile_bytes, undeclared_output
-        )
-
-    contradictory_package = copy.deepcopy(package)
-    contradictory_package["evidence"][0]["result"] = "FAIL"
-    contradictory_output = client_adapter_outputs_for(
-        module, contradictory_package, profiles, profile_sha256
-    )
-    contradictory_result = validate_client_contract(
-        module, contradictory_package, profile_bytes, contradictory_output
-    )
-    assert contradictory_result["client_semantic_coherence_valid"] is True
-    assert contradictory_result["server_qualified"] is False
+    assert result["source_package_key"] == "20260910/member1/20260910-120000-test"
 
 
-def test_evidence_registry_exactly_covers_profiles_and_adapter_claims() -> None:
+def test_minimal_android_change_semantics_reject_formal_versioned_platform() -> None:
     module = validator_module()
-    profiles = load(ROOT / "contracts/incoming/v2/component-evidence-profiles.json")
-    module.validate_evidence_profile_registry(profiles)
-    missing = copy.deepcopy(profiles)
-    missing["evidence_group_registry"]["groups"].pop("feature_acceptance")
-    with pytest.raises(module.TopologyError, match="exactly cover"):
-        module.validate_evidence_profile_registry(missing)
-    failed_acceptance = copy.deepcopy(profiles)
-    failed_acceptance["evidence_group_registry"]["groups"]["feature_acceptance"][
-        "allowed_adapter_results"
-    ] = ["FAIL"]
-    with pytest.raises(module.TopologyError, match="adapter result"):
-        module.validate_evidence_profile_registry(failed_acceptance)
-    informational_acceptance = copy.deepcopy(profiles)
-    informational_acceptance["evidence_group_registry"]["groups"]["feature_acceptance"][
-        "allowed_adapter_results"
-    ] = ["INFO"]
-    with pytest.raises(module.TopologyError, match="result binding"):
-        module.validate_evidence_profile_registry(informational_acceptance)
-    wrong_server_authority = copy.deepcopy(profiles)
-    wrong_server_authority["server_qualification_boundary"]["server_decision_contract"][
-        "authority"
-    ] = "client"
-    with pytest.raises(module.TopologyError, match="qualification boundary"):
-        module.validate_evidence_profile_registry(wrong_server_authority)
-    missing_server_bindings = copy.deepcopy(profiles)
-    missing_server_bindings["server_qualification_boundary"]["server_decision_contract"][
-        "required_bindings"
-    ] = []
-    with pytest.raises(module.TopologyError, match="qualification boundary"):
-        module.validate_evidence_profile_registry(missing_server_bindings)
-    incomplete_writer_gate = copy.deepcopy(profiles)
-    incomplete_writer_gate["writer_activation"]["required_per_group"] = []
-    with pytest.raises(module.TopologyError, match="qualification boundary"):
-        module.validate_evidence_profile_registry(incomplete_writer_gate)
-    disabled_server_gate = copy.deepcopy(profiles)
-    disabled_server_gate["server_qualification_boundary"][
-        "writer_activation_requires_complete_adapter_input_contracts"
-    ] = False
-    with pytest.raises(module.TopologyError, match="qualification boundary"):
-        module.validate_evidence_profile_registry(disabled_server_gate)
-    wrong_recalculation_scope = copy.deepcopy(profiles)
-    wrong_recalculation_scope["server_qualification_boundary"][
-        "deterministic_recalculation_scope"
-    ] = "trust_client"
-    with pytest.raises(module.TopologyError, match="qualification boundary"):
-        module.validate_evidence_profile_registry(wrong_recalculation_scope)
-    wrong_hash_algorithm = copy.deepcopy(profiles)
-    wrong_hash_algorithm["client_adapter_outputs_document_contract"][
-        "qualification_input_hash"
-    ]["algorithm"] = "sha512"
-    with pytest.raises(module.TopologyError, match="qualification boundary"):
-        module.validate_evidence_profile_registry(wrong_hash_algorithm)
-    wrong_archive_hash = copy.deepcopy(profiles)
-    wrong_archive_hash["archive_integrity"]["directory_payload_hash"] = "tar_sha256"
-    with pytest.raises(module.TopologyError, match="qualification boundary"):
-        module.validate_evidence_profile_registry(wrong_archive_hash)
+    package, inventory = valid_patch_package()
+    package["subject"]["target"]["platform"] = "mtk16"
+    with pytest.raises(module.TopologyError, match="target.platform"):
+        module.validate_android_change_package_semantics(
+            manifest_bytes(package), inventory
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation, message",
+    [
+        ("unknown_component", "component references"),
+        ("unknown_source", "source reference"),
+        ("missing_component_patch", "must have a patch"),
+        ("duplicate_path", "paths must be unique"),
+        ("extra_file", "inventory"),
+        ("changed_hash", "inventory"),
+    ],
+)
+def test_minimal_android_change_semantics_fail_closed(
+    mutation: str, message: str
+) -> None:
+    module = validator_module()
+    package, inventory = valid_patch_package(layers=("application", "platform"))
+    inventory = dict(inventory)
+    if mutation == "unknown_component":
+        package["patches"][0]["component_ids"] = ["missing"]
+    elif mutation == "unknown_source":
+        package["patches"][0]["source_id"] = "missing"
+    elif mutation == "missing_component_patch":
+        removed = package["patches"].pop()
+        inventory.pop(removed["path"])
+        package["sources"].pop()
+    elif mutation == "duplicate_path":
+        package["evidence"][0]["path"] = package["patches"][0]["path"]
+    elif mutation == "extra_file":
+        inventory["unexpected.txt"] = ("4" * 64, 1)
+    else:
+        path = package["patches"][0]["path"]
+        inventory[path] = ("4" * 64, inventory[path][1])
+    with pytest.raises(module.TopologyError, match=message):
+        module.validate_android_change_package_semantics(
+            manifest_bytes(package), inventory
+        )
+
+
+def test_minimal_android_change_semantics_reject_retired_control_plane_fields() -> None:
+    module = validator_module()
+    package, inventory = valid_patch_package()
+    package["qualification"] = {}
+    with pytest.raises(module.TopologyError, match="retired control-plane"):
+        module.validate_android_change_package_semantics(
+            manifest_bytes(package), inventory
+        )

@@ -1,4 +1,4 @@
-"""Synthetic source -> formal capture -> member adapter contract samples.
+"""Synthetic source -> final v2 package -> member prepare contract samples.
 
 This is a test helper, never a member upload tool. It writes only below the caller's
 isolated root, runs no Android build/adb/network operation, and does not construct or
@@ -28,7 +28,7 @@ def _load(path: Path, name: str):
 
 
 # Facets, repository, changed file, qualifiers and producer assertion IDs only.
-# No qualification outputs or manifest fields are fabricated here.
+# No server response or upload result is fabricated here.
 CASES = {
     "application": ("settings:application:system_app:system_ext:product", "packages/apps/Settings",
         "src/ContractFeature.java", ["installable"], ["permission_signing_compatibility", "install_upgrade_behavior"]),
@@ -152,7 +152,7 @@ def generate_packages(
             "--problem-summary", "Synthetic contract fixture requires a value adjustment",
             "--solution-summary", "Adjust the synthetic source value and preserve scoped evidence",
             "--workflow-contract", "current_codex_skill", "--implementation-origin", "codex",
-            "--status", "validated", "--primary-component-id", specs[0][0].split(":")[0],
+            "--primary-component-id", specs[0][0].split(":")[0],
             "--verification", "SYNTHETIC compile result PASS",
             "--health-check", "SYNTHETIC baseline regression PASS",
             "--risk", "Synthetic isolated contract fixture only", "--rollback", "Restore the synthetic baseline",
@@ -173,12 +173,10 @@ def generate_packages(
             for evidence_id in ("verification-result", "rollback-plan", "search-before-change", "build-delivery"):
                 command += ["--evidence-component", f"{evidence_id}:{component_id}"]
         captured = gate.run_json(command, case_root, env)
-        if captured["effective_status"] != "validated":
+        if captured["package_status"] != "validated":
             raise AssertionError(captured)
-        adapted = gate.run_json([sys.executable, str(member_cli), "android-change-v2", "adapt-capture",
-            captured["package"], "--profile", "wick"], case_root, env)
         prepared = gate.run_json([sys.executable, str(member_cli), "android-change-v2", "prepare",
-            adapted["package"]], case_root, env)
+            captured["package"]], case_root, env)
         packages[name] = Path(prepared["package"])
         if json.loads(receipt_path.read_text()) != receipt:
             raise AssertionError("capture changed the source delivery receipt")

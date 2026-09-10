@@ -437,13 +437,16 @@ def parse_platform_token(patch_entries: list[dict[str, Any]]) -> tuple[str, str]
     return "unknown", "unknown"
 
 
-def parse_platform_arg(value: str) -> tuple[str, str, str]:
+def parse_platform_input(value: str) -> tuple[str, str, str]:
+    """Return a transient filename prefix plus canonical platform/version fields."""
     token = re.sub(r"[^A-Za-z0-9._-]+", "-", str(value or "").strip().lower())
     token = re.sub(r"-+", "-", token).strip("-._")
     match = PLATFORM_ARG_TOKEN_RE.fullmatch(token)
     if not match:
         return "", "", ""
     prefix, raw_version = match.groups()
+    if prefix.lower() not in {"mtk", "rk", "unisoc"}:
+        return "", "", ""
     platform = PLATFORM_PREFIX_ALIASES[prefix.lower()]
     android_version = normalize_android_version(platform, raw_version)
     filename_version = raw_version.lstrip("0") or raw_version

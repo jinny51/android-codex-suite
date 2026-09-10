@@ -23,7 +23,6 @@ SCHEMAS = {
     "worker_assignment": ROOT / "contracts/android-change-workflow/v1/worker-assignment.schema.json",
     "worker_result": ROOT / "contracts/android-change-workflow/v1/worker-result.schema.json",
     "android_change_package": ROOT / "contracts/incoming/v2/akbs-android-change-package.schema.json",
-    "client_adapter_outputs": ROOT / "contracts/incoming/v2/client-adapter-outputs.schema.json",
 }
 FIXTURES = {
     "provider.valid": ("provider", ROOT / "contracts/android-practices-provider/v1/fixtures/provider.valid.json", True),
@@ -42,10 +41,7 @@ FIXTURES = {
     "package.invalid-flat-layer": ("android_change_package", ROOT / "contracts/incoming/v2/fixtures/package.application.invalid-flat-layer.json", False),
     "package.invalid-path": ("android_change_package", ROOT / "contracts/incoming/v2/fixtures/package.application.invalid-path.json", False),
 }
-SUPPORTING_FIXTURES = {
-    ROOT / "contracts/incoming/v2/fixtures/client-adapter-outputs.application.valid.json",
-    ROOT / "contracts/incoming/v2/fixtures/client-adapter-outputs.application.invalid-missing-feature.json",
-}
+SUPPORTING_FIXTURES: set[Path] = set()
 KEYWORDS = {
     "$schema", "$id", "$ref", "$defs", "title", "description", "type", "const", "enum",
     "required", "properties", "additionalProperties", "unevaluatedProperties", "propertyNames",
@@ -539,44 +535,18 @@ def test_cross_document_semantics_accept_valid_and_reject_invalid_fixtures() -> 
     active.validate_worker_result_semantics(
         load(FIXTURES["result.valid"][1]), assignment, assignment_sha256="e" * 64
     )
-    profile_path = ROOT / "contracts/incoming/v2/component-evidence-profiles.json"
-    profile_bytes = profile_path.read_bytes()
     package_path = FIXTURES["package.valid"][1]
     package = load(package_path)
-    output_schema = load(SCHEMAS["client_adapter_outputs"])
-    valid_output_path = (
-        ROOT / "contracts/incoming/v2/fixtures/client-adapter-outputs.application.valid.json"
-    )
-    valid_output = load(valid_output_path)
-    validate_instance(valid_output, output_schema, output_schema)
     manifest_bytes = package_path.read_bytes()
-    valid_output_bytes = valid_output_path.read_bytes()
-    result = active.validate_client_patch_package_semantics(
+    descriptors = [package["readme"], *package["patches"], *package["evidence"]]
+    result = active.validate_android_change_package_semantics(
         manifest_bytes,
-        profile_bytes,
-        valid_output_bytes,
-        archive_entries=[
-            ("manifest.json", hashlib.sha256(manifest_bytes).hexdigest(), len(manifest_bytes)),
-            *[(item["path"], item["sha256"], item["size_bytes"]) for item in package["files"]],
-        ],
+        {item["path"]: (item["sha256"], item["size_bytes"]) for item in descriptors},
     )
-    assert result["client_semantic_coherence_valid"] is True
-    assert result["schema_validation_required"] is True
-    assert result["server_qualified"] is False
-    invalid_output_path = (
-        ROOT
-        / "contracts/incoming/v2/fixtures/client-adapter-outputs.application.invalid-missing-feature.json"
-    )
-    invalid_output = load(invalid_output_path)
-    validate_instance(invalid_output, output_schema, output_schema)
+    assert result["reference_integrity_valid"] is True
+    assert result["archive_inventory_binding_valid"] is True
     invalid_package = copy.deepcopy(package)
-    invalid_file = next(
-        item
-        for item in invalid_package["files"]
-        if item["id"] == invalid_package["qualification"]["client_adapter_outputs_file_id"]
-    )
-    invalid_file["sha256"] = hashlib.sha256(invalid_output_path.read_bytes()).hexdigest()
-    invalid_file["size_bytes"] = invalid_output_path.stat().st_size
+    invalid_package["patches"][0]["source_id"] = "missing-source"
     invalid_manifest_bytes = (
         json.dumps(
             invalid_package,
@@ -586,21 +556,8 @@ def test_cross_document_semantics_accept_valid_and_reject_invalid_fixtures() -> 
         )
         + "\n"
     ).encode("utf-8")
-    invalid_output_bytes = invalid_output_path.read_bytes()
     with pytest.raises(active.TopologyError):
-        active.validate_client_patch_package_semantics(
+        active.validate_android_change_package_semantics(
             invalid_manifest_bytes,
-            profile_bytes,
-            invalid_output_bytes,
-            archive_entries=[
-                (
-                    "manifest.json",
-                    hashlib.sha256(invalid_manifest_bytes).hexdigest(),
-                    len(invalid_manifest_bytes),
-                ),
-                *[
-                    (item["path"], item["sha256"], item["size_bytes"])
-                    for item in invalid_package["files"]
-                ],
-            ],
+            {item["path"]: (item["sha256"], item["size_bytes"]) for item in descriptors},
         )

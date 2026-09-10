@@ -788,7 +788,7 @@ def _validate_existing_capture_bindings(
     package: dict[str, Any],
     snapshot: dict[str, Any],
     derived_claims: dict[str, list[str]],
-) -> None:
+) -> bool:
     """Bind an existing package to the capture without requiring current opaque IDs."""
     capture = snapshot["manifest"]
     files = {row["id"]: row for row in package["files"]}
@@ -864,23 +864,32 @@ def _validate_existing_capture_bindings(
         if len(imports) != 1:
             _fail("idempotency_conflict", "existing import provenance is not unique")
         expected_workflow["import_provenance_file_id"] = files_by_path[imports[0]["path"]]["id"]
+    expected_subject = {
+        "title": capture["change_id"],
+        "summary": capture["summary"],
+        "feature_key": capture["change_id"],
+        "primary_component_id": capture["primary_component_id"],
+        "target": {
+            "project": str(capture["project"]).lower().replace("_", "-"),
+            "platform": capture["platform"],
+            "android_version": capture["android_version"],
+        },
+    }
+    legacy_subject = {
+        **expected_subject,
+        "target": {
+            **expected_subject["target"],
+            "platform": capture["platform_token"],
+        },
+    }
+    legacy_platform_token = package["subject"] == legacy_subject
     if (
         package["components"] != capture["components"]
         or package["sources"] != _canonical_sources(capture)
         or changes != expected_changes
         or evidence != expected_evidence
         or package["identity"]["created_at"] != _canonical_created_at(capture["created_at"])
-        or package["subject"] != {
-            "title": capture["change_id"],
-            "summary": capture["summary"],
-            "feature_key": capture["change_id"],
-            "primary_component_id": capture["primary_component_id"],
-            "target": {
-                "project": str(capture["project"]).lower().replace("_", "-"),
-                "platform": capture["platform_token"],
-                "android_version": capture["android_version"],
-            },
-        }
+        or package["subject"] not in (expected_subject, legacy_subject)
         or package["workflow"] != expected_workflow
         or package["qualification"]["component_evidence_bindings"] != [
             {"component_id": row["component_id"], "evidence_ids": row["evidence_ids"]}
@@ -888,6 +897,7 @@ def _validate_existing_capture_bindings(
         ]
     ):
         _fail("idempotency_conflict", "existing package facts differ from the capture")
+    return legacy_platform_token
 
 
 def _existing_result(
@@ -952,7 +962,13 @@ def _existing_result(
         expected_adapter_inputs_raw = _json_bytes(expected_inputs)
     elif existing_contract_sha256 != contract_sha256:
         _fail("idempotency_conflict", "existing qualification contract is not supported")
-    _validate_existing_capture_bindings(package, snapshot, derived_claims)
+    legacy_platform_token = _validate_existing_capture_bindings(
+        package, snapshot, derived_claims
+    )
+    if legacy_platform_token != (
+        checked["platform_compatibility"]["mode"] == "legacy_versioned_platform_token"
+    ):
+        _fail("idempotency_conflict", "existing platform compatibility differs")
     output_file = next(
         row for row in package["files"]
         if row["id"] == package["qualification"]["client_adapter_outputs_file_id"]
@@ -1018,6 +1034,7 @@ def _existing_result(
         "manifest_sha256": checked["manifest_sha256"],
         "archive_inventory_sha256": checked["archive_inventory_sha256"],
         "source_package_key": checked["source_package_key"],
+        "platform_compatibility": checked["platform_compatibility"],
         "capture_manifest_sha256": snapshot["manifest_sha256"],
         "capture_archive_inventory_sha256": snapshot["archive_inventory_sha256"],
         "qualification_contract_sha256": existing_contract_sha256,
@@ -1149,7 +1166,7 @@ def materialize_capture(
                 "primary_component_id": capture["primary_component_id"],
                 "target": {
                     "project": str(capture["project"]).lower().replace("_", "-"),
-                    "platform": capture["platform_token"],
+                    "platform": capture["platform"],
                     "android_version": capture["android_version"],
                 },
             },
@@ -1240,6 +1257,7 @@ def materialize_capture(
             "manifest_sha256": checked["manifest_sha256"],
             "archive_inventory_sha256": checked["archive_inventory_sha256"],
             "source_package_key": checked["source_package_key"],
+            "platform_compatibility": checked["platform_compatibility"],
             "capture_manifest_sha256": snapshot["manifest_sha256"],
             "capture_archive_inventory_sha256": snapshot["archive_inventory_sha256"],
             "qualification_contract_sha256": contract_sha256,

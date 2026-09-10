@@ -1,6 +1,6 @@
 # AKBS Member Ops
 
-Standalone AKBS member plugin, version 2.0.6. It owns member setup, knowledge
+Standalone AKBS member plugin, version 2.0.7. It owns member setup, knowledge
 search and merge review, personal daily/weekly reports, and Android change
 package handling without depending on the engineering or optional practices
 plugins at runtime.
@@ -66,6 +66,14 @@ pack and materializes a canonical v2 package offline for all seven component
 layers. Every component must satisfy its own evidence requirements. The source
 capture is unchanged, output is idempotent, and `server_qualified=false` until
 server acceptance. No path falls back to Framework v1.
+
+Capture 2.1 binds `platform_token`, canonical `platform`, and `android_version`
+as one target. New package manifests write only `mtk`, `rk`, or `unisoc` to
+`subject.target.platform`. Packages already produced by versions 2.0.0 through
+2.0.6 with a matching versioned value such as `mtk16` remain byte-preserving
+checkable and submittable; command output marks that narrow case for server
+normalization. Other versioned, mismatched, or uncontrolled platform values fail
+closed and are never generated as compatibility output.
 
 Deploy the matching seven-layer server contract before publishing this member
 update. The server also accepts the original two-layer qualification contract;

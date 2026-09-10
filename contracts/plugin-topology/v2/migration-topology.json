@@ -151,7 +151,7 @@
       "canonical_plugins": [
         {
           "id": "akbs-member-ops",
-          "version": "2.0.6",
+          "version": "2.0.7",
           "role": "akbs_member_client",
           "skills": [
             "akbs-member-setup",
@@ -343,7 +343,7 @@
       "plugins": [
         {
           "id": "akbs-member-ops",
-          "version": "2.0.6",
+          "version": "2.0.7",
           "role": "akbs_member_client",
           "skills": [
             "akbs-member-setup",

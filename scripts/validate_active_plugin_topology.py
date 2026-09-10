@@ -42,7 +42,7 @@ TARGET_PLUGINS = {
     ),
 }
 TARGET_PLUGIN_VERSIONS = {
-    "akbs-member-ops": "2.0.6",
+    "akbs-member-ops": "2.0.7",
     "android-engineering-ops": "2.0.5",
     "jinny-android-practices": "2.0.1",
 }

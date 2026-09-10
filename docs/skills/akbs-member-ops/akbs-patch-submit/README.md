@@ -11,6 +11,13 @@ parser `--help` 可以跳过；`--` 后面的字面 `--help` 仍是业务输入�
 - `android-patch-capture-package-v2/2.0/android_change_capture`：保留零网络、零写的兼容 preflight；不能把 capture 目录直接交给 `prepare`。
 - `android-patch-capture-package-v2/2.1/android_change_capture`：离线 materializer 输入，按 hash-pinned 37 组 qualification 合同生成 canonical v2，支持 application/platform/native/hal/kernel/device/build；跨层包按组件逐项验证。
 
+Capture 2.1 的 `platform_token`、`platform`、`android_version` 必须指向同一目标；
+新包的 `subject.target.platform` 只写 `mtk`、`rk` 或 `unisoc`。2.0.0～2.0.6
+已经生成的旧包若仍写着 `mtk16`、`rk14`、`unisoc13`，仅在来源、资格合同、
+身份、文件清单与哈希都完整匹配时保留原字节继续检查和提交，并在命令输出中明确
+标记需要服务端规范化。任意前缀、平台/版本不一致或伪造兼容来源都会拒绝；兼容
+路径不会再生成带版本的平台值。
+
 更新的证据合同必须先在服务器部署并登记，再发布成员插件。服务端保留旧两层合同和原七层合同，旧版本已生成但尚未上传的包无需重写。升级后重新适配同一 capture 会复用已经存在且匹配的旧包，保留原始 bytes、合同 hash 和重试身份。新包使用当前七层合同；不能修改层标签或回退 v1 绕过校验。报错应区分本地转换、包检查和服务器接收，不把本地失败写成服务器拒收。
 
 当前合同将 capture 已支持的显式等效验收贯通到成员和服务端：不适合真机交互的资源、构建、打包、静态配置或文档变更，可使用 `method=equivalent`，同时提供类型、理由、覆盖范围和剩余风险。不得为通过检查伪造设备步骤；HAL/kernel 等组件的专门硬件、接口或集成证据要求没有取消。构建/推送回执仍仅为 `build_delivery/unverified`，不能替代需求验收。

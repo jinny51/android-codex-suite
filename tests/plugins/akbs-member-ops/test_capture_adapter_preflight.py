@@ -27,6 +27,7 @@ from akbs_member_ops.incoming_v2.capture_adapter import preflight_capture  # noq
 from akbs_member_ops.incoming_v2 import capture_adapter  # noqa: E402
 from akbs_member_ops.incoming_v2 import validation  # noqa: E402
 from akbs_member_ops.incoming_v2 import materializer  # noqa: E402
+from akbs_member_ops.incoming_v2 import submission  # noqa: E402
 from akbs_member_ops.incoming_v2.schema import (  # noqa: E402
     SchemaError,
     validate_document,
@@ -139,7 +140,7 @@ def build_capture(package: Path) -> Path:
                 "captured_by": "codex",
                 "project": "TVE8402M",
                 "platform_token": "rk14",
-                "platform": "rockchip",
+                "platform": "rk",
                 "android_version": "14",
                 "facts": {"content_sha1": hashlib.sha1(raw).hexdigest()},
             }
@@ -178,7 +179,7 @@ def build_capture(package: Path) -> Path:
         "readme": "README.md",
         "project": "TVE8402M",
         "platform_token": "rk14",
-        "platform": "rockchip",
+        "platform": "rk",
         "android_version": "14",
         "summary": "cross component change",
         "status": "validated",
@@ -431,6 +432,28 @@ def build_capture_v21(package: Path, *, layers: tuple[str, ...] | None = None) -
     if layers is not None:
         configure_capture_layers(package, layers)
     return package
+
+
+def configure_capture_platform(
+    package: Path,
+    *,
+    platform_token: str,
+    platform: str,
+    android_version: str,
+) -> None:
+    manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+    manifest.update(
+        platform_token=platform_token,
+        platform=platform,
+        android_version=android_version,
+    )
+    for patch in manifest["patches"]:
+        patch.update(
+            platform_token=platform_token,
+            platform=platform,
+            android_version=android_version,
+        )
+    refresh_inventory(package, manifest)
 
 
 LAYER_CAPTURE_FIXTURES = {
@@ -1206,6 +1229,188 @@ class CaptureAdapterPreflightTest(unittest.TestCase):
             }
             self.assertEqual(after, before)
             urlopen.assert_not_called()
+
+    def test_capture_21_materializes_only_canonical_platform_targets(self) -> None:
+        for platform_token, platform, android_version in (
+            ("mtk16", "mtk", "16"),
+            ("rk14", "rk", "14"),
+            ("unisoc13", "unisoc", "13"),
+        ):
+            with self.subTest(platform_token=platform_token), tempfile.TemporaryDirectory() as temporary:
+                workspace = Path(temporary)
+                capture = build_capture_v21(workspace / "capture")
+                configure_capture_platform(
+                    capture,
+                    platform_token=platform_token,
+                    platform=platform,
+                    android_version=android_version,
+                )
+                result = materialize_capture(
+                    capture,
+                    member_alias="member01",
+                    output_root=workspace / "adapted",
+                )
+                package = Path(result["package"])
+                manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+                self.assertEqual(
+                    manifest["subject"]["target"],
+                    {
+                        "project": "tve8402m",
+                        "platform": platform,
+                        "android_version": android_version,
+                    },
+                )
+                self.assertEqual(
+                    result["platform_compatibility"],
+                    {
+                        "mode": "canonical",
+                        "canonical_platform": platform,
+                        "android_version": android_version,
+                        "server_normalization_required": False,
+                    },
+                )
+                self.assertNotIn(platform_token, manifest["subject"]["target"].values())
+
+    def test_capture_21_rejects_mismatched_or_unknown_platform_bindings(self) -> None:
+        cases = (
+            ("mtk16", "rk", "16", "do not describe the same target"),
+            ("mtk16", "mtk", "15", "do not describe the same target"),
+            ("qcom16", "mtk", "16", "platform_token must be a canonical"),
+            ("mtk16", "qcom", "16", "platform must be one of"),
+        )
+        for platform_token, platform, android_version, error in cases:
+            with self.subTest(
+                platform_token=platform_token,
+                platform=platform,
+                android_version=android_version,
+            ), tempfile.TemporaryDirectory() as temporary:
+                workspace = Path(temporary)
+                capture = build_capture_v21(workspace / "capture")
+                configure_capture_platform(
+                    capture,
+                    platform_token=platform_token,
+                    platform=platform,
+                    android_version=android_version,
+                )
+                with self.assertRaisesRegex(AndroidChangeV2Error, error):
+                    materialize_capture(
+                        capture,
+                        member_alias="member01",
+                        output_root=workspace / "adapted",
+                    )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            capture = build_capture_v21(workspace / "capture")
+            manifest = json.loads((capture / "manifest.json").read_text(encoding="utf-8"))
+            manifest["patches"][0]["platform"] = "mtk"
+            refresh_inventory(capture, manifest)
+            with self.assertRaisesRegex(AndroidChangeV2Error, "patch target differs"):
+                materialize_capture(
+                    capture,
+                    member_alias="member01",
+                    output_root=workspace / "adapted",
+                )
+
+    def test_affected_platform_token_package_is_preserved_reused_and_submittable(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            capture = build_capture_v21(workspace / "capture")
+            output_root = workspace / "adapted"
+            created = materialize_capture(
+                capture,
+                member_alias="member01",
+                output_root=output_root,
+            )
+            package = Path(created["package"])
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+            manifest["subject"]["target"]["platform"] = "rk14"
+            resign_canonical_package(package, manifest)
+            before = {
+                path.relative_to(package).as_posix(): path.read_bytes()
+                for path in package.rglob("*")
+                if path.is_file()
+            }
+
+            checked = validation.check_package(package)
+            reused = materialize_capture(
+                capture,
+                member_alias="member01",
+                output_root=output_root,
+            )
+            prepared = validation.prepare_package(
+                package,
+                pending_root=workspace / "pending",
+            )
+            with (
+                mock.patch.object(
+                    submission,
+                    "_submission_identity",
+                    return_value=("member01", "https://akbs.invalid/member/me/uploads/patch"),
+                ),
+                mock.patch.object(
+                    submission,
+                    "request_json_with_metadata",
+                    return_value=(
+                        {"package": {"patch_package_id": "patch-test", "revision": 1}},
+                        {"request_id": "req_" + "a" * 32},
+                    ),
+                ),
+                mock.patch.object(submission, "_validate_receipt") as validate_receipt,
+            ):
+                submitted = submission.submit_package(package)
+
+            compatibility = checked["platform_compatibility"]
+            self.assertEqual(compatibility["mode"], "legacy_versioned_platform_token")
+            self.assertEqual(compatibility["legacy_platform_token"], "rk14")
+            self.assertEqual(compatibility["canonical_platform"], "rk")
+            self.assertTrue(compatibility["server_normalization_required"])
+            self.assertTrue(compatibility["package_bytes_preserved"])
+            self.assertTrue(reused["idempotent_reuse"])
+            self.assertEqual(reused["platform_compatibility"], compatibility)
+            self.assertEqual(prepared["platform_compatibility"], compatibility)
+            self.assertEqual(submitted["platform_compatibility"], compatibility)
+            self.assertEqual(reused["source_package_key"], created["source_package_key"])
+            validate_receipt.assert_called_once()
+            after = {
+                path.relative_to(package).as_posix(): path.read_bytes()
+                for path in package.rglob("*")
+                if path.is_file()
+            }
+            self.assertEqual(after, before)
+            prepared_package = Path(prepared["package"])
+            self.assertEqual(
+                {
+                    path.relative_to(prepared_package).as_posix(): path.read_bytes()
+                    for path in prepared_package.rglob("*")
+                    if path.is_file()
+                },
+                before,
+            )
+
+            for name, platform_value in (
+                ("wrong-version", "rk15"),
+                ("unknown-prefix", "qcom14"),
+            ):
+                forged = workspace / name
+                shutil.copytree(package, forged)
+                forged_manifest = json.loads(
+                    (forged / "manifest.json").read_text(encoding="utf-8")
+                )
+                forged_manifest["subject"]["target"]["platform"] = platform_value
+                write_json(forged / "manifest.json", forged_manifest)
+                with self.assertRaisesRegex(AndroidChangeV2Error, "target.platform must be"):
+                    validation.check_package(forged)
+
+            unbound = workspace / "unbound"
+            shutil.copytree(package, unbound)
+            unbound_manifest = json.loads(
+                (unbound / "manifest.json").read_text(encoding="utf-8")
+            )
+            unbound_manifest["extensions"].pop("akbs.android/capture")
+            write_json(unbound / "manifest.json", unbound_manifest)
+            with self.assertRaisesRegex(AndroidChangeV2Error, "target.platform must be"):
+                validation.check_package(unbound)
 
     def test_capture_21_materializer_copies_only_descriptor_snapshot_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

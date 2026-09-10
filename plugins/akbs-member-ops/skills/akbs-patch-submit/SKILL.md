@@ -34,6 +34,14 @@ business input and must not bypass the gate. Continue only on exit 0 with JSON
   for `application`, `platform`, `native`, `hal`, `kernel`, `device`, and `build`.
   Every component must satisfy its own required and conditional evidence groups;
   a cross-layer change stays one coherent package with exact component bindings.
+- Capture 2.1 must bind a controlled `platform_token` to the same canonical
+  `platform` (`mtk`, `rk`, or `unisoc`) and `android_version`. New manifests put
+  only the canonical platform in `subject.target.platform`. An existing package
+  from the affected 2.0.0--2.0.6 materializer may retain an exactly matching
+  versioned value such as `mtk16` only when its capture provenance, qualification
+  contract, identity, file inventory, and hashes all match. Keep those bytes and
+  retry identity unchanged; the result marks server normalization explicitly.
+  Do not generate a versioned target or accept an arbitrary/mismatched value.
 - The seven-layer qualification pack requires the matching server contract. Deploy
   server support before distributing this member update. Existing two-layer packages
   retain their original contract hash and bytes and remain readable/submittable;

@@ -926,7 +926,7 @@ def valid_patch_package() -> dict:
             "title": "System app change",
             "summary": "Change one application component",
             "primary_component_id": "component-1",
-            "target": {"project": "generic", "platform": "generic", "android_version": "15"},
+            "target": {"project": "generic", "platform": "rk", "android_version": "15"},
         },
         "workflow": {
             "contract": "current_codex_skill",

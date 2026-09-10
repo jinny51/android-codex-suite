@@ -219,6 +219,7 @@ def submit_package(package: Path, *, profile: str | None = None) -> dict[str, An
         "source_package_key": checked["source_package_key"],
         "manifest_sha256": checked["manifest_sha256"],
         "archive_inventory_sha256": checked["archive_inventory_sha256"],
+        "platform_compatibility": checked["platform_compatibility"],
         "archive_sha256": hashlib.sha256(archive).hexdigest(),
         "idempotency_key": idempotency_key,
         "patch_package_id": receipt["package"]["patch_package_id"],

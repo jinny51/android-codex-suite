@@ -8,7 +8,7 @@
     "title": "System app change",
     "summary": "Change one application component",
     "primary_component_id": "component-1",
-    "target": {"project": "generic", "platform": "generic", "android_version": "15"}
+    "target": {"project": "generic", "platform": "rk", "android_version": "15"}
   },
   "workflow": {
     "contract": "current_codex_skill",
@@ -24,7 +24,7 @@
   "files": [
     {"id": "patch-1", "role": "patch", "path": "patches/change.patch", "sha256": "3333333333333333333333333333333333333333333333333333333333333333", "size_bytes": 10},
     {"id": "evidence-1-file", "role": "evidence", "path": "evidence/result.json", "sha256": "4444444444444444444444444444444444444444444444444444444444444444", "size_bytes": 20},
-    {"id": "qualification-client-output", "role": "metadata", "path": "metadata/client-adapter-outputs.json", "sha256": "085c5bb8e29b982da223fb6e27ae057dde64caa6ddd7daa2732336663ef78cdc", "size_bytes": 4684, "media_type": "application/json"}
+    {"id": "qualification-client-output", "role": "metadata", "path": "metadata/client-adapter-outputs.json", "sha256": "818af25055aae7ea3f352ea0e2b5a30ab52df774e8f050a50cca885768c8ec18", "size_bytes": 4684, "media_type": "application/json"}
   ],
   "changes": [
     {"id": "change-1", "component_ids": ["component-1"], "source_id": "source-1", "file_id": "patch-1", "format": "git_diff"}

@@ -18,11 +18,13 @@ from typing import Any, Callable, Iterator
 from .schema import DRAFT_2020_12_SCHEMA, SchemaError, load_json_bytes, validate_document
 from .validation import (
     AndroidChangeV2Error,
+    CANONICAL_TARGET_PLATFORMS,
     PROFILE_PATH,
     _load_contract,
     _required_groups,
     _validate_profile_registry,
     canonical_json_sha256,
+    parse_versioned_platform_token,
     writer_status,
 )
 
@@ -541,6 +543,13 @@ def _validate_identity_status_authority(
         or submission.get("server_qualified") is not False
     ):
         _capture_error("capture server_submission authority is not writer-off")
+    parsed_platform = parse_versioned_platform_token(manifest["platform_token"])
+    if manifest["platform"] not in CANONICAL_TARGET_PLATFORMS:
+        _capture_error("platform must be one of mtk, rk, or unisoc")
+    if parsed_platform is None:
+        _capture_error("platform_token must be a canonical platform plus Android version")
+    if parsed_platform != (manifest["platform"], manifest["android_version"]):
+        _capture_error("platform_token, platform, and android_version do not describe the same target")
 
 
 def _validate_components_and_payloads(
@@ -620,6 +629,11 @@ def _validate_components_and_payloads(
             _capture_error(f"patch content_sha1 differs from bytes: {patch['id']}")
         if patch.get("status") != "validated":
             _capture_error(f"patch status is not validated: {patch['id']}")
+        if any(
+            patch.get(field) != manifest.get(field)
+            for field in ("project", "platform_token", "platform", "android_version")
+        ):
+            _capture_error(f"patch target differs from the capture target: {patch['id']}")
         compatibility_patch_component = patch.get("component")
         if compatibility_patch_component is not None:
             expected_component = {

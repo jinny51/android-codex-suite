@@ -39,6 +39,15 @@ CONTRACT_SHA256 = {
     "qualification-adapter-input-v2.schema.json": "612d432792d20c1aa1255e368068f7d16ac165c40600e4467ff1ea54f5c59e37",
     "qualification-adapter-inputs-v2.schema.json": "c098833d00899063f35a3874bf2390626a448d83d62c36e6900ba7d121d55a96",
 }
+CANONICAL_TARGET_PLATFORMS = frozenset({"mtk", "rk", "unisoc"})
+VERSIONED_PLATFORM_TOKEN_RE = re.compile(r"^(mtk|rk|unisoc)(\d{1,2})$")
+# Every released materializer before the canonical-platform fix used the same
+# capture provenance shape and one of these three qualification packs.
+AFFECTED_PLATFORM_TOKEN_QUALIFICATION_SHA256 = frozenset({
+    "ac064f0c6215ff9471b3b7c6ab8f9dab9fcec066b112cadfbb334985cd09b1a4",
+    "f4d909382059f6db3a2007d1c6e9ab21ee08b2398a7de07c2292bf0826d4cb54",
+    CONTRACT_SHA256["qualification-contract-pack-v2.json"],
+})
 
 
 class AndroidChangeV2Error(ValueError):
@@ -51,6 +60,91 @@ def _raise_schema(exc: SchemaError) -> None:
 
 def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def parse_versioned_platform_token(value: object) -> tuple[str, str] | None:
+    """Parse the exact canonical token emitted by android-patch-capture."""
+    if not isinstance(value, str):
+        return None
+    match = VERSIONED_PLATFORM_TOKEN_RE.fullmatch(value)
+    if match is None:
+        return None
+    platform, raw_version = match.groups()
+    filename_version = raw_version.lstrip("0") or raw_version
+    if value != f"{platform}{filename_version}":
+        return None
+    android_version = {
+        ("rk", "71"): "7.1",
+        ("rk", "90"): "9.0",
+    }.get((platform, raw_version), filename_version)
+    return platform, android_version
+
+
+def _affected_materializer_platform_token(package: dict[str, Any]) -> bool:
+    workflow = package.get("workflow") or {}
+    extensions = package.get("extensions") or {}
+    capture = extensions.get("akbs.android/capture") or {}
+    qualification = extensions.get("akbs.android/qualification") or {}
+    return bool(
+        workflow.get("capture_tool")
+        == {"id": "android-patch-capture", "version": "2.1"}
+        and isinstance(capture, dict)
+        and set(capture) == {"contract", "manifest_sha256", "archive_inventory_sha256"}
+        and capture.get("contract") == "android-patch-capture-package-v2/2.1"
+        and all(
+            isinstance(capture.get(field), str)
+            and re.fullmatch(r"[0-9a-f]{64}", capture[field]) is not None
+            for field in ("manifest_sha256", "archive_inventory_sha256")
+        )
+        and isinstance(qualification, dict)
+        and set(qualification)
+        == {"contract", "contract_sha256", "adapter_inputs_file_id", "server_qualified"}
+        and qualification.get("contract") == "akbs-qualification-contract-pack-v2/2"
+        and qualification.get("contract_sha256")
+        in AFFECTED_PLATFORM_TOKEN_QUALIFICATION_SHA256
+        and qualification.get("adapter_inputs_file_id") == "qualification-adapter-inputs"
+        and qualification.get("server_qualified") is False
+    )
+
+
+def platform_compatibility(package: dict[str, Any]) -> dict[str, Any]:
+    """Validate the package target and describe the one released compatibility case."""
+    target = (package.get("subject") or {}).get("target") or {}
+    platform = target.get("platform")
+    android_version = target.get("android_version")
+    if (
+        not isinstance(android_version, str)
+        or re.fullmatch(r"(?:0|[1-9]\d*)(?:\.\d+)?", android_version) is None
+    ):
+        raise AndroidChangeV2Error(
+            "Android change v2 target.android_version must be a canonical numeric version"
+        )
+    if platform in CANONICAL_TARGET_PLATFORMS:
+        return {
+            "mode": "canonical",
+            "canonical_platform": platform,
+            "android_version": android_version,
+            "server_normalization_required": False,
+        }
+    parsed = parse_versioned_platform_token(platform)
+    if (
+        parsed is None
+        or parsed[1] != android_version
+        or not _affected_materializer_platform_token(package)
+    ):
+        raise AndroidChangeV2Error(
+            "Android change v2 target.platform must be mtk, rk, or unisoc; only an exact "
+            "hash-bound package from the affected capture materializer may retain its "
+            "matching legacy versioned platform token"
+        )
+    return {
+        "mode": "legacy_versioned_platform_token",
+        "legacy_platform_token": platform,
+        "canonical_platform": parsed[0],
+        "android_version": android_version,
+        "server_normalization_required": True,
+        "package_bytes_preserved": True,
+    }
 
 
 def _manifest_path(value: Path) -> Path:
@@ -101,6 +195,7 @@ def _load_manifest(value: Path, *, validate_schema: bool = True) -> tuple[Path, 
             validate_document(package, _load_contract(PACKAGE_SCHEMA_PATH))
         except SchemaError as exc:
             _raise_schema(exc)
+    platform_compatibility(package)
     return path, raw, package
 
 
@@ -539,6 +634,7 @@ def read_package(value: Path) -> dict[str, Any]:
         "package_status": package["package_status"],
         "primary_component_id": package["subject"]["primary_component_id"],
         "component_layers": sorted({item["layer"] for item in package["components"]}),
+        "platform_compatibility": platform_compatibility(package),
         "server_qualified": False,
     }
 
@@ -614,6 +710,7 @@ def check_package(value: Path) -> dict[str, Any]:
             [[path, digest, size] for path, (digest, size) in sorted(inventory.items())]
         ),
         "source_package_key": source_package_key(package),
+        "platform_compatibility": platform_compatibility(package),
         "coherence": coherence,
     }
 
@@ -832,6 +929,7 @@ def prepare_package(value: Path, *, pending_root: Path | None = None) -> dict[st
         "contract": "akbs-android-change-package-v2/2/android_change",
         "package": str(destination),
         "source_package_key": check["source_package_key"],
+        "platform_compatibility": check["platform_compatibility"],
         "bytes_preserved": True,
         "server_qualified": False,
         "writer": {**writer_status(), "scope": "submission_only"},

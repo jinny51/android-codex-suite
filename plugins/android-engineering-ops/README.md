@@ -1,6 +1,6 @@
 # Android Engineering Ops
 
-`android-engineering-ops` 2.1.0 是可独立安装的 Android 工程核心。它不依赖
+`android-engineering-ops` 2.1.1 是可独立安装的 Android 工程核心。它不依赖
 `akbs-member-ops` 或任何 practices provider；未配置扩展时始终使用 core-direct。
 
 | Skill | 职责 |

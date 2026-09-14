@@ -38,8 +38,6 @@ LAST_PLUGIN_VERSION_GATE: dict[str, Any] | None = None
 PLUGIN_LIST_CACHE: tuple[dict[str, Any] | None, str] | None = None
 TARGET_INSTALL_FAMILY = {"akbs-member-ops", "android-engineering-ops"}
 LEGACY_INSTALL_FAMILY = {"android-framework-ops", "android-wsl-ops", "android-mac-ops"}
-OPTIONAL_GENERATION_PLUGIN = "jinny-android-practices"
-TARGET_GENERATION_FLOOR = "2.0.0"
 TARGET_MEMBER_PLUGIN = "akbs-member-ops"
 TARGET_MARKETPLACE = "android-codex-suite"
 PLUGIN_VERSION_RE = _plugin_update.PLUGIN_VERSION_RE
@@ -511,30 +509,11 @@ def installed_plugin_family_status() -> dict[str, Any]:
     active_names = {str(row["name"]) for row in rows}
     active_target = sorted(active_names & TARGET_INSTALL_FAMILY)
     active_legacy = sorted(active_names & LEGACY_INSTALL_FAMILY)
-    jinny_rows = [row for row in rows if row.get("name") == OPTIONAL_GENERATION_PLUGIN]
-    jinny_target = [
-        str(row.get("version") or "")
-        for row in jinny_rows
-        if PLUGIN_VERSION_RE.fullmatch(str(row.get("version") or ""))
-        and compare_versions(str(row.get("version") or ""), TARGET_GENERATION_FLOOR) >= 0
-    ]
-    jinny_legacy = [
-        str(row.get("version") or "")
-        for row in jinny_rows
-        if PLUGIN_VERSION_RE.fullmatch(str(row.get("version") or ""))
-        and compare_versions(str(row.get("version") or ""), TARGET_GENERATION_FLOOR) < 0
-    ]
-    jinny_unknown = [
-        str(row.get("pluginId") or OPTIONAL_GENERATION_PLUGIN)
-        for row in jinny_rows
-        if not PLUGIN_VERSION_RE.fullmatch(str(row.get("version") or ""))
-    ]
     duplicate_targets = sorted(
         name
         for name in TARGET_INSTALL_FAMILY
         if sum(1 for row in rows if row.get("name") == name) > 1
     )
-    duplicate_jinny = len(jinny_rows) > 1
     # This function executes from the target member plugin. Running it while a
     # legacy family is active is itself a mixed-family business invocation,
     # even when the target was launched directly from a checkout.
@@ -554,30 +533,21 @@ def installed_plugin_family_status() -> dict[str, Any]:
             ],
         }
     )
-    mixed = bool(
-        (active_legacy and (active_target or executing_target or jinny_target))
-        or (active_target and jinny_legacy)
-        or (jinny_target and jinny_legacy)
-    )
+    mixed = bool(active_legacy and (active_target or executing_target))
     target_not_active = executing_target and not target_member_active
     binding_mismatch = target_member_active and len(target_member_rows) == 1 and not target_binding["valid"]
     blocking = (
         mixed
         or bool(duplicate_targets)
-        or duplicate_jinny
-        or bool(jinny_unknown)
         or target_not_active
         or binding_mismatch
     )
     if mixed:
         status = "MIXED_INSTALL"
         message = "检测到 legacy 与 target Android 插件代际混装；请按迁移顺序选择完整的一代后再运行 target 业务命令。"
-    elif duplicate_targets or duplicate_jinny:
+    elif duplicate_targets:
         status = "AMBIGUOUS_INSTALL"
         message = "Codex active plugin 列表中存在重复的 target 插件，无法确定唯一执行版本。"
-    elif jinny_unknown:
-        status = "AMBIGUOUS_INSTALL"
-        message = "启用的 jinny-android-practices 缺少版本，无法确定其迁移代际。"
     elif target_not_active:
         status = "TARGET_NOT_ACTIVE"
         message = "当前执行的是 akbs-member-ops，但 Codex active plugin 列表未启用该 target 插件；checkout 仅作为开发执行证据，不能冒充已安装版本。"
@@ -598,12 +568,8 @@ def installed_plugin_family_status() -> dict[str, Any]:
         "active_plugins": sorted(active_names),
         "active_target_family": active_target,
         "active_legacy_family": active_legacy,
-        "optional_jinny_target_versions": sorted(jinny_target),
-        "optional_jinny_legacy_versions": sorted(jinny_legacy),
-        "optional_jinny_unknown": sorted(jinny_unknown),
         "target_member_active": target_member_active,
         "duplicate_target_plugins": duplicate_targets,
-        "duplicate_optional_jinny": duplicate_jinny,
         "target_member_binding": target_binding,
         "message": message,
     }

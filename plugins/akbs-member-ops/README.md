@@ -65,8 +65,9 @@ not Skill instructions already loaded into a Codex session.
 Doctor and business gates use `codex plugin list --json` as the authority for the
 unique active install. Historical cache directories are evidence only and are
 never selected by highest version. Legacy and target Android plugin generations
-must not be active together. The optional `jinny-android-practices` plugin must
-also match the selected generation (`1.0.3` rollback versus `2.x` target).
+must not be active together. Optional orchestration plugins are outside the member
+plugin's install-family decision and are validated only when Android Engineering Ops
+explicitly selects one.
 An unavailable or malformed active inventory blocks every business action; only
 help and side-effect-free static diagnostics remain available.
 The active `akbs-member-ops` row must bind the exact published

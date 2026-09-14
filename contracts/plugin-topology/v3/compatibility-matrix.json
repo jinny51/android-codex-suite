@@ -1,0 +1,82 @@
+{
+  "schema": "android-plugin-compatibility-matrix-v3",
+  "topology": "active-topology.json",
+  "required_behavior_keys": [
+    "read",
+    "write",
+    "default",
+    "fallback",
+    "activation",
+    "deprecation",
+    "removal",
+    "test"
+  ],
+  "rows": [
+    {
+      "surface_id": "plugin.android-engineering-ops",
+      "read": "Existing Android source, project registries and patch inputs are unchanged.",
+      "write": "The same core Skills retain source, build, device and capture ownership.",
+      "default": "core-direct; no optional plugin is inspected.",
+      "fallback": "No extension fallback is needed because core is complete by itself.",
+      "activation": "Version 3.0.0 becomes active only through the normal plugin release/install flow.",
+      "deprecation": "The v2 provider/controller surface is no longer active.",
+      "removal": "Provider decisions, worker documents and stage state are removed together.",
+      "test": ["core-direct", "install-family-ignores-optional", "package-capture-import"]
+    },
+    {
+      "surface_id": "plugin.jinny-android-practices",
+      "read": "Jinny coding guidance remains available as ordinary Skill instructions.",
+      "write": "A selected orchestrator may coordinate bounded real implementation work under current-task authority.",
+      "default": "Installed but inactive until mode=jinny or explicit user invocation.",
+      "fallback": "Unavailable suggested role models inherit the current model; no automatic model chain.",
+      "activation": "Explicit mode=jinny or explicit Skill invocation.",
+      "deprecation": "Decision-only coding/execution provider Skills are superseded.",
+      "removal": "jinny-android-execution-policy and both decision scripts are removed.",
+      "test": ["minimal-manifest", "bounded-real-subagents", "old-runtime-absent"]
+    },
+    {
+      "surface_id": "contract.android-orchestration-extension",
+      "read": "One fixed manifest identifies one orchestrator Skill.",
+      "write": "Extension authors provide their plugin manifest, extension manifest, Skill and agent metadata.",
+      "default": "No manifest is read for mode=none.",
+      "fallback": "An explicitly selected missing or invalid extension fails closed before source work.",
+      "activation": "mode=jinny selects the official plugin; mode=custom selects plugin_name.",
+      "deprecation": "android-practices-provider-v1 is replaced as a public runtime contract.",
+      "removal": "Capability decisions, hashes, roles, models and effect ceilings are absent from the new contract.",
+      "test": ["schema-parity", "selected-source-runtime-binding", "missing-selection-fails"]
+    },
+    {
+      "surface_id": "config.android-engineering.extension",
+      "read": "mode and custom plugin_name are active; old provider version/hash fields are accepted then ignored.",
+      "write": "New examples write only mode, plus plugin_name for custom.",
+      "default": "Missing config equals mode=none.",
+      "fallback": "Project config still takes precedence over user config.",
+      "activation": "A non-none mode is always an explicit member or project choice.",
+      "deprecation": "provider_id, provider_version and provider_manifest_sha256 have no runtime effect.",
+      "removal": "Writers stop emitting deprecated fields immediately; compatibility reading may be removed in a later major release.",
+      "test": ["missing-config", "legacy-fields-normalized", "custom-plugin-name-required"]
+    },
+    {
+      "surface_id": "runtime.controller-worker-protocol",
+      "read": "No active runtime reads controller snapshots, assignments, results or decision documents.",
+      "write": "Subagents return ordinary messages and scoped filesystem changes.",
+      "default": "The current user task integrates once and answers once.",
+      "fallback": "No compatibility runtime is created for removed worker documents.",
+      "activation": "Not applicable; this surface is retired.",
+      "deprecation": "Retired in the 3.0 design correction.",
+      "removal": "Schemas, fixtures, libraries, CLIs and tests are deleted as one unit.",
+      "test": ["forbidden-artifacts-absent", "no-obsolete-text-references"]
+    },
+    {
+      "surface_id": "contract.knowledge-incoming-package-v1",
+      "read": "Existing stable v1 Android change packages and historical archives remain readable without rewriting bytes.",
+      "write": "android-patch-capture writes package_kind=android_change through the single stable v1 package contract.",
+      "default": "Seven component layers are expressed only by components rows; mtk/rk/unisoc platform tokens remain unchanged.",
+      "fallback": "There is no v2 package, conversion path, relabel fallback, or parallel upload lifecycle.",
+      "activation": "Unchanged by orchestration selection.",
+      "deprecation": "The separate Android change v2 package surface is removed.",
+      "removal": "V2 schemas, clients, fixtures, and lifecycle-specific runtime are physically absent.",
+      "test": ["v1-schema-parity", "component-row-validation", "platform-token-invariant", "v2-runtime-absent"]
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 """Fail closed unless this exact engineering plugin is the sole active family.
 
 The migration contract permits either the immutable legacy install family or the
-2.0 target family, never both.  Real engineering entry points call this module
+current target family, never both. Real engineering entry points call this module
 before reading source, creating state, dispatching remotely, or writing artifacts.
 """
 
@@ -21,12 +21,9 @@ from typing import Any, Mapping
 
 
 TARGET_PLUGIN = "android-engineering-ops"
-OPTIONAL_PROVIDER = "jinny-android-practices"
 OFFICIAL_MARKETPLACE = "android-codex-suite"
 LEGACY_FAMILY = frozenset({"android-framework-ops", "android-wsl-ops", "android-mac-ops"})
 PLUGIN_VERSION_RE = re.compile(r"^[0-9]+(?:\.[0-9]+){1,3}(?:[-+][0-9A-Za-z.-]+)?$")
-CORE_PROVIDER_CONTRACT = "android-engineering-ops-v1"
-PROVIDER_RELATIVE_PATH = Path("contracts/android-practices-provider/v1/provider.json")
 
 
 class InstallFamilyError(RuntimeError):
@@ -209,7 +206,7 @@ def _bind_inventory_plugin(
         raise InstallFamilyError(f"active {expected_name} version is missing or malformed")
     if not isinstance(marketplace, str) or not marketplace.strip():
         raise InstallFamilyError(f"active {expected_name} marketplaceName is missing")
-    if expected_name in {TARGET_PLUGIN, OPTIONAL_PROVIDER} and marketplace != OFFICIAL_MARKETPLACE:
+    if expected_name == TARGET_PLUGIN and marketplace != OFFICIAL_MARKETPLACE:
         raise InstallFamilyError(
             f"active {expected_name} marketplaceName must be {OFFICIAL_MARKETPLACE}"
         )
@@ -291,33 +288,6 @@ def _bind_inventory_plugin(
     return runtime, manifest, version
 
 
-def _validate_optional_provider_generation(
-    row: Mapping[str, Any], *, core_version: str, codex_home: Path,
-) -> None:
-    root, plugin, provider_version = _bind_inventory_plugin(
-        row, expected_name=OPTIONAL_PROVIDER, codex_home=codex_home
-    )
-    if provider_version.split(".", 1)[0] != core_version.split(".", 1)[0]:
-        raise InstallFamilyError(
-            "active Jinny provider generation differs from android-engineering-ops"
-        )
-    interface = plugin.get("interface")
-    capabilities = interface.get("capabilities") if isinstance(interface, Mapping) else None
-    if not isinstance(capabilities, list) or "Write" in capabilities:
-        raise InstallFamilyError("active Jinny provider must be decision-only and omit Write")
-    provider = _strict_json_file(
-        root / PROVIDER_RELATIVE_PATH, label="active Jinny provider manifest"
-    )
-    if (
-        provider.get("provider_id") != OPTIONAL_PROVIDER
-        or provider.get("provider_version") != provider_version
-        or CORE_PROVIDER_CONTRACT not in (provider.get("compatible_core_contracts") or [])
-    ):
-        raise InstallFamilyError(
-            "active Jinny provider is not compatible with this core generation"
-        )
-
-
 def assert_target_install_family(
     plugin_root: Path,
     *,
@@ -352,16 +322,9 @@ def assert_target_install_family(
         if codex_home is not None
         else Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex").expanduser()
     )
-    _root, _manifest, core_version = _bind_inventory_plugin(
+    _root, _manifest, _core_version = _bind_inventory_plugin(
         target[0], expected_name=TARGET_PLUGIN, execution_root=plugin_root, codex_home=home
     )
-    optional = [item for item in active if item.get("name") == OPTIONAL_PROVIDER]
-    if len(optional) > 1:
-        raise InstallFamilyError("active Jinny provider identity is ambiguous")
-    if optional:
-        _validate_optional_provider_generation(
-            optional[0], core_version=core_version, codex_home=home
-        )
 
 
 def require_target_install_family(plugin_root: Path) -> None:

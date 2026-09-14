@@ -65,8 +65,6 @@ from android_engineering_ops.policy.patch_markers import (
     POLICY_VERSION,
     analyze_unified_diff_markers,
 )
-
-
 SCHEMA_VERSION = "2.0"
 PATCH_NAME_RE = re.compile(r"^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patch$")
 FRAMEWORK_LOG_LITERAL_RE = re.compile(r"FrameworkLog\.(?:d|i|w|e)\s*\([^,]+,\s*\"")

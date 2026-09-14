@@ -1,7 +1,7 @@
 {
   "name": "jinny-android-practices",
-  "version": "2.0.1",
-  "description": "Optional decision-only Jinny coding and execution provider for Android Engineering Ops.",
+  "version": "3.0.0",
+  "description": "Optional Jinny multi-agent orchestration extension for Android Engineering Ops.",
   "author": {
     "name": "Jinny Android Team",
     "url": "https://github.com/jinny51"
@@ -11,25 +11,26 @@
   "license": "MIT",
   "keywords": [
     "android",
-    "coding-policy",
-    "execution-policy",
-    "provider",
+    "multi-agent",
+    "orchestration",
+    "extension",
     "team-practices"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Jinny Android Practices",
-    "shortDescription": "显式选择后提供 Jinny coding 与 execution 决策，不拥有 controller 权限",
-    "longDescription": "实现 android-practices-provider-v1 的可选 Jinny provider。只返回 coding-policy-decision-v1 或 execution-policy-decision-v1；不能 spawn、写源码、取锁、执行副作用、上传或宣布 Gate/最终验收。",
+    "shortDescription": "显式选择后，为复杂 Android 任务按需创建真实子智能体",
+    "longDescription": "Android Engineering Ops 的可选 Jinny 编排扩展。简单任务由当前任务直接完成；复杂任务才按调查、实现、验证和复核等边界创建真实子智能体。当前任务始终负责目标、集成和最终答复。",
     "developerName": "Jinny Android Team",
     "category": "Coding",
     "capabilities": [
       "Interactive",
-      "Read"
+      "Read",
+      "Write"
     ],
     "defaultPrompt": [
-      "使用 Jinny coding provider 给出不覆盖核心 policy 的可选规则决策",
-      "使用 Jinny execution provider 返回受 controller rollout ceiling 约束的路由决策"
+      "使用 Jinny Android Orchestrator 完成这个复杂 Android 工程任务",
+      "使用 Jinny coding practices 检查这个 Android 修改"
     ],
     "brandColor": "#7C3AED",
     "screenshots": []

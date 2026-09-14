@@ -1,6 +1,6 @@
 ---
 name: android-change-workflow
-description: "Use when implementing, diagnosing, modifying, or verifying Android source changes across application, platform, native, HAL, kernel, device, or build layers. Orchestrates source authority, optional AKBS knowledge search, policy, optional practices, build-route selection, layer-aware verification, v1 Android change capture, and submission."
+description: "Use when implementing, diagnosing, modifying, or verifying Android source changes across application, platform, native, HAL, kernel, device, or build layers. Coordinates source authority, optional AKBS knowledge search, optional orchestration, policy, build-route selection, layer-aware verification, stable v1 Android change capture, and submission."
 ---
 
 # Android Change Workflow
@@ -18,8 +18,8 @@ This applies equally when this Skill is invoked directly without the full workfl
 
 ## Gate 0: Active Install Family
 
-Before reading project/source data, resolving a practices provider, editing, running a
-local or remote command, using `adb`, writing state/artifacts, or delegating a worker,
+Before reading project/source data, resolving an orchestration extension, editing,
+running a local or remote command, using `adb`, writing state/artifacts, or delegating,
 set `PLUGIN_ROOT` to the directory two levels above this `SKILL.md` and run:
 
 ```bash
@@ -31,7 +31,33 @@ Only packaged documentation and a pure `--help` operation may be read first. A n
 result is a hard stop. This target-only receipt is mandatory for both
 `registered_remote_tree` and `local_project`, and it also binds any direct local build
 or `adb` action performed by this workflow. Re-run it if the active Codex plugin
-inventory changes; a worker result cannot replace the controller's receipt.
+inventory changes; a subagent result cannot replace this task's receipt.
+
+## Optional Orchestration Extension
+
+Run `scripts/resolve_android_orchestration.py --project-root <project>` immediately
+after Gate 0. Project config `<project>/.codex/android-engineering.toml` takes
+precedence over `$CODEX_HOME/android-engineering-ops.toml`. Missing config or
+`mode="none"` returns `source=core`; continue this workflow directly without reading
+or validating any optional plugin.
+
+`mode="jinny"` selects `jinny-android-practices`. `mode="custom"` requires one
+`plugin_name` implementing `android-orchestration-extension-v1`. The resolver uses the
+active installed+enabled inventory and the fixed extension manifest path; it validates
+only the explicitly selected plugin. A missing, ambiguous, incompatible, substituted,
+or malformed selected extension is a hard stop before source work.
+
+When the resolver returns `source=extension`, read its returned `skill_path` completely
+and apply that orchestrator in this same user task. Record in working context that
+resolution is complete. The orchestrator and nested Android Skills must not re-enter
+this workflow or resolve the extension again. The extension decides only how the
+current task is organized; Android source authority, policy, build/deploy rules,
+capture, submission authority, integration, and the final user response remain here.
+
+The resolver does not classify the task, select a model, spawn an agent, create worker
+documents, or make a second acceptance decision. Legacy provider version/hash config
+fields may be read and ignored during configuration migration, but they are not part
+of the active extension protocol.
 
 ## Required Contracts
 
@@ -86,33 +112,6 @@ implementation and verifies WSL or macOS before side effects; then use
 `android-remote-channel` for all source and build operations. For a `local_project`,
 verify its real Git root and project instructions, then use normal local project tools.
 
-## Optional Practices Resolution
-
-Before asking a provider for coding or execution policy, run
-`scripts/resolve_android_practices.py`. The project config
-`<project>/.codex/android-engineering.toml` takes precedence over
-`$CODEX_HOME/android-engineering-ops.toml`; no config means `none`/core.
-
-The mode field sets are closed: `none=[mode]`;
-`jinny=[mode,provider_version,provider_manifest_sha256]`; and
-`custom=[mode,plugin_name,provider_id,provider_version,provider_manifest_sha256]`.
-The resolver uses only active installed+enabled entries from `codex plugin list --json`,
-then reads the provider at the contract-fixed relative path. It never scans cache
-versions or guesses from a description. A selected missing, ambiguous, symlinked,
-unstable, schema-invalid, or hash-mismatched provider fails before delegation or source
-write. A valid provider with an absent/non-applicable capability falls back to core.
-
-Validate each decision with the schemas packaged in this plugin, the exact
-provider/Skill bindings, the declared profile ceiling, and the controller's rollout
-ceiling. A provider only returns a decision. It never spawns, writes, takes a lock,
-executes a side effect, uploads, changes a Gate, or performs final acceptance.
-
-A selected Jinny/custom provider is user-installed trusted Skill code, not an OS
-sandbox. Validate active plugin identity, manifest, Skill, agent metadata,
-decision-entrypoint hashes, closed output, and expected decision/run/stage/context
-before use. These bindings prevent substitution and authority escalation; they do not
-claim arbitrary custom provider code is process-level side-effect-free.
-
 ## Gate 3: Policy and Change Plan
 
 Apply `android-change-policy` before edits. Universal member/patch attribution applies
@@ -164,9 +163,8 @@ Apply the selected layer's evidence and the relevant engineering risks:
 - Build: Soong/Make/Gradle/release integration, dependency graph, clean/incremental
   behavior, reproducibility and artifact contract.
 
-The `android-change-workflow` controller runs final acceptance against the requirement
-contract and nearby regressions; no provider or worker, including a review worker, owns
-the final state. Remove or
+The current user task runs final acceptance against the requirement contract and nearby
+regressions; no extension or subagent, including a reviewer, owns the final state. Remove or
 explicitly retain temporary diagnostics with a reason.
 
 ## Gate 5: Capture and Submission

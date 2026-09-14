@@ -10,7 +10,7 @@ device 与 build 层。
 | --- | --- | --- |
 | [akbs-member-ops](plugins/akbs-member-ops/README.md) | 成员设置、知识检索、合并复核、日报、周报和 Android 补丁包提交 | 使用 AKBS 的成员安装 |
 | [android-engineering-ops](plugins/android-engineering-ops/README.md) | Android 变更规范、总工作流、跨平台源码接入、远程执行、构建交付和本地补丁采集 | 处理 Android 工程任务的成员安装 |
-| [jinny-android-practices](plugins/jinny-android-practices/README.md) | 可选编码实践和执行策略 Provider；只能给出决策，不能取代核心验收权 | 按成员选择安装 |
+| [jinny-android-practices](plugins/jinny-android-practices/README.md) | 可选的 Jinny Android 多智能体编排实现 | 按成员选择安装 |
 
 ## Skill 结构
 
@@ -32,13 +32,13 @@ android-engineering-ops
 └── android-patch-capture
 
 jinny-android-practices
-├── jinny-android-coding-practices
-└── jinny-android-execution-policy
+├── jinny-android-orchestrator
+└── jinny-android-coding-practices
 ```
 
 ## 边界
 
-- `android-change-workflow` 是 Android 工程总流程和最终验收者。
+- `android-change-workflow` 是 Android 工程总流程；当前用户任务负责集成和最终答复。
 - `android-change-policy` 保存所有成员都不能绕过的身份、patch 溯源、真实证据和领域安全底线。
 - `akbs-patch-submit` 面向所有受支持的 Android change domain，不把补丁业务限定为 Framework。
 - `android-source-access` 自动识别 WSL 或 macOS，并选择插件内对应适配器；成员不再按操作系统安装两个入口插件。
@@ -51,19 +51,19 @@ jinny-android-practices
 
 成员有三种合法选择：
 
-1. `none`：不安装扩展，由核心直接执行。
-2. `jinny`：安装 `jinny-android-practices`，使用其编码实践和 Sol/Terra/Luna 执行策略。
-3. `custom`：安装成员自己的 Provider，并按 `android-practices-provider-v1` 合同声明能力。
+1. `none`：默认值；核心在当前任务中直接执行。
+2. `jinny`：显式选择 `jinny-android-practices` 的真实多智能体编排。
+3. `custom`：选择成员自己的插件，实现相同的最小扩展协议。
 
 选择写在 `$CODEX_HOME/android-engineering-ops.toml`；项目可用
-`<project>/.codex/android-engineering.toml` 覆盖。Provider 必须由固定 manifest 路径、
-ID、版本和 SHA-256 精确定位，不能靠扫描描述猜测。显式选择的 Provider 缺失、损坏或越权时
-fail closed；没有声明某能力或当前任务不适用时才回到核心。
+`<project>/.codex/android-engineering.toml` 覆盖。扩展只通过固定路径
+`contracts/android-orchestration-extension/v1/extension.json` 声明一个 orchestrator
+Skill。公共协议不包含模型、角色、任务分类、worker 文档或阶段状态。显式选择的插件缺失
+或损坏时 fail closed；没有配置时核心完全不读取它。
 
-`jinny-android-execution-policy` 只决定执行建议：Sol 负责需求分析、风险判断和独立复核，
-Terra 负责常规源码实现，Luna 负责边界明确的编译、推送、证据收集和材料整理。
-模型 worker 只能返回结果和证据，不能自行宣布任务完成；最终结论仍由
-`android-change-workflow` 结合真实状态作出。
+Jinny 实现中，简单任务直接完成，复杂任务才按需创建 investigator、implementer、
+verifier 或 reviewer。用户模型选择优先；角色模型只是 Jinny 的默认建议，不属于核心协议，
+也不会自动轮换或退休当前任务。
 
 ## 安装与升级
 

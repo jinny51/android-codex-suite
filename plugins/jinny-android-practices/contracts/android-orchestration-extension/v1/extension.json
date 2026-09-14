@@ -1,0 +1,11 @@
+{
+  "schema": "android-orchestration-extension-v1",
+  "provider_id": "jinny-android-practices",
+  "provider_version": "3.0.0",
+  "compatible_core_contracts": [
+    "android-engineering-orchestration-v1"
+  ],
+  "orchestrator": {
+    "skill_id": "jinny-android-orchestrator"
+  }
+}

@@ -30,7 +30,7 @@ python3 "$PLUGIN_ROOT/lib/android_engineering_ops/install_family.py" \
 Only packaged documentation and pure `--help` may precede this check. A nonzero result
 is a hard stop; do not edit, review, import, or package under a missing, mixed, or
 source-checkout install family. When this Skill is called inside
-`android-change-workflow`, reuse its still-current target-only controller receipt.
+`android-change-workflow`, reuse its still-current target-only task receipt.
 
 ## Required Contract
 

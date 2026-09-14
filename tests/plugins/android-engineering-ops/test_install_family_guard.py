@@ -96,52 +96,22 @@ def test_inventory_id_marketplace_and_version_bind_exact_plugin_manifest(
         )
 
 
-def test_optional_jinny_must_match_core_generation_and_provider_contract(
-    tmp_path: Path,
-) -> None:
-    jinny = ROOT / "plugins/jinny-android-practices"
-    home, _core_source, core_runtime, core_row = installed_core(tmp_path)
-    marketplace = "android-codex-suite"
-    jinny_source = home / ".tmp/marketplaces" / marketplace / "plugins/jinny-android-practices"
-    jinny_version = json.loads((jinny / ".codex-plugin/plugin.json").read_text())["version"]
-    jinny_cache = home / "plugins/cache" / marketplace / "jinny-android-practices" / jinny_version
-    for target in (jinny_source, jinny_cache):
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(
-            jinny, target, ignore=shutil.ignore_patterns("__pycache__", "*.pyc")
-        )
-    valid = entry("jinny-android-practices", jinny_source)
+def test_core_install_family_ignores_unselected_optional_extensions(tmp_path: Path) -> None:
+    home, _source, runtime, core = installed_core(tmp_path)
+    broken_optional = {
+        "pluginId": "jinny-android-practices@somewhere-else",
+        "name": "jinny-android-practices",
+        "marketplaceName": "somewhere-else",
+        "version": "not-even-a-version",
+        "installed": True,
+        "enabled": True,
+        "source": {"source": "local", "path": "/missing"},
+    }
     assert_target_install_family(
-        core_runtime,
-        inventory={"installed": [core_row, valid]},
+        runtime,
+        inventory={"installed": [core, broken_optional]},
         codex_home=home,
     )
-
-    old = home / ".tmp/marketplaces" / marketplace / "plugins/old-jinny"
-    (old / ".codex-plugin").mkdir(parents=True)
-    (old / ".codex-plugin/plugin.json").write_text(
-        json.dumps(
-            {
-                "name": "jinny-android-practices",
-                "version": "1.0.3",
-                "interface": {"capabilities": ["Interactive", "Read"]},
-            }
-        ),
-        encoding="utf-8",
-    )
-    old_row = {
-        **entry("jinny-android-practices", old),
-        "version": "1.0.3",
-    }
-    old_cache = home / "plugins/cache" / marketplace / "jinny-android-practices/1.0.3"
-    old_cache.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(old, old_cache)
-    with pytest.raises(InstallFamilyError, match="generation differs"):
-        assert_target_install_family(
-            core_runtime,
-            inventory={"installed": [core_row, old_row]},
-            codex_home=home,
-        )
 
 
 def test_inventory_source_cannot_impersonate_versioned_runtime_cache(

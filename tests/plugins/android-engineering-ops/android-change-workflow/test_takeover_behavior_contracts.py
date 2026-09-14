@@ -9,13 +9,13 @@ WORKFLOW = PLUGIN / "skills/android-change-workflow/SKILL.md"
 CAPTURE = PLUGIN / "skills/android-patch-capture/SKILL.md"
 
 
-def test_change_workflow_keeps_ordered_controller_gates() -> None:
+def test_change_workflow_keeps_ordered_engineering_gates() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     ordered = (
         "## Gate 0: Active Install Family",
+        "## Optional Orchestration Extension",
         "## Gate 1: Requirement and Component",
         "## Gate 2: Knowledge and Source Authority",
-        "## Optional Practices Resolution",
         "## Gate 3: Policy and Change Plan",
         "## Gate 4: Implement and Verify by Component",
         "## Gate 5: Capture and Submission",
@@ -33,7 +33,7 @@ def test_change_workflow_keeps_ordered_controller_gates() -> None:
     ):
         assert skill in text
     assert "optional integration" in text
-    assert "controller runs final acceptance" in text
+    assert "current user task runs final acceptance" in text
 
 
 def test_every_canonical_skill_requires_target_install_family_before_effects() -> None:
@@ -62,7 +62,7 @@ def test_every_canonical_skill_requires_target_install_family_before_effects() -
     assert "local_project" in gate
     assert "adb" in gate
     assert "project/source data" in gate
-    assert "worker result cannot replace" in gate
+    assert "subagent result cannot replace" in gate
 
 
 def test_canonical_capture_and_submit_use_single_v1_android_change_contract() -> None:

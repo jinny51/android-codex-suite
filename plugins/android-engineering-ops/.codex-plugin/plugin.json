@@ -1,7 +1,7 @@
 {
   "name": "android-engineering-ops",
-  "version": "2.1.2",
-  "description": "Standalone Android engineering policy, workflow, source access, remote execution, build/deploy, and patch capture.",
+  "version": "3.0.0",
+  "description": "Standalone Android engineering core with an optional orchestration extension protocol.",
   "author": {
     "name": "Jinny Android Team",
     "url": "https://github.com/jinny51"
@@ -20,7 +20,7 @@
   "interface": {
     "displayName": "Android Engineering Ops",
     "shortDescription": "独立完成 Android 变更、源码访问、远程构建验证和本地 patch capture",
-    "longDescription": "Android 工程核心插件。统一拥有强制变更策略、controller workflow、WSL/macOS 自动 source-access、远程通道、构建交付，并从已验证变更直接生成稳定 v1 android_change 包及七层 components 映射；AKBS 成员能力与可选 practices provider 均不是其运行依赖。",
+    "longDescription": "Android 工程核心插件。独立提供变更策略、七层 workflow、WSL/macOS source-access、远程通道、构建交付和稳定 v1 android_change 包；默认直接执行，也可显式加载一个遵守最小协议的编排扩展。",
     "developerName": "Jinny Android Team",
     "category": "Coding",
     "capabilities": [
@@ -31,7 +31,7 @@
     "defaultPrompt": [
       "使用 Android Change Workflow 实现、验证并 capture 这个 Android 修改",
       "自动识别 WSL 或 macOS 并建立 Android source access",
-      "检查当前 Android 工程扩展配置和 provider 绑定"
+      "检查当前 Android 工程是否选择了编排扩展"
     ],
     "brandColor": "#2563EB",
     "screenshots": []

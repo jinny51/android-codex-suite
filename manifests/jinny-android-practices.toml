@@ -1,11 +1,11 @@
-# Optional decision-only provider.
+# Optional Jinny orchestration extension.
+
+[[skills]]
+name = "jinny-android-orchestrator"
+category = "Optional Orchestration"
+summary = "简单 Android 任务直接处理，复杂任务按需创建边界明确的真实子智能体"
 
 [[skills]]
 name = "jinny-android-coding-practices"
 category = "Optional Practices"
-summary = "返回不覆盖核心 android-change-policy 的 Jinny coding policy 决策"
-
-[[skills]]
-name = "jinny-android-execution-policy"
-category = "Optional Practices"
-summary = "返回受 controller rollout ceiling 约束且不直接执行的 execution policy 决策"
+summary = "应用不覆盖核心 android-change-policy 和项目规则的 Jinny 编码建议"

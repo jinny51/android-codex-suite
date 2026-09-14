@@ -1,0 +1,67 @@
+{
+  "schema": "android-plugin-topology-v3",
+  "state": "active",
+  "marketplace": "android-codex-suite",
+  "plugins": [
+    {
+      "id": "akbs-member-ops",
+      "version": "2.1.2",
+      "role": "standalone_member_workflows",
+      "skills": [
+        "akbs-member-setup",
+        "akbs-knowledge-search",
+        "akbs-knowledge-merge-review",
+        "akbs-daily-report",
+        "akbs-weekly-report",
+        "akbs-patch-submit"
+      ]
+    },
+    {
+      "id": "android-engineering-ops",
+      "version": "3.0.0",
+      "role": "standalone_android_engineering_core",
+      "default_execution": "core-direct",
+      "skills": [
+        "android-change-policy",
+        "android-change-workflow",
+        "android-source-access",
+        "android-remote-channel",
+        "android-remote-build-deploy",
+        "android-patch-capture"
+      ]
+    },
+    {
+      "id": "jinny-android-practices",
+      "version": "3.0.0",
+      "role": "optional_android_orchestration_extension",
+      "activation": "explicit-only",
+      "skills": [
+        "jinny-android-orchestrator",
+        "jinny-android-coding-practices"
+      ]
+    }
+  ],
+  "orchestration_extension": {
+    "core_contract": "android-engineering-orchestration-v1",
+    "schema": "contracts/android-orchestration-extension/v1/extension.schema.json",
+    "manifest_path": "contracts/android-orchestration-extension/v1/extension.json",
+    "modes": ["none", "jinny", "custom"],
+    "default_mode": "none",
+    "selection_owner": "member_or_project_configuration",
+    "selected_skill_runs_in": "current_user_task",
+    "core_excludes": [
+      "role_catalog",
+      "model_routing",
+      "task_classification",
+      "worker_documents",
+      "stage_state_machine",
+      "second_acceptance"
+    ]
+  },
+  "boundaries": {
+    "android_engineering": "android-engineering-ops",
+    "akbs_member_workflows": "akbs-member-ops",
+    "optional_jinny_orchestration": "jinny-android-practices",
+    "final_user_response": "current_user_task"
+  }
+}

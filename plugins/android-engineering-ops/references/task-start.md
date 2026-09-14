@@ -11,8 +11,8 @@ python3 "$PLUGIN_ROOT/lib/android_engineering_ops/task_start.py" \
 ```
 
 Codex chooses one stable ID for the coherent user request and keeps it with task state;
-reuse it for all nested Skills, commands and workers. Use an existing controller run ID
-when available, otherwise choose one once. Do not ask the member to manage this ID,
+reuse it for all nested Skills, commands and subagents. Use an existing task ID when
+available, otherwise choose one once. Do not ask the member to manage this ID,
 generate a new one for each command, or reuse a permanent chat/project ID for unrelated
 requirements. State stays under `$CODEX_HOME/artifacts/android-engineering-ops/startup`;
 it does not enter Android source, credentials, capture or incoming packages.
@@ -42,5 +42,5 @@ The generic release lookup, version comparison and marketplace update implementa
 is maintained at `shared/codex_plugin_update.py` in the source repository and packaged
 identically in both plugins. This startup entry owns only engineering task timing and
 state. It does not import AKBS member code, install the member plugin, or change an
-optional practices provider. Existing users must install this release once before this
+optional orchestration extension. Existing users must install this release once before this
 automatic engineering startup behavior becomes available.

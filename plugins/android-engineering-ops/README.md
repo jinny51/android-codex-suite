@@ -1,65 +1,63 @@
 # Android Engineering Ops
 
-`android-engineering-ops` 2.1.2 是可独立安装的 Android 工程核心。它不依赖
-`akbs-member-ops` 或任何 practices provider；未配置扩展时始终使用 core-direct。
+`android-engineering-ops` 3.0.0 是独立的 Android 工程核心。默认不需要任何
+编排插件：没有配置扩展时，当前任务直接使用核心 Skill 完成工作。
 
 | Skill | 职责 |
 | --- | --- |
-| `android-change-policy` | Android 七层 component 强制 policy 和 patch 归档规则 |
-| `android-change-workflow` | 唯一 controller，拥有阶段、Gate 和 requirement acceptance |
-| `android-source-access` | 自动识别 WSL/macOS，并分派唯一平台 adapter |
-| `android-remote-channel` | 远端 source/build 命令、锁、队列和恢复 |
-| `android-remote-build-deploy` | 受控 build、artifact 校验和本地 adb 交付 |
-| `android-patch-capture` | 直接生成七层 component 标注的 v1 `android_change` 包 |
+| `android-change-policy` | 七层 component 强制 policy 和 patch 归档规则 |
+| `android-change-workflow` | Android 工程总流程、集成和最终验收 |
+| `android-source-access` | 自动识别 WSL/macOS 并分派平台 adapter |
+| `android-remote-channel` | 远端 source/build 命令、锁和恢复 |
+| `android-remote-build-deploy` | 受控 build、artifact 校验和 adb 交付 |
+| `android-patch-capture` | 直接生成七层 component 标注的稳定 v1 `android_change` 包 |
 
-## Task startup and updates
+## 可选编排扩展
 
-新工程任务开始时，六个 Skill 共用 `lib/android_engineering_ops/task_start.py` 检查和更新本插件；同一任务只联网检查一次，后续命令保持本地安装校验。更新成功后提示重启 Codex，不在执行中的编译/推送里切换版本。任务身份和失败重试见 [启动约定](references/task-start.md)。公共更新源码与成员插件共用，但没有运行时依赖；现有成员需要先安装含此机制的版本一次。
-
-## Optional practices provider
-
-扩展选择只读取以下两个位置，项目配置优先：
+扩展只决定“这个任务如何组织”，不改变 Android 工程规则。项目配置优先于用户配置：
 
 ```text
 <project>/.codex/android-engineering.toml
 $CODEX_HOME/android-engineering-ops.toml
 ```
 
-缺少配置等价于 `mode = "none"`。每种 mode 使用冻结的精确字段集合；`jinny` 和 `custom` 只保存 provider/plugin identity、
-版本和 manifest SHA-256；公共配置不能指定任意文件路径。Resolver 以
-`codex plugin list --json` 的 active installed+enabled inventory 精确取得已安装根，
-然后只接受固定相对路径 `contracts/android-practices-provider/v1/provider.json`。
-CLI 不可用、active identity 不唯一、路径含 symlink、读取不稳定或哈希/身份不一致时
-均 fail closed。只有 capability 缺失或 applicability 不匹配时回退 core。
+没有配置或以下配置都表示核心直接执行：
+
+```toml
+[extension]
+mode = "none"
+```
+
+选择官方 Jinny 实现：
 
 ```toml
 [extension]
 mode = "jinny"
-provider_version = "2.0.1"
-provider_manifest_sha256 = "<64 lowercase hex>"
 ```
 
-`none` 只允许 `mode`；`jinny` 的 plugin name/provider ID 均固定，只允许上述三个字段；
-`custom` 必须再提供 `plugin_name` 与 `provider_id`。Inventory 的完整 `pluginId` 只作为
-观测证据返回，不能进入公共配置。
+选择成员自定义实现：
 
-可用以下只读入口查看最终解析：
+```toml
+[extension]
+mode = "custom"
+plugin_name = "my-android-orchestrator"
+```
+
+自定义插件只需在固定路径
+`contracts/android-orchestration-extension/v1/extension.json` 声明一个
+orchestrator Skill。核心协议不规定角色、模型、任务分类、worker 文档或执行状态机。
+显式选择的扩展缺失或损坏时失败关闭；未选择时核心不会读取或校验它。
+
+可用只读入口查看解析结果：
 
 ```bash
-python3 skills/android-change-workflow/scripts/resolve_android_practices.py \
-  --project-root "$PWD" --workflow-action analysis --component-layer platform
+python3 skills/android-change-workflow/scripts/resolve_android_orchestration.py \
+  --project-root "$PWD"
 ```
 
-Provider、coding decision 和 execution decision 均使用本插件内置 schema 验证，
-运行时不读取仓库根 contracts。Provider 只给决策；assignment、实际执行、rollout
-effect ceiling 与最终 requirement acceptance 始终由 `android-change-workflow` 掌握。
+旧配置中的 provider 版本和 hash 字段只为读取迁移而忽略，不再参与运行时协议。
 
-Provider Skill 是用户安装并信任的代码/指令，不是 OS sandbox。Core 绑定 active plugin
-identity/version、manifest SHA、Skill/agent metadata/decision entrypoint 内容 hash，并在
-使用前验证 closed output 与 controller expected run/stage/context。机器保证替换检测和
-不授予 controller 权限，不声称任意 custom provider 进程在操作系统层面无副作用。
-
-## Component 与提交边界
+## 工程与提交边界
 
 Canonical component layer 只有 application/platform/native/hal/kernel/device/build。
 旧 `change_domain` 仅按冻结映射转换为 layer；`vendor` 不是 layer。
@@ -77,3 +75,6 @@ Codex 编写的当前源码变更使用 `capture_remote_snapshot.py --package` �
 公开入口只有 `android-source-access`。`android_source_access.py` 先以本机事实识别
 WSL 或 macOS，再执行插件内对应 adapter；普通 Linux 和错误主机命令均在副作用前失败。
 既有 `$HOME/.servers`、macOS Keychain 与 `$HOME/work` 身份原地读取，不复制凭据。
+
+六个核心 Skill 共用 `lib/android_engineering_ops/task_start.py` 做一次任务启动和
+安装检查。可选编排扩展不参与核心插件安装族校验，也不会因安装而改变默认行为。

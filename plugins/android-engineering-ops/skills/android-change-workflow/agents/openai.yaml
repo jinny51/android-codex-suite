@@ -1,4 +1,4 @@
 interface:
   display_name: "Android Change Workflow"
-  short_description: "Seven-layer Android component workflow and final acceptance controller"
-  default_prompt: "Use $android-change-workflow to classify every patch into a canonical Android layer, optionally search prior knowledge, implement or diagnose, verify by layer, directly capture the v1 android_change package, and submit it through the existing patch upload lifecycle."
+  short_description: "Seven-layer Android workflow with optional orchestration"
+  default_prompt: "Use $android-change-workflow to resolve any explicitly selected orchestration extension once, classify each patch into a canonical Android layer, implement or diagnose, verify, directly capture the stable v1 android_change package, and submit it through the existing patch upload lifecycle."

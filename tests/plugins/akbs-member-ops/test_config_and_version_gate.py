@@ -602,34 +602,33 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
         self.assertEqual(result["status"], "MIXED_INSTALL")
         self.assertTrue(result["blocking"])
 
-    def test_optional_jinny_generation_must_match_active_core(self) -> None:
-        cases = (
-            (("android-framework-ops", "1.0.169"), ("jinny-android-practices", "2.0.0")),
-            (("akbs-member-ops", "2.0.0"), ("jinny-android-practices", "1.0.3")),
-        )
-        for entries in cases:
-            version_gate.PLUGIN_LIST_CACHE = None
+    def test_member_install_family_ignores_optional_orchestration_plugins(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.dict(
+            os.environ, {"CODEX_HOME": temporary}, clear=False
+        ):
+            home = Path(temporary)
+            source = home / ".tmp/marketplaces/android-codex-suite/plugins/akbs-member-ops"
+            runtime = self.cache_root(home, version=PLUGIN_VERSION)
+            for target in (source, runtime):
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(PLUGIN, target)
             rows = [
+                self.target_row(source, version=PLUGIN_VERSION),
                 {
-                    "pluginId": f"{name}@suite",
-                    "name": name,
-                    "version": version,
+                    "pluginId": "jinny-android-practices@unknown",
+                    "name": "jinny-android-practices",
+                    "version": "malformed",
                     "installed": True,
                     "enabled": True,
                     "source": {},
-                }
-                for name, version in entries
+                },
             ]
-            with self.subTest(entries=entries), mock.patch.object(
+            with mock.patch.object(
                 version_gate, "run", return_value=completed({"installed": rows})
-            ), mock.patch.object(
-                version_gate,
-                "plugin_install_metadata",
-                return_value={"plugin_name": "development-audit"},
-            ):
+            ), mock.patch.object(version_gate, "PLUGIN_ROOT", runtime):
                 result = version_gate.installed_plugin_family_status()
-                self.assertEqual(result["status"], "MIXED_INSTALL")
-                self.assertTrue(result["blocking"])
+            self.assertEqual(result["status"], "PASS")
+            self.assertFalse(result["blocking"])
 
     def test_checkout_is_development_evidence_when_target_is_not_active(self) -> None:
         rows = [

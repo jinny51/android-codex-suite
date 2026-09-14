@@ -1,12 +1,14 @@
 # android-change-workflow
 
-新工程任务开始前统一调用 `task_start.py --task-id <本任务固定标识>` 检查并按需更新工程插件；同一任务的后续 Skill 复用结果。更新后需重启 Codex，执行中的编译/命令不做中途升级。任务标识由 Codex 管理，不需要成员填写。
-
 > GitHub 说明页。Runtime Skill 位于 [../../../../plugins/android-engineering-ops/skills/android-change-workflow](../../../../plugins/android-engineering-ops/skills/android-change-workflow)。
 
-Android 工程 controller 的唯一入口，覆盖 application、platform、native、HAL、kernel、device 和 build。它拥有 requirement contract、阶段、Gate、assignment/result 校验与最终验收；可选 practices provider 只返回 schema/hash 绑定的决策，不能 spawn、写入、取锁或宣布验收。
+Android 七层工程总流程。新任务先完成一次安装检查，再解析可选编排扩展；没有配置时
+由当前任务直接实施。`jinny` 和 `custom` 都只返回一个 orchestrator Skill，核心不会
+接收任务分类、模型路由、worker assignment/result 或第二次验收。
 
-任何项目/源码读取、本地或远端命令、设备操作、委派和写入前，都必须先通过当前安装插件的 target-only family gate；这个要求同样适用于 `local_project` 和直接 `adb`，旧新插件混装时失败关闭。
+当前任务始终负责用户目标、工程集成和最终答复。扩展可按需组织真实子智能体，但
+Android policy、源码权威、远端通道、构建/设备安全、capture 和提交授权仍由核心 Skill
+控制。显式选择的扩展异常时在源码工作前失败关闭，未选择的插件不会被检查。
 
 Extension 按项目配置优先于本地配置解析；选择 provider 后只从 Codex active installed+enabled inventory 取得固定插件根，异常 fail closed，能力缺失或不适用才回 core。
 

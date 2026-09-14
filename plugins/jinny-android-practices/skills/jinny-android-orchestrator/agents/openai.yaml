@@ -1,0 +1,4 @@
+interface:
+  display_name: "Jinny Android Orchestrator"
+  short_description: "按复杂度为 Android 任务创建必要的真实子智能体"
+  default_prompt: "Use $jinny-android-orchestrator to keep simple Android work direct and coordinate only the bounded real subagents that materially help this complex task."

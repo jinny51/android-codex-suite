@@ -1,4 +1,0 @@
-interface:
-  display_name: "Jinny Android Execution Policy"
-  short_description: "Return a rollout-bounded decision without dispatch authority"
-  default_prompt: "Use $jinny-android-execution-policy only after explicit provider resolution, apply the controller-provided rollout ceiling, and return an execution-policy-decision-v1 without spawning, writing, locking, executing, uploading, or accepting a Gate."

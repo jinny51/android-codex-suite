@@ -308,13 +308,17 @@ def _validate_semantics(
         if evidence_path.is_symlink() or not evidence_path.is_file():
             raise AndroidChangeV2Error(f"declared JSON evidence is missing or unsafe: {relative}")
         try:
-            load_json_bytes(evidence_path.read_bytes(), label=str(evidence_path))
+            payload = load_json_bytes(evidence_path.read_bytes(), label=str(evidence_path))
         except OSError as exc:
             raise AndroidChangeV2Error(
                 f"cannot read declared JSON evidence: {relative}: {exc}"
             ) from exc
         except SchemaError as exc:
             _raise_schema(exc)
+        if payload.get("kind") != item.get("kind"):
+            raise AndroidChangeV2Error(
+                f"Android change v2 evidence kind differs from manifest: {relative}"
+            )
     component_ids = set(components)
     if patch_components != component_ids:
         raise AndroidChangeV2Error("every Android change v2 component must have a patch")

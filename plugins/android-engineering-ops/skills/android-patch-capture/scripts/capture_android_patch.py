@@ -1066,6 +1066,7 @@ def verification_result(args: argparse.Namespace, auto_payload: dict[str, Any] |
     auto_adb_actions = string_list(auto_local_delivery.get("adb_actions") if isinstance(auto_local_delivery, dict) else [])
     auto_device_restarts = string_list(auto_local_delivery.get("device_restarts") if isinstance(auto_local_delivery, dict) else [])
     payload: dict[str, Any] = {
+        "kind": "verification_result",
         "result": result,
         "method": method,
         "build": args.verification or string_list(auto_payload.get("build")),
@@ -1131,6 +1132,7 @@ def search_before_change(args: argparse.Namespace) -> dict[str, Any]:
     summary = args.search_summary or ""
     decision = args.reuse_decision or infer_reuse_decision(queries, results, summary)
     return {
+        "kind": "search_before_change",
         "result": "INFO",
         "method": "knowledge_search",
         "searched": bool(queries or results or summary),
@@ -1323,6 +1325,8 @@ def validate_final_manifest(manifest: dict[str, Any], package_dir: Path) -> None
         if evidence_path.is_symlink() or not evidence_path.is_file():
             raise SystemExit("final package references missing evidence")
         payload = read_json(evidence_path)
+        if payload.get("kind") != item["kind"]:
+            raise SystemExit("final package evidence payload/manifest kinds differ")
         payload_component_ids = payload.get("component_ids")
         if payload_component_ids is not None and payload_component_ids != item["component_ids"]:
             raise SystemExit("final package evidence payload/manifest component bindings differ")
@@ -1989,6 +1993,7 @@ def main() -> int:
         build_workspace.cleanup()
         return 1
     package_check = {
+        "kind": "package_check",
         "status": "PASS",
         "errors": [],
         "warnings": warnings,
@@ -2100,6 +2105,10 @@ def main() -> int:
             }
         )
     if snapshot_payload is not None:
+        snapshot_payload = {
+            **snapshot_payload,
+            "kind": "remote_source_snapshot",
+        }
         write_json(evidence_dir / "remote-source-snapshot.json", snapshot_payload)
         evidence_items.append(
             {

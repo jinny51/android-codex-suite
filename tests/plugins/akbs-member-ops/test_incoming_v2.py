@@ -209,6 +209,22 @@ class AndroidChangeV2Test(unittest.TestCase):
             with self.assertRaisesRegex(AndroidChangeV2Error, "integrity"):
                 check_package(source)
 
+    def test_check_rejects_evidence_kind_that_differs_from_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            source = build_package(Path(temporary) / "source")
+            evidence_path = source / "evidence/result.json"
+            evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+            evidence["kind"] = "search_before_change"
+            evidence_path.write_bytes(_json_bytes(evidence))
+            manifest_path = source / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            raw = evidence_path.read_bytes()
+            manifest["evidence"][0]["sha256"] = hashlib.sha256(raw).hexdigest()
+            manifest["evidence"][0]["size_bytes"] = len(raw)
+            manifest_path.write_bytes(_json_bytes(manifest))
+            with self.assertRaisesRegex(AndroidChangeV2Error, "evidence kind differs"):
+                check_package(source)
+
     def test_check_rejects_symlink_package_root(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             workspace = Path(temporary)

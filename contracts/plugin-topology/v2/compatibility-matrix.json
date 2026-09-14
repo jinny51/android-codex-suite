@@ -39,7 +39,7 @@
     },
     "phase1": {
       "purpose": "server_input_contract_compatibility",
-      "allowed": ["additive_server_schema_support", "v1_v2_package_read", "common_patch_upload_contract_validation"],
+      "allowed": ["v1_android_change_schema_support", "historical_framework_read", "common_patch_upload_contract_validation"],
       "forbidden": ["production_server_write", "plugin_member_migration", "legacy_removal"]
     },
     "phase2": {
@@ -73,7 +73,7 @@
         "real_macos_engineering_member",
         "real_gms_report_only_member",
         "none_jinny_custom_modes",
-        "v1_v2_common_patch_upload_lifecycle",
+        "v1_android_change_common_patch_upload_lifecycle",
         "capture_submit_queue_curation_knowledge_search_loop"
       ],
       "forbidden": ["broad_member_migration", "adoption_based_legacy_removal"]
@@ -104,7 +104,7 @@
         "materialization_phase": "phase2",
         "real_activation_phase": "phase4",
         "gates_by_phase": {
-          "phase1": ["server_v1_v2_input_contract_receipt", "common_patch_upload_contract_receipt"],
+          "phase1": ["server_v1_android_change_contract_receipt", "common_patch_upload_contract_receipt"],
           "phase2": ["member_only_local_fixture_validation", "target_only_local_validation"],
           "phase4": ["real_gms_report_only_workflow", "real_member_server_readback"],
           "phase5": ["per_member_target_only_receipt"]
@@ -388,8 +388,8 @@
         "materialization_phase": "phase2",
         "real_activation_phase": "phase4",
         "gates_by_phase": {
-          "phase2": ["local_entrypoint_parity", "v1_v2_common_upload_routing"],
-          "phase4": ["real_v1_and_v2_submit"],
+          "phase2": ["local_entrypoint_parity", "single_v1_common_upload_routing"],
+          "phase4": ["real_v1_android_change_submit"],
           "phase5": ["per_member_cli_acceptance"]
         },
         "ordered_actions_by_phase": {
@@ -607,27 +607,27 @@
     {
       "surface_id": "artifact.android-patch-capture",
       "kind": "artifact_root",
-      "intent": "direct_final_android_change_packages",
+      "intent": "direct_android_change_v1_packages",
       "legacy": ["$CODEX_HOME/artifacts/android-framework-patch-capture/packages"],
       "target": ["$CODEX_HOME/artifacts/android-patch-capture/packages"],
-      "read": {"current": "legacy captures", "migration": "final v2 packages plus explicit legacy capture reader", "target": "final v2 packages plus explicit legacy capture reader"},
-      "write": {"current": "legacy capture", "migration": "direct final v2 package in target family", "target": "direct final v2 package"},
+      "read": {"current": "legacy captures", "migration": "v1 android_change packages plus explicit legacy capture reader", "target": "v1 android_change packages plus explicit legacy capture reader"},
+      "write": {"current": "legacy capture", "migration": "direct v1 android_change package in target family", "target": "direct v1 android_change package"},
       "default": {"current": {"legacy_current": ["legacy-capture"]}, "migration": {"legacy_rollback": ["legacy-capture"], "target_candidate": ["android-patch-capture"]}, "target": {"target_only": ["android-patch-capture"]}},
-      "fallback": {"allowed": true, "mode": "legacy_package_reader", "fail_closed_when": ["new_v2_package_rewritten_as_v1"]},
+      "fallback": {"allowed": true, "mode": "legacy_package_reader", "fail_closed_when": ["current_android_change_rewritten_as_framework_change"]},
       "activation": {
         "materialization_phase": "phase2",
         "real_activation_phase": "phase2",
         "gates_by_phase": {
-          "phase2": ["direct_final_v2_schema", "canonical_platform_fields", "exact_payload_hashes"]
+          "phase2": ["v1_android_change_schema", "seven_component_layers", "exact_patch_coverage"]
         },
         "ordered_actions_by_phase": {
-          "phase2": ["capture_direct_final_v2", "check_with_member_client"]
+          "phase2": ["capture_v1_android_change", "check_with_member_client"]
         },
         "forbidden_coinstall": ["android-framework-ops"]
       },
       "deprecation": {"starts": "phase2", "behavior": "legacy root read-only", "notice_required": true},
       "removal": {"gates": ["never_delete_historical_captures"], "legacy_reader_retention": "permanent", "history_rewrite": false},
-      "test": {"required_ids": ["legacy-capture-import", "direct-v2-capture-write"], "negative_ids": ["incomplete-final-package", "provenance-rewrite"]}
+      "test": {"required_ids": ["legacy-capture-import", "direct-v1-android-change-write"], "negative_ids": ["incomplete-package", "provenance-rewrite"]}
     },
     {
       "surface_id": "artifact.android-remote-build-deploy",
@@ -661,18 +661,18 @@
     {
       "surface_id": "package.framework-change-v1",
       "kind": "package_contract",
-      "intent": "framework_v1_input_on_common_patch_lifecycle",
+      "intent": "historical_framework_change_read_compatibility",
       "legacy": ["knowledge-incoming-package/1/framework_change"],
       "target": ["permanent_read_projection:platform/framework"],
-      "read": {"current": "authoritative v1 input", "migration": "v1 and v2 input formats", "target": "permanent v1 input and read projection"},
-      "write": {"current": "v1 input through common patch lifecycle", "migration": "v1 and v2 inputs through common patch lifecycle", "target": "v1 input through common patch lifecycle"},
+      "read": {"current": "historical v1 archive", "migration": "historical v1 archive with normalized platform projection", "target": "historical v1 archive with normalized platform projection"},
+      "write": {"current": "historical writer before cutover", "migration": "unsupported", "target": "unsupported"},
       "default": {"current": {"legacy_current": ["framework-change-v1"]}, "migration": {"legacy_rollback": ["framework-change-v1"], "target_candidate": ["framework-change-v1"]}, "target": {"target_only": ["server-policy"]}},
-      "fallback": {"allowed": false, "mode": "v2_submit_failure_never_silently_rewrites_to_v1", "fail_closed_when": ["v2_attempt_failed"]},
+      "fallback": {"allowed": false, "mode": "historical_read_only", "fail_closed_when": ["new_framework_change_write_attempted"]},
       "activation": {
         "materialization_phase": "current",
         "real_activation_phase": "current",
         "gates_by_phase": {"current": ["v1_contract_pin"]},
-        "ordered_actions_by_phase": {"current": ["preserve_v1_read_and_submit_compatibility"]},
+        "ordered_actions_by_phase": {"current": ["preserve_historical_v1_read_compatibility"]},
         "forbidden_coinstall": []
       },
       "deprecation": {"starts": "never_for_reads", "behavior": "write policy may narrow separately", "notice_required": false},
@@ -680,29 +680,29 @@
       "test": {"required_ids": ["v1-client", "v1-provenance", "platform-framework-projection"], "negative_ids": ["partition-fabrication", "history-rewrite"]}
     },
     {
-      "surface_id": "package.android-change-v2",
+      "surface_id": "package.android-change-v1",
       "kind": "package_contract",
-      "intent": "android_change_v2_input_on_common_patch_lifecycle",
+      "intent": "android_change_v1_input_on_common_patch_lifecycle",
       "legacy": [],
-      "target": ["akbs-android-change-package-v2/2/android_change"],
-      "read": {"current": "unsupported", "migration": "final v2 input through common patch lifecycle", "target": "final v2 input through common patch lifecycle"},
+      "target": ["knowledge-incoming-package/1/android_change"],
+      "read": {"current": "unsupported", "migration": "v1 android_change input through common patch lifecycle", "target": "v1 android_change input through common patch lifecycle"},
       "write": {"current": "unsupported", "migration": "common patch upload lifecycle", "target": "common patch upload lifecycle"},
       "default": {"current": {"legacy_current": []}, "migration": {"legacy_rollback": [], "target_candidate": ["server-policy"]}, "target": {"target_only": ["server-policy"]}},
-      "fallback": {"allowed": false, "mode": "no_cross_format_rewrite", "fail_closed_when": ["payload_invalid", "transport_failure", "ambiguous_response"]},
+      "fallback": {"allowed": false, "mode": "no_kind_rewrite", "fail_closed_when": ["payload_invalid", "transport_failure", "ambiguous_response"]},
       "activation": {
         "materialization_phase": "phase2",
         "real_activation_phase": "phase2",
         "gates_by_phase": {
-          "phase2": ["direct_final_v2_schema", "seven_component_layers", "common_patch_endpoint"]
+          "phase2": ["v1_android_change_schema", "seven_component_layers", "common_patch_endpoint"]
         },
         "ordered_actions_by_phase": {
-          "phase2": ["validate_v2_input", "submit_common_patch_endpoint"]
+          "phase2": ["validate_v1_android_change_input", "submit_common_patch_endpoint"]
         },
         "forbidden_coinstall": []
       },
-      "deprecation": {"starts": "never", "behavior": "canonical v2", "notice_required": false},
+      "deprecation": {"starts": "never", "behavior": "canonical v1 android_change", "notice_required": false},
       "removal": {"gates": ["separate_contract_revision"], "legacy_reader_retention": "not_applicable", "history_rewrite": false},
-      "test": {"required_ids": ["direct-v2-input", "common-patch-lifecycle", "idempotent-replay"], "negative_ids": ["versioned-platform-formal-field", "silent-v1-fallback"]}
+      "test": {"required_ids": ["direct-v1-android-change-input", "common-patch-lifecycle", "idempotent-replay"], "negative_ids": ["framework-change-new-write", "incomplete-component-coverage"]}
     },
     {
       "surface_id": "cache.legacy-installations",

@@ -200,15 +200,15 @@ def test_compatibility_rows_cover_every_declared_surface_and_behavior() -> None:
         assert item["test"]["negative_ids"]
 
 
-def test_android_v2_uses_the_common_patch_lifecycle() -> None:
+def test_android_change_v1_uses_the_common_patch_lifecycle() -> None:
     module = validator_module()
     current = load(CURRENT)
     topology = load(TOPOLOGY)
     matrix = load(MATRIX)
-    android_v2 = next(
-        item for item in matrix["rows"] if item["surface_id"] == "package.android-change-v2"
+    android_v1 = next(
+        item for item in matrix["rows"] if item["surface_id"] == "package.android-change-v1"
     )
-    android_v2["write"]["target"] = "independent v2 control plane"
+    android_v1["write"]["target"] = "independent control plane"
     with pytest.raises(module.TopologyError, match="common patch lifecycle"):
         module.validate_contract_documents(
             current, topology, matrix, current_sha256=current_sha256()
@@ -412,12 +412,16 @@ def test_core_execution_contract_has_no_model_or_controller_authority_fields() -
     }
 
 
-def test_patch_v2_uses_orthogonal_components_and_keeps_v1_read_only() -> None:
-    package = load(ROOT / "contracts/incoming/v2/akbs-android-change-package.schema.json")
-    assert package["properties"]["schema"]["const"] == "akbs-android-change-package-v2"
-    assert package["properties"]["package_kind"]["const"] == "android_change"
-    component = package["$defs"]["component"]
-    assert set(component["required"]) == {"id", "layer", "type", "partition", "ownership"}
+def test_patch_v1_adds_only_simple_component_classification() -> None:
+    package = load(ROOT / "contracts/incoming/v1/knowledge-incoming-package.schema.json")
+    assert package["properties"]["schema"]["const"] == "knowledge-incoming-package"
+    assert package["properties"]["schema_version"]["const"] == "1"
+    assert package["properties"]["package_kind"]["enum"] == [
+        "daily_trace", "weekly_trace", "android_change"
+    ]
+    component = package["properties"]["components"]["items"]
+    assert set(component["required"]) == {"layer", "patches"}
+    assert set(component["properties"]) == {"layer", "patches"}
     assert set(component["properties"]["layer"]["enum"]) == {
         "application",
         "platform",
@@ -428,13 +432,7 @@ def test_patch_v2_uses_orthogonal_components_and_keeps_v1_read_only() -> None:
         "build",
     }
     assert "system_app" not in component["properties"]["layer"]["enum"]
-    target = package["$defs"]["subject"]["properties"]["target"]["properties"]
-    assert target["platform"]["enum"] == ["mtk", "rk", "unisoc"]
-    assert set(package["required"]) == {
-        "schema", "schema_version", "package_kind", "package_status", "identity",
-        "subject", "workflow", "components", "sources", "readme", "patches", "evidence",
-    }
-    assert not ({"qualification", "files", "changes", "extensions"} & set(package["properties"]))
+    assert "files" in package["properties"]
     assert not (ROOT / "contracts/incoming/v2/component-evidence-profiles.json").exists()
     assert not (ROOT / "contracts/incoming/v2/client-adapter-outputs.schema.json").exists()
 
@@ -900,78 +898,51 @@ def test_worker_result_semantics_bind_assignment_and_receipts() -> None:
 
 def valid_patch_package(*, layers: tuple[str, ...] = ("application",)) -> tuple[dict, dict]:
     components = []
-    sources = []
-    patches = []
-    evidence = []
+    patch_paths = []
+    evidence_paths = []
     inventory: dict[str, tuple[str, int]] = {
         "README.md": ("1" * 64, 10),
+        "materials/case.json": ("4" * 64, 40),
+        "materials/variant.json": ("5" * 64, 50),
+        "materials/display/patch_view.json": ("6" * 64, 60),
     }
     for index, layer in enumerate(layers, start=1):
-        component_id = f"component-{index}"
-        source_id = f"source-{index}"
         patch_path = f"patches/change-{index}.patch"
-        evidence_path = f"evidence/result-{index}.json"
+        evidence_path = f"materials/evidence/result-{index}.json"
         components.append({
-            "id": component_id,
             "layer": layer,
-            "type": "component",
-            "partition": "system",
-            "ownership": "aosp",
+            "patches": [patch_path],
         })
-        sources.append({
-            "id": source_id,
-            "kind": "git",
-            "repo_path": f"repo/{index}",
-            "base_revision": str(index) * 40,
-            "head_revision": str(index) * 40,
-        })
-        patches.append({
-            "id": f"patch-{index}",
-            "component_ids": [component_id],
-            "source_id": source_id,
-            "path": patch_path,
-            "sha256": "2" * 64,
-            "size_bytes": 20,
-            "format": "git_diff",
-        })
-        evidence.append({
-            "id": f"evidence-{index}",
-            "kind": "verification_result",
-            "component_ids": [component_id],
-            "path": evidence_path,
-            "sha256": "3" * 64,
-            "size_bytes": 30,
-            "scope": "feature",
-            "result": "PASS",
-        })
+        patch_paths.append(patch_path)
+        evidence_paths.append(evidence_path)
         inventory[patch_path] = ("2" * 64, 20)
         inventory[evidence_path] = ("3" * 64, 30)
     package = {
-        "schema": "akbs-android-change-package-v2",
-        "schema_version": "2",
+        "schema": "knowledge-incoming-package",
+        "schema_version": "1",
         "package_kind": "android_change",
+        "member_alias": "member1",
+        "member_name": "成员一",
+        "date": "2026-09-10",
+        "run_id": "20260910-120000-test",
+        "tool": "akbs-patch-submit",
+        "summary": "One coherent Android change",
+        "case_id": "case-test",
+        "variant_id": "variant-test",
         "package_status": "validated",
-        "identity": {
-            "member_alias": "member1",
-            "run_id": "20260910-120000-test",
-            "created_at": "2026-09-10T12:00:00Z",
-        },
-        "subject": {
-            "title": "Android change",
-            "summary": "One coherent Android change",
-            "primary_component_id": "component-1",
-            "target": {"project": "TVE8402M", "platform": "rk", "android_version": "14"},
-        },
-        "workflow": {
-            "contract": "current_codex_skill",
-            "implementation_origins": ["codex"],
-            "capture_tool": {"id": "android-patch-capture", "version": "2"},
+        "project": "TVE8402M",
+        "platform": "rk",
+        "android_version": "14",
+        "workflow_contract": "current_codex_skill",
+        "files": {
+            "case": "materials/case.json",
+            "variant": "materials/variant.json",
+            "readme": "README.md",
+            "patches": patch_paths,
+            "display": ["materials/display/patch_view.json"],
+            "evidence": evidence_paths,
         },
         "components": components,
-        "sources": sources,
-        "readme": {"path": "README.md", "sha256": "1" * 64, "size_bytes": 10},
-        "patches": patches,
-        "evidence": evidence,
     }
     return package, inventory
 
@@ -993,11 +964,11 @@ def test_minimal_android_change_semantics_cover_all_seven_layers() -> None:
     assert result["source_package_key"] == "20260910/member1/20260910-120000-test"
 
 
-def test_minimal_android_change_semantics_reject_formal_versioned_platform() -> None:
+def test_minimal_android_change_semantics_rejects_historical_kind_for_new_input() -> None:
     module = validator_module()
     package, inventory = valid_patch_package()
-    package["subject"]["target"]["platform"] = "mtk16"
-    with pytest.raises(module.TopologyError, match="target.platform"):
+    package["package_kind"] = "framework_change"
+    with pytest.raises(module.TopologyError, match="package identity"):
         module.validate_android_change_package_semantics(
             manifest_bytes(package), inventory
         )
@@ -1006,12 +977,9 @@ def test_minimal_android_change_semantics_reject_formal_versioned_platform() -> 
 @pytest.mark.parametrize(
     "mutation, message",
     [
-        ("unknown_component", "component references"),
-        ("unknown_source", "source reference"),
-        ("missing_component_patch", "must have a patch"),
-        ("duplicate_path", "paths must be unique"),
+        ("missing_component_patch", "classify every patch exactly once"),
+        ("duplicate_classification", "classify every patch exactly once"),
         ("extra_file", "inventory"),
-        ("changed_hash", "inventory"),
     ],
 )
 def test_minimal_android_change_semantics_fail_closed(
@@ -1020,21 +988,12 @@ def test_minimal_android_change_semantics_fail_closed(
     module = validator_module()
     package, inventory = valid_patch_package(layers=("application", "platform"))
     inventory = dict(inventory)
-    if mutation == "unknown_component":
-        package["patches"][0]["component_ids"] = ["missing"]
-    elif mutation == "unknown_source":
-        package["patches"][0]["source_id"] = "missing"
-    elif mutation == "missing_component_patch":
-        removed = package["patches"].pop()
-        inventory.pop(removed["path"])
-        package["sources"].pop()
-    elif mutation == "duplicate_path":
-        package["evidence"][0]["path"] = package["patches"][0]["path"]
-    elif mutation == "extra_file":
-        inventory["unexpected.txt"] = ("4" * 64, 1)
+    if mutation == "missing_component_patch":
+        package["components"].pop()
+    elif mutation == "duplicate_classification":
+        package["components"][1]["patches"] = package["components"][0]["patches"]
     else:
-        path = package["patches"][0]["path"]
-        inventory[path] = ("4" * 64, inventory[path][1])
+        inventory["unexpected.txt"] = ("4" * 64, 1)
     with pytest.raises(module.TopologyError, match=message):
         module.validate_android_change_package_semantics(
             manifest_bytes(package), inventory
@@ -1045,7 +1004,7 @@ def test_minimal_android_change_semantics_reject_retired_control_plane_fields() 
     module = validator_module()
     package, inventory = valid_patch_package()
     package["qualification"] = {}
-    with pytest.raises(module.TopologyError, match="retired control-plane"):
+    with pytest.raises(module.TopologyError, match="retired package-v2"):
         module.validate_android_change_package_semantics(
             manifest_bytes(package), inventory
         )

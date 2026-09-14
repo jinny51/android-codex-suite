@@ -1,6 +1,6 @@
 # Android Engineering Ops
 
-`android-engineering-ops` 2.1.1 是可独立安装的 Android 工程核心。它不依赖
+`android-engineering-ops` 2.1.2 是可独立安装的 Android 工程核心。它不依赖
 `akbs-member-ops` 或任何 practices provider；未配置扩展时始终使用 core-direct。
 
 | Skill | 职责 |
@@ -10,7 +10,7 @@
 | `android-source-access` | 自动识别 WSL/macOS，并分派唯一平台 adapter |
 | `android-remote-channel` | 远端 source/build 命令、锁、队列和恢复 |
 | `android-remote-build-deploy` | 受控 build、artifact 校验和本地 adb 交付 |
-| `android-patch-capture` | 直接生成七层 component 标注的最终 Android change v2 包 |
+| `android-patch-capture` | 直接生成七层 component 标注的 v1 `android_change` 包 |
 
 ## Task startup and updates
 
@@ -61,15 +61,13 @@ identity/version、manifest SHA、Skill/agent metadata/decision entrypoint 内�
 
 ## Component 与提交边界
 
-Canonical component layer 只有 application/platform/native/hal/kernel/device/build；
-type、partition、ownership 是正交字段，不能互相推断。旧 `change_domain` 只提供已知
-layer/type hint，缺失 facet 保持 `unknown`；`vendor` 要求四字段显式提供。
+Canonical component layer 只有 application/platform/native/hal/kernel/device/build。
+旧 `change_domain` 仅按冻结映射转换为 layer；`vendor` 不是 layer。
 
 任何 layer 的完整验证结果都由 `android-patch-capture` 直接生成最终
-`akbs-android-change-package-v2` 包，再交 `akbs-patch-submit` 做严格本地检查、
-byte-preserving prepare 和提交。V1 与 v2 只是同一补丁上传生命周期的两种输入格式，
-绝不把 v2 伪装或回落成 Framework v1。既有 Framework v1 包只按永久 compatibility
-contract 读取/提交，不改写历史。
+`knowledge-incoming-package/1/android_change` 包，再交 `akbs-patch-submit` 做本地检查、
+prepare 和提交。七层分类只增加 `components[].layer`，其余字段和上传生命周期保持
+稳定 v1。既有 `framework_change` 历史包只读兼容，不改写归档字节。
 
 Codex 编写的当前源码变更使用 `capture_remote_snapshot.py --package` 一步获取远端最新
 快照并立即调用原子打包器。旧两步接口继续兼容，但不再是默认人工流程。

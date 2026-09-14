@@ -234,7 +234,7 @@ def test_phase_lifecycle_separates_materialization_experiment_validation_and_mig
     assert {
         "real_wsl_engineering_member", "real_macos_engineering_member",
         "real_gms_report_only_member", "none_jinny_custom_modes",
-        "v1_v2_common_patch_upload_lifecycle",
+        "v1_android_change_common_patch_upload_lifecycle",
         "capture_submit_queue_curation_knowledge_search_loop",
     } <= set(phases["phase4"]["required"])
 
@@ -249,7 +249,7 @@ def test_phase_lifecycle_separates_materialization_experiment_validation_and_mig
         activation = rows[surface_id]["activation"]
         assert activation["materialization_phase"] == "phase2"
         assert activation["real_activation_phase"] == "phase4"
-    for surface_id in ("artifact.android-patch-capture", "package.android-change-v2"):
+    for surface_id in ("artifact.android-patch-capture", "package.android-change-v1"):
         activation = rows[surface_id]["activation"]
         assert activation["materialization_phase"] == "phase2"
         assert activation["real_activation_phase"] == "phase2"

@@ -1,4 +1,4 @@
 interface:
   display_name: "Android Patch Capture"
   short_description: "Package one coherent Android change and its evidence"
-  default_prompt: "Use $android-patch-capture to acquire a fresh remote snapshot and atomically produce the final validated Android change v2 package for direct check, prepare, and submission by $akbs-patch-submit."
+  default_prompt: "Use $android-patch-capture to acquire a fresh remote snapshot and produce the final validated AKBS incoming v1 Android change package for direct check, prepare, and submission by $akbs-patch-submit."

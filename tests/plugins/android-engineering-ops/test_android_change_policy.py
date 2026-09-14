@@ -41,7 +41,7 @@ def test_policy_contract_is_the_canonical_three_layer_source() -> None:
     )
     assert policy["profiles"]["universal_patch_archive"]["mandatory"] is True
     assert policy["profiles"]["framework"]["mandatory_when_component"] == {
-        "layer": "platform", "type": "framework"
+        "layer": "platform", "route": "framework"
     }
     assert policy["scope"]["component_layers"] == [
         "application", "platform", "native", "hal", "kernel", "device", "build"
@@ -49,7 +49,7 @@ def test_policy_contract_is_the_canonical_three_layer_source() -> None:
     assert policy["profiles"]["legacy_jinny_style"]["mandatory"] is False
 
 
-def test_component_contract_is_orthogonal_and_submission_never_falls_back() -> None:
+def test_component_contract_is_seven_layers_on_single_v1_package() -> None:
     contract = json.loads(
         (PLUGIN_ROOT / "contracts/change-domain/v1/domain-profiles.json").read_text(encoding="utf-8")
     )
@@ -58,10 +58,10 @@ def test_component_contract_is_orthogonal_and_submission_never_falls_back() -> N
     assert contract["component_model"]["layer"] == [
         "application", "platform", "native", "hal", "kernel", "device", "build"
     ]
-    assert contract["component_model"]["orthogonal_facets"] == [
-        "type", "partition", "ownership"
-    ]
-    assert contract["submission"]["fallback_to_framework_v1"] is False
+    assert "orthogonal_facets" not in contract["component_model"]
+    assert contract["submission"]["canonical_package_type"] == (
+        "knowledge-incoming-package/1/android_change"
+    )
 
 
 def test_marker_format_uses_member_alias_and_real_calendar_date() -> None:

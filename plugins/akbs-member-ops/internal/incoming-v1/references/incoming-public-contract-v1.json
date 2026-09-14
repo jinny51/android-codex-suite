@@ -6,7 +6,7 @@
   "manifest_schema": {
     "path": "knowledge-incoming-package.schema.json",
     "id": "https://akbs.internal/contracts/incoming/v1/knowledge-incoming-package.schema.json",
-    "sha256": "4c9052496b7524c36eb65f1eefbc01c685741570e8136369b5f75439602b7e28"
+    "sha256": "deb098bd56e77faadbd0fb9512f6dc91fe8a90bf5433862676460da41226fe5a"
   },
   "verification_acceptance": {
     "path": "verification-acceptance-v2.json",
@@ -26,8 +26,8 @@
     },
     "patch": {
       "path": "fixtures/patch.manifest.json",
-      "package_kind": "framework_change",
-      "sha256": "74790b340c9f2c23a60d1378872346c97de72c41777da31f14b6ee2d0acf072e"
+      "package_kind": "android_change",
+      "sha256": "8518ae62735cfd2b8775a9e3675322d640cb4b10e4e50374388b41173bb8ced3"
     }
   },
   "server_validator": "akbs_active/upload_domains/incoming_contract.py",
@@ -81,7 +81,7 @@
       "project_trace_mismatch",
       "report_type_mismatch"
     ],
-    "framework": [
+    "patch": [
       "ai_trace_mismatch",
       "case_binding_mismatch",
       "display_trace_mismatch",

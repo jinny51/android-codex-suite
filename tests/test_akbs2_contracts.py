@@ -22,7 +22,7 @@ SCHEMAS = {
     "stage_snapshot": ROOT / "contracts/android-change-workflow/v1/stage-snapshot.schema.json",
     "worker_assignment": ROOT / "contracts/android-change-workflow/v1/worker-assignment.schema.json",
     "worker_result": ROOT / "contracts/android-change-workflow/v1/worker-result.schema.json",
-    "android_change_package": ROOT / "contracts/incoming/v2/akbs-android-change-package.schema.json",
+    "android_change_package": ROOT / "contracts/incoming/v1/knowledge-incoming-package.schema.json",
 }
 FIXTURES = {
     "provider.valid": ("provider", ROOT / "contracts/android-practices-provider/v1/fixtures/provider.valid.json", True),
@@ -37,11 +37,12 @@ FIXTURES = {
     "assignment.invalid-authority": ("worker_assignment", ROOT / "contracts/android-change-workflow/v1/fixtures/worker-assignment.invalid-authority.json", False),
     "result.valid": ("worker_result", ROOT / "contracts/android-change-workflow/v1/fixtures/worker-result.valid.json", True),
     "result.invalid-acceptance": ("worker_result", ROOT / "contracts/android-change-workflow/v1/fixtures/worker-result.invalid-acceptance.json", False),
-    "package.valid": ("android_change_package", ROOT / "contracts/incoming/v2/fixtures/package.application.valid.json", True),
-    "package.invalid-flat-layer": ("android_change_package", ROOT / "contracts/incoming/v2/fixtures/package.application.invalid-flat-layer.json", False),
-    "package.invalid-path": ("android_change_package", ROOT / "contracts/incoming/v2/fixtures/package.application.invalid-path.json", False),
+    "package.valid": ("android_change_package", ROOT / "contracts/incoming/v1/fixtures/patch.manifest.json", True),
 }
-SUPPORTING_FIXTURES: set[Path] = set()
+SUPPORTING_FIXTURES: set[Path] = {
+    ROOT / "contracts/incoming/v1/fixtures/daily.manifest.json",
+    ROOT / "contracts/incoming/v1/fixtures/weekly.manifest.json",
+}
 KEYWORDS = {
     "$schema", "$id", "$ref", "$defs", "title", "description", "type", "const", "enum",
     "required", "properties", "additionalProperties", "unevaluatedProperties", "propertyNames",
@@ -116,7 +117,7 @@ def validate_definition(schema: Any, root: Mapping[str, Any], path: str = "$") -
         if not isinstance(schema["pattern"], str):
             raise ContractError(f"pattern is not text at {path}")
         re.compile(schema["pattern"])
-    if "format" in schema and schema["format"] != "date-time":
+    if "format" in schema and schema["format"] not in {"date", "date-time"}:
         raise ContractError(f"unsupported format at {path}: {schema['format']!r}")
     if "enum" in schema:
         enum = schema["enum"]
@@ -304,6 +305,11 @@ def validate_instance(value: Any, schema: Any, root: Mapping[str, Any], path: st
                 )
             ):
                 raise ContractError(f"date-time mismatch at {path}")
+        elif schema.get("format") == "date":
+            try:
+                datetime.strptime(value, "%Y-%m-%d")
+            except ValueError as error:
+                raise ContractError(f"date mismatch at {path}") from error
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         if not math.isfinite(value):
             raise ContractError(f"non-finite number at {path}")
@@ -376,7 +382,7 @@ def fixture_inventory() -> set[Path]:
     roots = {
         ROOT / "contracts/android-practices-provider/v1/fixtures",
         ROOT / "contracts/android-change-workflow/v1/fixtures",
-        ROOT / "contracts/incoming/v2/fixtures",
+        ROOT / "contracts/incoming/v1/fixtures",
     }
     return {path for root in roots for path in root.glob("*.json")}
 
@@ -394,7 +400,7 @@ def test_schema_subset_meta_gate_and_disk_fixture_expectations() -> None:
         assert actual is expected_valid, fixture_id
         results[fixture_id] = actual
     assert sum(results.values()) == 8
-    assert len(results) - sum(results.values()) == 7
+    assert len(results) - sum(results.values()) == 5
 
 
 def test_schema_meta_gate_rejects_unknown_keyword_and_broken_ref(tmp_path: Path) -> None:
@@ -509,13 +515,17 @@ def test_json_equality_is_boolean_safe_and_coding_decisions_execute_schema() -> 
         validate_instance(invalid, schema, schema)
 
 
-def test_repo_root_dot_matches_one_branch_and_flat_layer_fails() -> None:
+def test_v1_package_components_are_simple_layer_patch_rows() -> None:
     schema = load(SCHEMAS["android_change_package"])
     package = load(FIXTURES["package.valid"][1])
     validate_instance(package, schema, schema)
-    assert package["sources"][0]["repo_path"] == "."
+    assert package["components"] == [
+        {"layer": "platform", "patches": ["patches/frameworks-base.patch"]}
+    ]
+    invalid = copy.deepcopy(package)
+    invalid["components"] = ["platform"]
     with pytest.raises(ContractError):
-        validate_instance(load(FIXTURES["package.invalid-flat-layer"][1]), schema, schema)
+        validate_instance(invalid, schema, schema)
 
 
 def test_cross_document_semantics_accept_valid_and_reject_invalid_fixtures() -> None:
@@ -538,15 +548,17 @@ def test_cross_document_semantics_accept_valid_and_reject_invalid_fixtures() -> 
     package_path = FIXTURES["package.valid"][1]
     package = load(package_path)
     manifest_bytes = package_path.read_bytes()
-    descriptors = [package["readme"], *package["patches"], *package["evidence"]]
+    declared = []
+    for value in package["files"].values():
+        declared.extend(value if isinstance(value, list) else [value])
     result = active.validate_android_change_package_semantics(
         manifest_bytes,
-        {item["path"]: (item["sha256"], item["size_bytes"]) for item in descriptors},
+        {path: ("0" * 64, 0) for path in declared},
     )
     assert result["reference_integrity_valid"] is True
     assert result["archive_inventory_binding_valid"] is True
     invalid_package = copy.deepcopy(package)
-    invalid_package["patches"][0]["source_id"] = "missing-source"
+    invalid_package["components"][0]["patches"] = ["patches/missing.patch"]
     invalid_manifest_bytes = (
         json.dumps(
             invalid_package,
@@ -559,5 +571,5 @@ def test_cross_document_semantics_accept_valid_and_reject_invalid_fixtures() -> 
     with pytest.raises(active.TopologyError):
         active.validate_android_change_package_semantics(
             invalid_manifest_bytes,
-            {item["path"]: (item["sha256"], item["size_bytes"]) for item in descriptors},
+            {path: ("0" * 64, 0) for path in declared},
         )

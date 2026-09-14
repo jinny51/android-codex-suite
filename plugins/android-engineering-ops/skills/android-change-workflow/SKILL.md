@@ -1,12 +1,12 @@
 ---
 name: android-change-workflow
-description: "Use when implementing, diagnosing, modifying, or verifying Android source changes across application, platform, native, HAL, kernel, device, or build layers. Orchestrates canonical component facets and source authority, optional AKBS knowledge search, policy, an explicit optional practices provider, build-route selection, layer-aware verification, final v2 package capture, and submission."
+description: "Use when implementing, diagnosing, modifying, or verifying Android source changes across application, platform, native, HAL, kernel, device, or build layers. Orchestrates source authority, optional AKBS knowledge search, policy, optional practices, build-route selection, layer-aware verification, v1 Android change capture, and submission."
 ---
 
 # Android Change Workflow
 
 Use this Skill as the end-to-end engineering workflow for Android source work.
-Framework is a `platform/framework` component type, not a product boundary or layer.
+Framework work belongs to the `platform` layer; Framework is not a product boundary.
 
 ## Task Startup
 
@@ -41,7 +41,7 @@ Before modifying source, read:
 - `../android-change-policy/SKILL.md`
 - the current host's `android-source-access` Skill when source access or recovery is needed
 
-For `component.layer=platform` plus `component.type=framework`, also read
+For Framework work in the `platform` layer, also read
 `references/framework-domain-workflow.md` and its linked references. Always read
 `references/domain-routing.md` for the canonical component model.
 
@@ -65,15 +65,12 @@ project identity cannot be proven, stop before touching that repository.
 Write a concise requirement contract: requested behavior, current behavior, acceptance
 criteria, target product/build, constraints, out-of-scope work, and rollback.
 
-Select exactly one canonical `component.layer` from `application`, `platform`, `native`,
-`hal`, `kernel`, `device`, or `build`, then record independent `type`, `partition`, and
-`ownership` facets. Layer is the principal evidence surface, not a filename guess.
-`Framework`, `SystemApp`, `App`, and `driver` are types or compatibility routes;
-`vendor` is an ownership/partition facet and must never be used as a layer. When a
-legacy `change_domain` provides known layer/type hints, record the compatibility route
-and keep missing partition/ownership as `unknown` rather than inventing them;
-ambiguous `vendor` requires explicit canonical fields. If any facet remains ambiguous
-after source/build evidence, ask only for the missing product decision.
+Select the canonical `component.layer` for every affected patch from `application`,
+`platform`, `native`, `hal`, `kernel`, `device`, or `build`. Layer is explicit package
+classification, not a filename guess. Legacy routes map as follows: `framework` to
+`platform`; `system_app` and `app` to `application`; `driver` to `kernel`; the other
+same-named routes remain in their layer. `vendor` is not a layer. A coherent change may
+span layers, but every patch must be assigned to exactly one layer.
 
 ## Gate 2: Knowledge and Source Authority
 
@@ -145,7 +142,7 @@ support for arbitrary Gradle/Kbuild pipelines. Build success and file transfer a
 necessary evidence, not final acceptance. Deploy only through the selected component's
 safe project/device mechanism and keep an explicit rollback.
 
-Apply the selected layer's evidence and the relevant type/facet risks:
+Apply the selected layer's evidence and the relevant engineering risks:
 
 - Framework: Binder/system_server, locks, Handler/Looper, boot, multi-user, resources,
   FrameworkLog, service restart or reboot.
@@ -174,34 +171,28 @@ explicitly retain temporary diagnostics with a reason.
 
 ## Gate 5: Capture and Submission
 
-Use `android-patch-capture --component-layer ... --component-type ...
---component-partition ... --component-ownership ...` to create one coherent,
-reviewable `android_change_capture`. Capture verifies policy/evidence and determines an
-effective local status, but does not repair code after the fact.
+Use `android-patch-capture --component-layer ...` and, for a multi-repository change,
+`--repo-layer REPO_PATH=LAYER` to create one coherent package. Capture verifies
+policy/evidence and directly writes a `knowledge-incoming-package/1/android_change`
+directory. Every `files.patches` path appears exactly once in `components[].patches`.
 
-`android-patch-capture` directly emits the final validated package. The same validated package from any supported layer
-goes to `akbs-patch-submit android-change-v2 check`, `prepare`, or `submit`; there is
-no conversion step or intermediate package state.
-
-V1 and v2 are input formats on the common patch upload lifecycle. The member side
-uses strict v2 local validation and byte-preserving prepare, then submits through the
-same profile, patch endpoint, idempotent retry rules, and ordinary receipt used by v1.
-Local rejection has zero side effects. Never relabel a non-Framework component or fall back to v1.
-Existing legacy Framework
-v1 packages remain eligible only through their permanent compatibility contract and
-preserve their original bytes, package identity, provenance, and wire behavior.
+Pass that same directory to `akbs-patch-submit read`, `check`, `prepare`, or `submit`.
+There is one v1 package contract and one existing patch upload lifecycle; there is no
+v2 package, conversion step, relabel fallback, or second approval path. Historical
+`framework_change` archives remain readable without rewriting their bytes, but current
+tools never create or submit a new `framework_change` package.
 
 ## Hard Stops
 
 Stop before claiming completion when:
 
-- the requirement, component layer/facets, source authority, build route, owner, acceptance, or
+- the requirement, component layer, source authority, build route, owner, acceptance, or
   rollback is unresolved;
 - registered remote source work would bypass `android-remote-channel`;
 - mandatory policy or member identity is missing;
 - build, boot, device behavior, safety, or nearby regression verification failed;
 - temporary diagnostics have no cleanup decision;
-- a v2 package would be relabelled or routed through Framework v1.
+- a current package would omit a patch's layer or attempt to use `framework_change`.
 
 ## Final Report
 

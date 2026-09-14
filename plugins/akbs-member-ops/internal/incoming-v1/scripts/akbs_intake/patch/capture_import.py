@@ -18,6 +18,43 @@ from akbs_intake.io_utils import (
 )
 
 
+COMPONENT_LAYERS = {
+    "application",
+    "platform",
+    "native",
+    "hal",
+    "kernel",
+    "device",
+    "build",
+}
+
+
+def capture_patch_layers(manifest: dict[str, Any], patch_paths: list[str]) -> dict[str, str]:
+    if manifest.get("package_type") == "framework_feature_patch":
+        return {path: "platform" for path in patch_paths}
+    if manifest.get("package_type") != "android_feature_patch":
+        raise SystemExit("不是 android-patch-capture 工作包")
+    components = manifest.get("components")
+    if not isinstance(components, list) or not components:
+        raise SystemExit("android-patch-capture 工作包缺少 components")
+    assigned: dict[str, str] = {}
+    for component in components:
+        if not isinstance(component, dict):
+            raise SystemExit("capture components 项必须是对象")
+        layer = str(component.get("layer") or "")
+        paths = component.get("patches")
+        if layer not in COMPONENT_LAYERS or not isinstance(paths, list) or not paths:
+            raise SystemExit("capture components 必须声明有效 layer 和非空 patches")
+        for path in paths:
+            relative = str(path or "")
+            if relative not in patch_paths or relative in assigned:
+                raise SystemExit("capture components 必须对每个 patch 精确分类一次")
+            assigned[relative] = layer
+    if set(assigned) != set(patch_paths):
+        raise SystemExit("capture components 必须完整覆盖 patches")
+    return assigned
+
+
 def copy_capture_file(source_root: Path, rel: str, target: Path) -> None:
     source = (source_root / rel).resolve()
     root = source_root.resolve()
@@ -56,7 +93,7 @@ def copy_patch_capture_packages(
     default_status: str,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], bool, list[str], list[dict[str, Any]], str]:
     if len(package_paths) > 1:
-        raise SystemExit("framework_change incoming 一次只接受一个功能级 patch-capture 包；多个功能请分别提交。")
+        raise SystemExit("android_change incoming 一次只接受一个功能级 patch-capture 包；多个功能请分别提交。")
     patch_dir = package_dir / "patches"
     materials_dir = package_dir / MATERIALS_DIR
     evidence_dir = package_dir / MATERIALS_DIR / "evidence" / "capture"
@@ -75,14 +112,11 @@ def copy_patch_capture_packages(
     for raw in package_paths:
         capture_dir = Path(raw).expanduser().resolve()
         manifest = read_json_file(capture_dir / "manifest.json")
-        change_domain = str(manifest.get("change_domain") or "framework")
-        if manifest.get("package_type") == "android_feature_patch" or change_domain != "framework":
-            raise SystemExit(
-                "当前 incoming v1 只接受 change_domain=framework；"
-                f"{change_domain} capture 只能保留为本地工程材料: {capture_dir}"
-            )
-        if manifest.get("package_type") != "framework_feature_patch":
-            raise SystemExit(f"不是功能级 android-framework-patch-capture 工作包: {capture_dir}")
+        if manifest.get("package_type") not in {
+            "android_feature_patch",
+            "framework_feature_patch",
+        }:
+            raise SystemExit(f"不是功能级 android-patch-capture 工作包: {capture_dir}")
         readme_rel = str(manifest.get("readme") or "")
         if not readme_rel:
             raise SystemExit(f"capture package 缺少功能 readme: {capture_dir}")
@@ -119,6 +153,14 @@ def copy_patch_capture_packages(
         patches = manifest.get("patches", [])
         if not isinstance(patches, list) or not patches:
             raise SystemExit(f"capture package 缺少 patches: {capture_dir}")
+        patch_paths = [
+            str(item.get("path") or "")
+            for item in patches
+            if isinstance(item, dict)
+        ]
+        if len(patch_paths) != len(patches) or not all(patch_paths):
+            raise SystemExit(f"capture package patch 路径无效: {capture_dir}")
+        patch_layers = capture_patch_layers(manifest, patch_paths)
         evidence = manifest.get("evidence", [])
         if not isinstance(evidence, list):
             evidence = []
@@ -149,9 +191,10 @@ def copy_patch_capture_packages(
                     "workflow_contract": str(
                         item.get("workflow_contract") or workflow_contract
                     ),
+                    "layer": patch_layers[patch_rel],
                     "captured_by": str(item.get("captured_by") or captured_by),
                     "coding_standard_check": coding_standard_check,
-                    "note": "来自 android-framework-patch-capture 工作包",
+                    "note": "来自 android-patch-capture 工作包",
                     "facts": item.get("facts") if isinstance(item.get("facts"), dict) else {},
                 }
             )

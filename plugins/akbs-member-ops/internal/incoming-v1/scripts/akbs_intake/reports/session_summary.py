@@ -499,19 +499,18 @@ def work_finding_for_session(session: SessionWork) -> dict[str, Any]:
     basis.extend(session.outcomes[:2])
     missing_evidence = []
     if framework_like:
-        missing_evidence.append("需要 patch-capture 判断是否可升级为 framework_change")
+        missing_evidence.append("需要 patch-capture 判断是否可升级为 android_change")
     else:
         missing_evidence.append("未识别到可直接归档的 Framework patch")
     return {
         "title": summarize_session(session),
-        "kind": "possible_framework_change" if framework_like else "work_record",
+        "kind": "possible_android_change" if framework_like else "work_record",
         "work_status": work_status,
         "project": session.project,
         "basis": basis,
         "missing_evidence": missing_evidence,
-        "recommended_action": "补齐 diff、构建或验证证据后再判断是否升级为 framework_change",
+        "recommended_action": "补齐 diff、构建或验证证据后再判断是否升级为 android_change",
     }
-
 
 def discover_patches(
     config: dict[str, str],
@@ -622,11 +621,11 @@ def work_findings_payload(sessions: list[SessionWork], patches: list[Any]) -> di
         items.append(
             {
                 "title": title,
-                "kind": "possible_framework_change",
+                "kind": "possible_android_change",
                 "work_status": "candidate",
                 "basis": [f"发现 patch 文件: {patch.name}", f"项目线索: {patch.project}"],
                 "missing_evidence": ["需要 patch-capture 补齐 case/variant/风险/验证证据"],
-                "recommended_action": "满足验证条件后升级为 framework_change",
+                "recommended_action": "满足验证条件后升级为 android_change",
             }
         )
     return {

@@ -39,23 +39,8 @@ def test_diff_facts_extract_changed_android_facts() -> None:
     assert "context_key" not in facts["resource_keys"]
 
 
-def test_multi_component_input_and_repository_bindings_are_exact() -> None:
+def test_repository_layer_bindings_are_exact() -> None:
     capture = load_capture()
-    args = argparse.Namespace(
-        component_specs=[
-            "platform:platform:framework:system:aosp",
-            "settings:application:system_app:system_ext:product",
-        ],
-        change_domain="",
-        component_layer="",
-        component_type="",
-        component_partition="",
-        component_ownership="",
-        primary_component_id="platform",
-        component_qualifier=[],
-    )
-    components, primary = capture.resolve_components(args)
-    assert primary == "platform"
     repositories = [
         capture.RepositoryCapture(
             source_root="/source/frameworks/base",
@@ -78,31 +63,36 @@ def test_multi_component_input_and_repository_bindings_are_exact() -> None:
             patch_rel="patches/rk14-settings@feature.patch",
         ),
     ]
-    args.repo_component = ["frameworks/base=platform", "packages/apps/Settings=settings"]
-    capture.bind_repository_components(args, repositories, components)
-    assert [item.repository_id for item in repositories] == ["repo-001", "repo-002"]
-    assert [item.component_ids for item in repositories] == [("platform",), ("settings",)]
-
-    args.repo_component = ["frameworks/base=platform"]
-    with pytest.raises(SystemExit, match="every captured repository"):
-        capture.bind_repository_components(args, repositories, components)
-
-
-def test_generated_evidence_scope_requires_explicit_cross_layer_binding() -> None:
-    capture = load_capture()
-    components = [{"id": "platform"}, {"id": "settings"}]
-    evidence = [
-        {"id": "changed-files", "component_ids": ["platform", "settings"]},
-        {"id": "verification-result"},
-    ]
-    with pytest.raises(SystemExit, match="explicit --evidence-component"):
-        capture.bind_generated_evidence_components(evidence, components, [])
-    capture.bind_generated_evidence_components(
-        evidence,
-        components,
-        ["verification-result:platform", "verification-result:settings"],
+    layers = capture.capture_layers(
+        repositories,
+        default_layer="platform",
+        repository_layers={"packages/apps/Settings": "application"},
     )
-    assert evidence[1]["component_ids"] == ["platform", "settings"]
+    assert layers == {
+        "patches/rk14-frameworks-base@feature.patch": "platform",
+        "patches/rk14-settings@feature.patch": "application",
+    }
+    assert capture.component_rows(layers) == [
+        {"layer": "application", "patches": ["patches/rk14-settings@feature.patch"]},
+        {"layer": "platform", "patches": ["patches/rk14-frameworks-base@feature.patch"]},
+    ]
+    with pytest.raises(SystemExit, match="不存在的 repo_path"):
+        capture.capture_layers(
+            repositories,
+            default_layer="platform",
+            repository_layers={"unknown/repo": "native"},
+        )
+
+
+def test_component_rows_group_every_patch_once() -> None:
+    capture = load_capture()
+    rows = capture.component_rows(
+        {"patches/a.patch": "native", "patches/b.patch": "native", "patches/c.patch": "build"}
+    )
+    assert rows == [
+        {"layer": "native", "patches": ["patches/a.patch", "patches/b.patch"]},
+        {"layer": "build", "patches": ["patches/c.patch"]},
+    ]
 
 
 def test_project_inference_keeps_conflicts_out_of_formal_target() -> None:
@@ -117,8 +107,8 @@ def test_project_inference_keeps_conflicts_out_of_formal_target() -> None:
         patch_name="rk14-frameworks-base@feature.patch",
         patch_rel="patches/rk14-frameworks-base@feature.patch",
     )
-    project, evidence = capture.infer_capture_project_for_change(
-        argparse.Namespace(project="unknown", summary="policy", change_id="feature"),
+    project, evidence = capture.infer_capture_project_for_feature(
+        argparse.Namespace(project="unknown", summary="policy", feature="feature"),
         [change],
         trusted_platform="rk",
     )
@@ -132,13 +122,13 @@ def test_project_inference_keeps_conflicts_out_of_formal_target() -> None:
 )
 def test_non_coherent_package_scope_is_rejected(summary: str) -> None:
     capture = load_capture()
-    errors = capture.validate_change_scope(
-        argparse.Namespace(summary=summary, change_id="batch-collection")
+    errors = capture.validate_feature_scope(
+        argparse.Namespace(summary=summary, feature="batch-collection")
     )
     assert errors
 
 
-def test_controlled_patch_filename_and_final_run_id_rules() -> None:
+def test_controlled_patch_filename_rules() -> None:
     capture = load_capture()
     good = capture.RepositoryCapture(
         source_root="/source",
@@ -151,6 +141,49 @@ def test_controlled_patch_filename_and_final_run_id_rules() -> None:
         patch_rel="patches/rk14-frameworks-base@feature.patch",
     )
     assert capture.validate_patch_asset_names([good]) == []
-    assert capture.validate_run_id("20260910-120000-feature") == "20260910-120000-feature"
-    with pytest.raises(SystemExit, match="YYYYMMDD"):
-        capture.validate_run_id("draft-package")
+
+
+def test_historical_import_rejects_android_root_combined_patch(tmp_path: Path) -> None:
+    capture = load_capture()
+    patch = tmp_path / "combined.patch"
+    patch.write_text(
+        "diff --git a/frameworks/base/core/Test.java b/frameworks/base/core/Test.java\n"
+        "--- a/frameworks/base/core/Test.java\n"
+        "+++ b/frameworks/base/core/Test.java\n"
+        "@@ -1 +1 @@\n-old\n+new\n"
+        "diff --git a/device/vendor/product/config.mk b/device/vendor/product/config.mk\n"
+        "--- a/device/vendor/product/config.mk\n"
+        "+++ b/device/vendor/product/config.mk\n"
+        "@@ -1 +1 @@\n-old\n+new\n",
+        encoding="utf-8",
+    )
+    args = argparse.Namespace(
+        patch_artifact=[str(patch)],
+        patch_repo_path=["."],
+        module=None,
+        remote_source_root="",
+    )
+    with pytest.raises(SystemExit, match="每个仓库分别提供"):
+        capture.collect_patch_artifact_captures(args, "rk14", "feature")
+
+
+def test_historical_import_rejects_workspace_relative_paths_for_declared_repo(
+    tmp_path: Path,
+) -> None:
+    capture = load_capture()
+    patch = tmp_path / "workspace-relative.patch"
+    patch.write_text(
+        "diff --git a/frameworks/base/core/Test.java b/frameworks/base/core/Test.java\n"
+        "--- a/frameworks/base/core/Test.java\n"
+        "+++ b/frameworks/base/core/Test.java\n"
+        "@@ -1 +1 @@\n-old\n+new\n",
+        encoding="utf-8",
+    )
+    args = argparse.Namespace(
+        patch_artifact=[str(patch)],
+        patch_repo_path=["frameworks/base"],
+        module=None,
+        remote_source_root="",
+    )
+    with pytest.raises(SystemExit, match="相对于 Android 源码顶层"):
+        capture.collect_patch_artifact_captures(args, "rk14", "feature")

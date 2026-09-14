@@ -34,8 +34,8 @@ from akbs_intake.patch.evidence import (
 )
 from akbs_intake.patch.manifest import (
     framework_case_variant_ids,
-    framework_change_evidence_paths,
-    framework_change_manifest,
+    android_change_evidence_paths,
+    android_change_manifest,
     write_case_file,
     write_variant_file,
 )
@@ -50,6 +50,30 @@ from akbs_intake.patch.package_quality import (
 ValidatePackage = Callable[[Path], dict[str, Any]]
 WritePackageSource = Callable[[Path, dict[str, str], str], dict[str, Any]]
 PluginInstallMetadata = Callable[[], dict[str, str]]
+COMPONENT_LAYERS = (
+    "application",
+    "platform",
+    "native",
+    "hal",
+    "kernel",
+    "device",
+    "build",
+)
+
+
+def components_from_patch_items(patch_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, list[str]] = {layer: [] for layer in COMPONENT_LAYERS}
+    for item in patch_items:
+        layer = str(item.get("layer") or "")
+        path = str(item.get("path") or "")
+        if layer not in grouped:
+            raise SystemExit(f"补丁缺少有效 layer 分类: {path}")
+        grouped[layer].append(path)
+    return [
+        {"layer": layer, "patches": sorted(grouped[layer])}
+        for layer in COMPONENT_LAYERS
+        if grouped[layer]
+    ]
 
 
 def infer_project(
@@ -89,6 +113,7 @@ def build_patch_package(
     platform_override: str = "",
     android_version_override: str = "",
     workflow_contract_override: str = "",
+    component_layer: str = "",
     *,
     incoming_schema_version: str,
     framework_optional_evidence_kinds: set[str],
@@ -108,6 +133,10 @@ def build_patch_package(
     if patch_paths and workflow_contract_override not in {"manual_import", "historical_import"}:
         raise SystemExit(
             "直接 --patch 只允许显式 manual_import 或 historical_import；当前 Codex 工作流请使用 --patch-package。"
+        )
+    if patch_paths and component_layer not in COMPONENT_LAYERS:
+        raise SystemExit(
+            "直接 --patch 必须使用 --component-layer 声明 application/platform/native/hal/kernel/device/build"
         )
     direct_patches = patch_infos_from_paths(patch_paths or [], project)
     direct_patch_errors = [
@@ -182,12 +211,22 @@ def build_patch_package(
                 "或在 manual_import/historical_import 中显式使用 --patch；不会从 cwd 自动发现补丁。"
             )
     else:
-        patch_entries.extend(copy_patch_assets(package_dir, patches, config, status=status, reuse_hint=status == "validated", note="管理员手动归档补丁"))
+        direct_entries = copy_patch_assets(
+            package_dir,
+            patches,
+            config,
+            status=status,
+            reuse_hint=status == "validated",
+            note="管理员手动归档补丁",
+        )
+        for item in direct_entries:
+            item["layer"] = component_layer or "platform"
+        patch_entries.extend(direct_entries)
         patch_sources.extend([{"name": item.name, "source": str(item.path), "project": item.project} for item in patches])
     if not feature_readme_rel:
         feature_readme_rel = write_feature_readme_from_patch_entries(package_dir, summary, patch_entries)
     write_json(
-        package_dir / materials_rel("evidence", "framework_change_summary.json"),
+        package_dir / materials_rel("evidence", "android_change_summary.json"),
         {
             "source": "akbs-member-ops",
             "mode": "patch",
@@ -256,7 +295,7 @@ def build_patch_package(
     )
     if len(workflow_contracts) > 1:
         raise SystemExit(
-            "一个 framework_change 包只能声明一个 workflow_contract；"
+            "一个 android_change 包只能声明一个 workflow_contract；"
             f"当前发现: {', '.join(workflow_contracts)}"
         )
     workflow_contract_override = str(workflow_contract_override or "").strip()
@@ -312,6 +351,7 @@ def build_patch_package(
         }
     ) or repo_paths_from_files(modified_files)
     patch_rel_paths = [str(item["path"]) for item in all_patch_items]
+    components = components_from_patch_items(all_patch_items)
     all_related_report_run_ids = unique_strings(all_related_report_run_ids)
     case_id, variant_id = framework_case_variant_ids(
         summary=summary,
@@ -459,7 +499,7 @@ def build_patch_package(
         package_status=package_status,
         related_report_run_ids=all_related_report_run_ids,
     )
-    manifest = framework_change_manifest(
+    manifest = android_change_manifest(
         schema_version=incoming_schema_version,
         config=config,
         date=date,
@@ -478,8 +518,9 @@ def build_patch_package(
         variant_path=variant_path,
         feature_readme_rel=feature_readme_rel,
         patch_rel_paths=patch_rel_paths,
+        components=components,
         patch_view_path=patch_view_path,
-        evidence_paths=framework_change_evidence_paths(
+        evidence_paths=android_change_evidence_paths(
             source_path=source_path,
             patch_diff_path=required_generated["patch_diff_facts"],
             patch_ai_facts_path=patch_ai_facts_path,

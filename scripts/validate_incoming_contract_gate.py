@@ -106,14 +106,14 @@ def validate_fixture_schema(schema: dict[str, Any], manifest: dict[str, Any]) ->
             errors.append(f"{field} is too short")
         if isinstance(value, str) and rules.get("pattern") and re.fullmatch(str(rules["pattern"]), value) is None:
             errors.append(f"{field} does not match pattern")
-    if manifest.get("package_kind") == "framework_change":
+    if manifest.get("package_kind") == "android_change":
         then = schema.get("allOf", [{}])[0].get("then", {})
         for field in then.get("required", []):
             if field not in manifest:
-                errors.append(f"framework_change missing required field: {field}")
+                errors.append(f"android_change missing required field: {field}")
         status_const = then.get("properties", {}).get("package_status", {}).get("const")
         if status_const and manifest.get("package_status") != status_const:
-            errors.append("framework_change package_status does not match const")
+            errors.append("android_change package_status does not match const")
     return errors
 
 
@@ -483,7 +483,7 @@ def init_framework_source(root: Path) -> Path:
 def build_legacy_framework_capture_fixture(
     env: dict[str, str], source_root: Path, patch_artifact: Path
 ) -> Path:
-    """Build a frozen v1 capture fixture without converting a final v2 package."""
+    """Build a frozen v1 capture fixture for the single Android change package path."""
     capture = (
         Path(env["CODEX_HOME"])
         / "artifacts/android-framework-patch-capture/packages"
@@ -1045,12 +1045,12 @@ def retarget_member(package: Path, manifest: dict[str, Any], member: str, run_id
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate the legacy incoming v1 compatibility contract.")
+    parser = argparse.ArgumentParser(description="Validate the stable incoming v1 contract.")
     parser.add_argument(
         "--mode",
         choices=("client-only", "remote-pilot"),
         default="client-only",
-        help="Local v1 checks are the default; remote-pilot checks the legacy v1 server contract.",
+        help="Local v1 checks are the default; remote-pilot checks the stable v1 server contract.",
     )
     parser.add_argument("--system-root", type=Path, help="Read-only AKBS system repository root")
     parser.add_argument("--server-host", default="test35", help="SSH host providing the authoritative system Python runtime")

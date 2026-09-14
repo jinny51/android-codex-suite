@@ -28,4 +28,4 @@ summary = "基于有效日报和跨周台账生成、校验、修订和提交成
 [[skills]]
 name = "akbs-patch-submit"
 category = "Knowledge System"
-summary = "读取、检查、准备并通过同一补丁上传生命周期提交 legacy Framework v1 或最终七层 Android change v2 包"
+summary = "读取、检查、准备并通过稳定 v1 生命周期提交七层 Android change 包"

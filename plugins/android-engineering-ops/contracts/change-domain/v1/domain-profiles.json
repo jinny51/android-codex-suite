@@ -1,5 +1,5 @@
 {
-  "schema": "android-component-profiles-v2",
+  "schema": "android-component-layers-v1",
   "canonical_selector": "component.layer",
   "component_model": {
     "layer": [
@@ -11,12 +11,6 @@
       "device",
       "build"
     ],
-    "orthogonal_facets": [
-      "type",
-      "partition",
-      "ownership"
-    ],
-    "facets_are_required": true,
     "weak_title_or_filename_inference_forbidden": true
   },
   "layer_evidence": {
@@ -30,34 +24,31 @@
   },
   "legacy_change_domain": {
     "status": "compatibility_input_only",
-    "canonical_output_field": "component",
-    "partial_hints": {
-      "framework": {"layer": "platform", "type": "framework"},
-      "system_app": {"layer": "application", "type": "system_app"},
-      "app": {"layer": "application", "type": "app"},
-      "hal": {"layer": "hal", "type": "hal"},
-      "native": {"layer": "native", "type": "native"},
-      "kernel": {"layer": "kernel", "type": "kernel"},
-      "driver": {"layer": "kernel", "type": "driver"},
-      "device": {"layer": "device", "type": "device"},
-      "build": {"layer": "build", "type": "build"}
+    "canonical_output_field": "components[].layer",
+    "mapping": {
+      "framework": "platform",
+      "system_app": "application",
+      "app": "application",
+      "hal": "hal",
+      "native": "native",
+      "kernel": "kernel",
+      "driver": "kernel",
+      "device": "device",
+      "build": "build"
     },
-    "unknown_facet_policy": "preserve explicit values; otherwise record unknown without fabricating",
     "ambiguous_inputs": {
       "vendor": {
-        "reason": "vendor is an ownership or partition facet, not a layer",
-        "requires_explicit": ["layer", "type", "partition", "ownership"]
+        "reason": "vendor is not a component layer",
+        "requires_explicit": ["layer"]
       }
     },
     "history_rewrite": false
   },
   "submission": {
-    "canonical_package_type": "akbs-android-change-package-v2",
-    "v2_final_package_owner": "android-patch-capture",
-    "v2_local_prepare_owner": "akbs-patch-submit",
+    "canonical_package_type": "knowledge-incoming-package/1/android_change",
+    "final_package_owner": "android-patch-capture",
+    "local_prepare_owner": "akbs-patch-submit",
     "upload_lifecycle": "common_patch_upload",
-    "v1_v2_relationship": "input_formats_only",
-    "fallback_to_framework_v1": false,
-    "legacy_framework_v1": "permanent_compatibility_contract"
+    "legacy_framework_v1": "read_only_history"
   }
 }

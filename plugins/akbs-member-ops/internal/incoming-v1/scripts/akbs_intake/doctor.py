@@ -123,7 +123,7 @@ def latest_pending(report_type: str, config: dict[str, str], date: dt.date | Non
             else "weekly"
             if kind == "weekly_trace"
             else "patch"
-            if kind == "framework_change"
+            if kind == "android_change"
             else ""
         )
         if manifest_type != report_type:

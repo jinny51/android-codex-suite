@@ -65,14 +65,14 @@ def test_every_canonical_skill_requires_target_install_family_before_effects() -
     assert "worker result cannot replace" in gate
 
 
-def test_canonical_capture_and_submit_never_fall_back_to_v1() -> None:
+def test_canonical_capture_and_submit_use_single_v1_android_change_contract() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     capture = CAPTURE.read_text(encoding="utf-8")
-    assert "validated package from any supported layer" in workflow
-    assert "validated canonical component" in capture
-    assert "strict v2 local validation and byte-preserving prepare" in workflow
-    assert "zero side effects" in workflow
-    assert "fall back to v1" in workflow
+    assert "knowledge-incoming-package/1/android_change" in workflow
+    assert "knowledge-incoming-package/1/android_change" in capture
+    assert "Every `files.patches` path appears exactly once" in workflow
+    assert "component IDs" in capture
+    assert "akbs-android-change-package-v2" not in workflow
     assert "Framework-only" not in capture
 
 

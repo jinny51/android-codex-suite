@@ -1,6 +1,6 @@
 ---
 name: android-change-policy
-description: "Use when implementing, modifying, reviewing, importing, or packaging Android changes that are archived as patches. Enforces member-bound attribution across all canonical component layers and applies the Framework logging/debug/resource overlay only to component.layer=platform plus component.type=framework."
+description: "Use when implementing, modifying, reviewing, importing, or packaging Android changes that are archived as patches. Enforces member-bound attribution across all canonical component layers and applies the existing Framework logging/debug/resource overlay to Framework work in the platform layer."
 ---
 
 # Android Change Policy
@@ -46,9 +46,9 @@ Skill, project note, prompt, or generated evidence file.
 
 - Apply `universal_patch_archive` to every Android change that will be preserved as
   patches.
-- Apply the `framework` overlay only when `component.layer=platform` and
-  `component.type=framework` (including those two known hints from the legacy Framework
-  route). Do not infer partition/ownership from it or infer the overlay from filenames.
+- Apply the `framework` overlay only to known Framework work in the `platform` layer,
+  including the legacy `change_domain=framework` route. Do not infer the overlay from
+  filenames.
 - Apply `legacy_jinny_style` only when the user explicitly requests the old Jinny
   naming preference. It is advisory and cannot replace mandatory core rules.
 

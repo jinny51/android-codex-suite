@@ -33,7 +33,7 @@ Member-side packages must provide enough deterministic anchors for the server to
 - pre-change knowledge use evidence when it happened: search queries, matched object ids, decision (`reuse`, `adapt`, `reference_only`, `not_applicable`, `not_found`, or `unknown`), match/mismatch points, reason, and outcome
 - cross-machine verification evidence: remote build host/source root/profile/artifact plus local transfer, adb serial, device push/install/restart, and verification result
 
-The server may merge two framework_change packages into the same variant when the natural key matches, even when the incoming `variant_id` differs. The server must not let a later `failed` or `blocked` package overwrite stronger existing evidence; that later package is retained as evidence.
+The server may merge two android_change packages into the same variant when the natural key matches, even when the incoming `variant_id` differs. The server must not let a later `failed` or `blocked` package overwrite stronger existing evidence; that later package is retained as evidence.
 
 ## Path
 
@@ -56,7 +56,7 @@ Rules:
 {
   "schema": "knowledge-incoming-package",
   "schema_version": "1",
-  "package_kind": "framework_change",
+  "package_kind": "android_change",
   "member_alias": "lincong",
   "member_name": "林聪",
   "date": "2026-06-01",
@@ -75,7 +75,7 @@ Allowed `package_kind`:
 ```text
 daily_trace
 weekly_trace
-framework_change
+android_change
 ```
 
 ## Default Automation Policy
@@ -261,11 +261,11 @@ and `移植` without member confirmation.
     "items": [
       {
         "title": "锁屏永不休眠策略调整",
-        "kind": "possible_framework_change",
+        "kind": "possible_android_change",
         "work_status": "candidate",
         "basis": ["会话提到修复锁屏永不休眠", "frameworks/base 存在 diff"],
         "missing_evidence": ["缺少设备或等价验证"],
-        "recommended_action": "补验证后可升级为 framework_change"
+        "recommended_action": "补验证后可升级为 android_change"
       }
     ],
     "blocked_or_failed": []
@@ -297,7 +297,7 @@ Manifest excerpt:
 
 ```json
 {
-  "package_kind": "framework_change",
+  "package_kind": "android_change",
   "case_id": "case-...",
   "variant_id": "variant-...",
   "package_status": "validated",

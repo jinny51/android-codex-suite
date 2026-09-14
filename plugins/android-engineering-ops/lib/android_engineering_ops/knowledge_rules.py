@@ -713,7 +713,7 @@ def source_version_errors(
 
 def patch_upload_gate_errors(manifest: dict[str, Any] | None, *, allow_incomplete: bool = False) -> list[str]:
     payload = manifest if isinstance(manifest, dict) else {}
-    if payload.get("package_kind") != "framework_change":
+    if payload.get("package_kind") != "android_change":
         return []
     if allow_incomplete:
         return []

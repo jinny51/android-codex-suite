@@ -151,7 +151,7 @@
       "canonical_plugins": [
         {
           "id": "akbs-member-ops",
-          "version": "2.1.1",
+          "version": "2.1.2",
           "role": "akbs_member_client",
           "skills": [
             "akbs-member-setup",
@@ -173,7 +173,7 @@
         },
         {
           "id": "android-engineering-ops",
-          "version": "2.1.1",
+          "version": "2.1.2",
           "role": "android_engineering_controller_and_tools",
           "skills": [
             "android-change-policy",
@@ -343,7 +343,7 @@
       "plugins": [
         {
           "id": "akbs-member-ops",
-          "version": "2.1.1",
+          "version": "2.1.2",
           "role": "akbs_member_client",
           "skills": [
             "akbs-member-setup",
@@ -356,7 +356,7 @@
         },
         {
           "id": "android-engineering-ops",
-          "version": "2.1.1",
+          "version": "2.1.2",
           "role": "android_engineering_controller_and_tools",
           "skills": [
             "android-change-policy",
@@ -424,7 +424,7 @@
     ],
     "package_contract": [
       "package.framework-change-v1",
-      "package.android-change-v2"
+      "package.android-change-v1"
     ],
     "installed_cache_identity": [
       "cache.legacy-installations"

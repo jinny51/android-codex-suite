@@ -49,7 +49,7 @@ Recommended additional headings:
 
 ## Patch Read Models
 
-Each generated `framework_change` package must include:
+Each generated `android_change` package must include:
 
 - `materials/display/patch_view.json`: human-facing material model for member/admin UI. Main display fields must be a human title, problem, solution, result, risk/gap, project, platform, and Android version.
 - `materials/evidence/patch_ai_facts.json`: AI/admin evidence model for validation, curation review, search indexing, and merge judgement. It must include concrete module, feature domain, patch behavior goal, code anchors, patch assets, verification targets, search usage, search match class, merge gate inputs, protocol version, and plugin version.

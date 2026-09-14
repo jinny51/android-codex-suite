@@ -2,7 +2,7 @@
 
 AKBS 的正式名称是 **Android Knowledge Base System**。这是其成员端和 Android 工程端共用的
 Codex 插件仓库 `android-codex-suite`。工程能力覆盖 Android 的 application、platform、native、HAL、kernel、
-device 与 build 层；type、partition（包括 vendor）和 ownership 作为正交属性表达，而不是再混成一张领域列表。
+device 与 build 层。
 
 ## 目标插件
 
@@ -45,7 +45,7 @@ jinny-android-practices
 - 日报、周报、知识检索和补丁提交属于 AKBS 成员能力；源码修改、构建和本地材料采集属于 Android 工程能力。
 - 当前源码材料默认由远端通道一步生成最新快照并原子打包，避免人工衔接命令导致快照仅因等待而过期。
 - 旧 v1 配置、材料和历史包永久可读，不改写、不搬家；新写入使用新路径。
-- Android change v2 只是最终补丁包格式：`android-patch-capture` 直接生成七层包，`akbs-patch-submit` 负责检查、准备和提交；v1 与 v2 共用成员身份、补丁上传接口、幂等重试和普通回执，不再存在中间适配或第二套生命周期。
+- `android-patch-capture` 直接生成 `knowledge-incoming-package/1/android_change` 包，`akbs-patch-submit` 负责检查、准备和提交；七层分类只通过 `components[].layer` 增加到稳定 v1 合同，不新增第二套包格式或生命周期。
 
 ## 可选扩展
 
@@ -72,8 +72,6 @@ Terra 负责常规源码实现，Luna 负责边界明确的编译、推送、证
 当前 marketplace 只发布三个正式插件。旧 `android-framework-codex-suite` 安装族不与新安装族混用；
 成员升级时先添加 `android-codex-suite`、安装并确认所需的新插件可用，再卸载旧插件和旧 marketplace，随后重启 Codex。
 旧配置、v1 材料和历史包继续兼容读取；旧仓库的当前分支保留稳定 1.x 版本，仅作为参考和回退来源，不再承载新版本发布。
-
-Android change v2 服务端 writer 的启用仍是独立的服务端发布事项，仓库改名不会绕过该门禁。
 
 ## 配置和身份
 

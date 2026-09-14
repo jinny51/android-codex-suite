@@ -50,8 +50,6 @@ def capture_for(module, diff_text: str):
         module="frameworks-base",
         patch_name="rk14-frameworks-base@policy.patch",
         patch_rel="patches/rk14-frameworks-base@policy.patch",
-        repository_id="repo-001",
-        component_ids=("framework-core",),
     )
 
 
@@ -62,23 +60,7 @@ def arguments(**overrides: object) -> argparse.Namespace:
         "policy_member_alias": "member01",
         "policy_profile_name": "member01",
         "change_domain": "framework",
-        "component": {
-            "id": "framework-core",
-            "layer": "platform",
-            "type": "framework",
-            "partition": "system",
-            "ownership": "aosp",
-        },
-        "components": [
-            {
-                "id": "framework-core",
-                "layer": "platform",
-                "type": "framework",
-                "partition": "system",
-                "ownership": "aosp",
-            }
-        ],
-        "primary_component_id": "framework-core",
+        "allow_missing_author_date": False,
         "allow_banned_logs": False,
     }
     values.update(overrides)

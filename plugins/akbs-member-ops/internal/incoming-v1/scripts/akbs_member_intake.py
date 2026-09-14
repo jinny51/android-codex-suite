@@ -43,7 +43,7 @@ PLUGIN_UPDATE_REQUIRE_ENV = "CODEX_REPORT_REQUIRE_PLUGIN_UPDATE_CHECK"
 PLUGIN_REEXEC_ATTEMPT_ENV = "CODEX_REPORT_PLUGIN_REEXEC_ATTEMPTED"
 PLUGIN_REMOTE_MANIFEST_TIMEOUT = 6
 PACKAGE_TYPES = {"daily", "weekly", "patch"}
-INCOMING_KINDS = {"daily_trace", "weekly_trace", "framework_change"}
+INCOMING_KINDS = {"daily_trace", "weekly_trace", "android_change"}
 PACKAGE_STATUS_VALUES = {"validated", "candidate", "draft", "failed", "blocked"}
 TRACE_REQUIRED_EVIDENCE_KINDS = {"source", "work_findings"}
 FRAMEWORK_REQUIRED_EVIDENCE_KINDS = {
@@ -57,6 +57,7 @@ FRAMEWORK_REQUIRED_EVIDENCE_KINDS = {
     "search_before_change",
 }
 FRAMEWORK_OPTIONAL_EVIDENCE_KINDS = {"build_result", "deploy_result", "device_health"}
+COMPONENT_LAYERS = {"application", "platform", "native", "hal", "kernel", "device", "build"}
 DATE_KEY_RE = re.compile(r"^\d{8}$")
 DATE_DISPLAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 RUN_ID_RE = re.compile(r"^\d{8}-\d{6}(-[A-Za-z0-9_.-]+)?$")
@@ -410,8 +411,8 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             errors=errors,
         )
 
-    if package_kind == "framework_change":
-        patch_context = validate_framework_change_manifest_and_files(
+    if package_kind == "android_change":
+        patch_context = validate_android_change_manifest_and_files(
             package_dir=package_dir,
             manifest=manifest,
             package_status_values=PACKAGE_STATUS_VALUES,
@@ -432,6 +433,25 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
         patch_paths = patch_context.patch_paths
         display_paths = patch_context.display_paths
         evidence_paths = patch_context.evidence_paths
+        components = manifest.get("components")
+        assigned_patches: list[str] = []
+        if not isinstance(components, list) or not components:
+            errors.append("android_change components 必须是非空数组")
+        else:
+            for index, component in enumerate(components):
+                if not isinstance(component, dict):
+                    errors.append(f"components[{index}] 必须是对象")
+                    continue
+                layer = str(component.get("layer") or "")
+                component_patches = component.get("patches")
+                if layer not in COMPONENT_LAYERS:
+                    errors.append(f"components[{index}].layer 非法: {layer}")
+                if not isinstance(component_patches, list) or not component_patches:
+                    errors.append(f"components[{index}].patches 必须是非空数组")
+                    continue
+                assigned_patches.extend(str(path or "") for path in component_patches)
+            if sorted(assigned_patches) != sorted(str(path) for path in patch_paths):
+                errors.append("components 必须对 files.patches 中每个路径精确分类一次")
         validate_patch_display_files(
             package_dir=package_dir,
             display_paths=display_paths,
@@ -440,7 +460,7 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             read_referenced_json=read_referenced_json,
             errors=errors,
         )
-        structure_context = validate_framework_change_structure(
+        structure_context = validate_android_change_structure(
             package_dir=package_dir,
             manifest=manifest,
             package_status=package_status,
@@ -508,8 +528,8 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
 
 
 from akbs_intake.patch.validation import (  # noqa: E402
-    validate_framework_change_manifest_and_files,
-    validate_framework_change_structure,
+    validate_android_change_manifest_and_files,
+    validate_android_change_structure,
     validate_framework_function_scope,
     validate_patch_display_files,
     validate_patch_ai_facts_and_diff,
@@ -560,6 +580,7 @@ def prepare_patch_package(
     platform_override: str = "",
     android_version_override: str = "",
     workflow_contract: str = "",
+    component_layer: str = "",
 ) -> Path:
     return build_patch_package(
         date,
@@ -575,6 +596,7 @@ def prepare_patch_package(
         platform_override=platform_override,
         android_version_override=android_version_override,
         workflow_contract_override=workflow_contract,
+        component_layer=component_layer,
         incoming_schema_version=INCOMING_SCHEMA_VERSION,
         framework_optional_evidence_kinds=FRAMEWORK_OPTIONAL_EVIDENCE_KINDS,
         validate_package_fn=validate_package,
@@ -660,9 +682,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         if report_type == "patch":
             sub.add_argument("--patch", dest="patches", action="append", default=[], help="explicit manual_import/historical_import patch file; repeatable")
             sub.add_argument("--patch-package", dest="patch_packages", action="append", default=[], help="explicit remote capture package under the Codex artifacts root; repeatable")
-            sub.add_argument("--project", default="unknown", help="project name for framework_change incoming")
-            sub.add_argument("--platform", default="", help="explicit platform for framework_change incoming: mtk, rk, unisoc, or unknown")
-            sub.add_argument("--android-version", default="", help="explicit Android version for framework_change incoming, for example 14, 16, or 9.0")
+            sub.add_argument("--project", default="unknown", help="project name for android_change incoming")
+            sub.add_argument("--platform", default="", help="explicit platform for android_change incoming: mtk, rk, unisoc, or unknown")
+            sub.add_argument("--android-version", default="", help="explicit Android version for android_change incoming, for example 14, 16, or 9.0")
+            sub.add_argument(
+                "--component-layer",
+                choices=["application", "platform", "native", "hal", "kernel", "device", "build"],
+                default="",
+                help="required only for a direct --patch; capture packages already carry layer assignments",
+            )
             sub.add_argument(
                 "--workflow-contract",
                 choices=["current_codex_skill", "manual_import", "historical_import"],
@@ -672,8 +700,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                     "carry their own workflow contract"
                 ),
             )
-            sub.add_argument("--summary", default="Framework 修改沉淀", help="summary for framework_change incoming")
-            sub.add_argument("--related-report-run-id", dest="related_report_run_ids", action="append", default=[], help="daily/weekly incoming run_id related to this framework_change; repeatable")
+            sub.add_argument("--summary", default="Android 修改沉淀", help="summary for android_change incoming")
+            sub.add_argument("--related-report-run-id", dest="related_report_run_ids", action="append", default=[], help="daily/weekly incoming run_id related to this android_change; repeatable")
             sub.add_argument(
                 "--status",
                 choices=["draft", "candidate", "validated", "failed", "blocked"],
@@ -837,6 +865,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.platform,
                 args.android_version,
                 args.workflow_contract,
+                args.component_layer,
             )
         else:
             package_dir = prepare_package(
@@ -874,6 +903,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.platform,
                 args.android_version,
                 args.workflow_contract,
+                args.component_layer,
             )
         else:
             package_dir = prepare_package(

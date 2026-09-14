@@ -214,13 +214,7 @@ class RemotePatchSnapshotTests(unittest.TestCase):
             "unisoc14",
             "--component-layer",
             "platform",
-            "--component-type",
-            "framework",
-            "--component-partition",
-            "system",
-            "--component-ownership",
-            "aosp",
-            "--change-id",
+            "--feature",
             "remote-display-policy",
             "--summary",
             "TVE1088U remote display policy",
@@ -361,7 +355,12 @@ class RemotePatchSnapshotTests(unittest.TestCase):
         snapshot = json.loads((package / "evidence/remote-source-snapshot.json").read_text())
         self.assertEqual(snapshot["workspace_id"], self.workspace_id)
         self.assertEqual(snapshot["command_id"], self.command_id)
-        self.assertEqual(manifest["subject"]["target"]["platform"], "unisoc")
+        self.assertEqual(manifest["platform"], "unisoc")
+        self.assertEqual(manifest["android_version"], "14")
+        self.assertEqual(
+            manifest["components"],
+            [{"layer": "platform", "patches": [manifest["patches"][0]["path"]]}],
+        )
         package.relative_to(codex_home / "artifacts")
 
     def test_current_capture_works_with_clean_engineering_only_identity(self) -> None:
@@ -384,7 +383,7 @@ class RemotePatchSnapshotTests(unittest.TestCase):
             (package / "evidence/coding-standard-check.json").read_text(encoding="utf-8")
         )
         self.assertEqual(coding["expected_member_alias"], "member01")
-        self.assertEqual(coding["identity_source"], "android-engineering-ops-identity")
+        self.assertEqual(coding["identity_source"], "current_member_profile")
 
     def test_current_capture_rejects_source_root_patch_artifact_and_external_output(self) -> None:
         base = [
@@ -396,6 +395,8 @@ class RemotePatchSnapshotTests(unittest.TestCase):
             "invalid-current-input",
             "--summary",
             "invalid current input",
+            "--component-layer",
+            "platform",
         ]
         source = run([*base, "--source-root", str(self.repo)], self.root)
         self.assertNotEqual(source.returncode, 0)
@@ -458,12 +459,6 @@ class RemotePatchSnapshotTests(unittest.TestCase):
                 "unisoc14",
                 "--component-layer",
                 "platform",
-                "--component-type",
-                "framework",
-                "--component-partition",
-                "system",
-                "--component-ownership",
-                "aosp",
                 "--feature",
                 "manual-display-policy",
                 "--summary",
@@ -482,9 +477,10 @@ class RemotePatchSnapshotTests(unittest.TestCase):
         manifest = json.loads(
             (Path(json.loads(result.stdout)["package"]) / "manifest.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(manifest["workflow"]["contract"], "manual_import")
-        self.assertEqual(manifest["sources"][0]["kind"], "external")
-        self.assertTrue(manifest["sources"][0]["external_reference"].startswith("sha256:"))
+        self.assertEqual(manifest["workflow_contract"], "manual_import")
+        self.assertEqual(manifest["implementation_origin"], "manual")
+        self.assertEqual(manifest["components"][0]["layer"], "platform")
+        self.assertTrue(manifest["patches"][0]["source_root"].startswith("manual-import:"))
 
     def test_handoff_uses_channel_exclusive_then_scp_and_validates(self) -> None:
         remote_snapshot = (

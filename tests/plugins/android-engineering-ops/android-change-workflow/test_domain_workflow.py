@@ -19,52 +19,49 @@ def component_contract() -> dict:
     )
 
 
-def test_canonical_component_model_has_only_seven_layers_and_orthogonal_facets() -> None:
+def test_canonical_component_model_has_only_seven_layers() -> None:
     contract = component_contract()
     assert contract["canonical_selector"] == "component.layer"
     assert contract["component_model"]["layer"] == [
         "application", "platform", "native", "hal", "kernel", "device", "build"
     ]
-    assert contract["component_model"]["orthogonal_facets"] == [
-        "type", "partition", "ownership"
-    ]
     assert "vendor" not in contract["component_model"]["layer"]
     assert "domains" not in contract
 
 
-def test_legacy_routes_only_hint_layer_and_type_without_fabricating_facets() -> None:
+def test_legacy_routes_map_only_to_canonical_layers() -> None:
     legacy = component_contract()["legacy_change_domain"]
     assert legacy["status"] == "compatibility_input_only"
-    for name, hint in legacy["partial_hints"].items():
-        assert set(hint) == {"layer", "type"}, name
-        assert "partition" not in hint
-        assert "ownership" not in hint
+    assert legacy["mapping"] == {
+        "framework": "platform",
+        "system_app": "application",
+        "app": "application",
+        "hal": "hal",
+        "native": "native",
+        "kernel": "kernel",
+        "driver": "kernel",
+        "device": "device",
+        "build": "build",
+    }
     assert set(legacy["ambiguous_inputs"]) == {"vendor"}
-    assert legacy["ambiguous_inputs"]["vendor"]["requires_explicit"] == [
-        "layer", "type", "partition", "ownership"
-    ]
+    assert legacy["ambiguous_inputs"]["vendor"]["requires_explicit"] == ["layer"]
 
 
-def test_submission_boundary_is_direct_v2_with_common_lifecycle_and_v1_compatibility() -> None:
+def test_submission_boundary_is_single_v1_android_change_lifecycle() -> None:
     contract = component_contract()["submission"]
-    assert contract["canonical_package_type"] == "akbs-android-change-package-v2"
-    assert contract["v2_final_package_owner"] == "android-patch-capture"
-    assert contract["v2_local_prepare_owner"] == "akbs-patch-submit"
+    assert contract["canonical_package_type"] == "knowledge-incoming-package/1/android_change"
+    assert contract["final_package_owner"] == "android-patch-capture"
+    assert contract["local_prepare_owner"] == "akbs-patch-submit"
     assert contract["upload_lifecycle"] == "common_patch_upload"
-    assert contract["v1_v2_relationship"] == "input_formats_only"
-    assert contract["fallback_to_framework_v1"] is False
     workflow = (WORKFLOW / "SKILL.md").read_text(encoding="utf-8")
     capture = (CAPTURE / "SKILL.md").read_text(encoding="utf-8")
-    capture_contract = (
-        PLUGIN / "contracts/android-patch-capture/v2/README.md"
-    ).read_text(encoding="utf-8")
+    capture_contract = (CAPTURE / "references/package-contract.md").read_text(encoding="utf-8")
     for text in (workflow, capture):
-        assert "any supported layer" in text.lower()
-        assert "never" in text.lower() and "fall back" in text.lower()
-        assert "common patch upload lifecycle" in text.lower()
+        assert "application" in text.lower()
+        assert "android_change" in text.lower()
     for text in (capture, capture_contract):
         assert "layer_not_enabled" not in text
-        assert "any supported layer" in text.lower()
+        assert "android_change" in text.lower()
 
 
 def test_source_authority_and_build_routes_cover_remote_and_local_projects() -> None:

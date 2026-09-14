@@ -122,7 +122,7 @@ def write_variant_file(
     return variant_path
 
 
-def framework_change_evidence_paths(
+def android_change_evidence_paths(
     *,
     source_path: str,
     patch_diff_path: str,
@@ -148,7 +148,7 @@ def framework_change_evidence_paths(
     return paths
 
 
-def framework_change_manifest(
+def android_change_manifest(
     *,
     schema_version: str,
     config: dict[str, str],
@@ -168,6 +168,7 @@ def framework_change_manifest(
     variant_path: str,
     feature_readme_rel: str,
     patch_rel_paths: list[str],
+    components: list[dict[str, Any]],
     patch_view_path: str,
     evidence_paths: list[str],
     related_report_run_ids: list[str] | None = None,
@@ -175,12 +176,12 @@ def framework_change_manifest(
     manifest: dict[str, Any] = {
         "schema": "knowledge-incoming-package",
         "schema_version": schema_version,
-        "package_kind": "framework_change",
+        "package_kind": "android_change",
         "member_alias": config["member_alias"],
         "member_name": config["member_name"],
         "date": date.isoformat(),
         "run_id": run_id,
-        "tool": "android-knowledge-intake",
+        "tool": "akbs-patch-submit",
         "case_id": case_id,
         "variant_id": variant_id,
         "package_status": package_status,
@@ -199,6 +200,7 @@ def framework_change_manifest(
             "display": [patch_view_path],
             "evidence": evidence_paths,
         },
+        "components": components,
     }
     if related_report_run_ids:
         manifest["related_report_run_ids"] = related_report_run_ids

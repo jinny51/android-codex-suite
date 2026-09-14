@@ -145,7 +145,7 @@ def http_submit_package(
         validate_success_response(result)
     except RuntimeError as error:
         raise SystemExit(f"HTTP 上传入口合同漂移: {error}") from error
-    if manifest.get("package_kind") == "framework_change":
+    if manifest.get("package_kind") == "android_change":
         try:
             result.setdefault("patch_package_id", patch_package_id_from_upload_response(result))
         except RuntimeError as error:
@@ -165,6 +165,6 @@ def upload_type_for_manifest(manifest: dict[str, Any]) -> str:
         return "daily"
     if package_kind == "weekly_trace":
         return "weekly"
-    if package_kind == "framework_change":
+    if package_kind == "android_change":
         return "patch"
     raise SystemExit(f"无法根据 package_kind 判断上传类型: {package_kind}")

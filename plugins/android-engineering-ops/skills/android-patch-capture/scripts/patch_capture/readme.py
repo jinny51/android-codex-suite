@@ -107,7 +107,7 @@ def change_readme_text(
     else:
         log_control = "未检测到直接 Log/Slog 新增；如本变更新增调试日志，应统一使用 FrameworkLog。"
 
-    return f"""# {args.change_id}
+    return f"""# {args.feature}
 
 ## 变更描述
 

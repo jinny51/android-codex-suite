@@ -6,11 +6,10 @@
   "scope": {
     "universal": "all_patch_archived_android_changes",
     "component_layers": ["application", "platform", "native", "hal", "kernel", "device", "build"],
-    "component_facets": ["type", "partition", "ownership"],
     "overlays": {
       "framework": {
-        "when": {"layer": "platform", "type": "framework"},
-        "legacy_route": "change_domain=framework normalized to platform/framework"
+        "when": {"layer": "platform", "route": "framework"},
+        "legacy_route": "change_domain=framework normalized to platform"
       }
     }
   },
@@ -56,7 +55,7 @@
       ]
     },
     "framework": {
-      "mandatory_when_component": {"layer": "platform", "type": "framework"},
+      "mandatory_when_component": {"layer": "platform", "route": "framework"},
       "rules": [
         "new_logs_use_FrameworkLog_instead_of_direct_Log_or_Slog",
         "persist.sys.framework.debug_switches_are_centralized_in_FrameworkLog.java",

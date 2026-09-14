@@ -101,7 +101,7 @@ class PatchAIFactsValidationContext:
     modified_files: list[str]
 
 
-def validate_framework_change_manifest_and_files(
+def validate_android_change_manifest_and_files(
     *,
     package_dir: Path,
     manifest: dict[str, Any],
@@ -116,16 +116,16 @@ def validate_framework_change_manifest_and_files(
 ) -> FrameworkChangeValidationContext:
     for field in ("case_id", "variant_id", "package_status", "platform", "android_version", "project"):
         if not manifest.get(field):
-            errors.append(f"framework_change 缺少 {field}")
+            errors.append(f"android_change 缺少 {field}")
 
     manifest_platform = str(manifest.get("platform") or "").strip().lower()
     manifest_android_version = str(manifest.get("android_version") or "").strip().lower()
     if manifest_platform and not is_valid_platform_value(manifest_platform):
-        errors.append(f"framework_change platform 非法: {manifest_platform}；只能使用 mtk/rk/unisoc/unknown")
+        errors.append(f"android_change platform 非法: {manifest_platform}；只能使用 mtk/rk/unisoc/unknown")
     if manifest_android_version and not is_valid_android_version_value(manifest_android_version):
-        errors.append(f"framework_change android_version 非法: {manifest_android_version}")
+        errors.append(f"android_change android_version 非法: {manifest_android_version}")
     if "maturity" in manifest:
-        errors.append("framework_change manifest 不允许使用 maturity；请使用 package_status")
+        errors.append("android_change manifest 不允许使用 maturity；请使用 package_status")
 
     package_status = str(manifest.get("package_status", ""))
     if package_status not in package_status_values:
@@ -142,7 +142,7 @@ def validate_framework_change_manifest_and_files(
 
     files = manifest.get("files")
     if not isinstance(files, dict):
-        errors.append("framework_change files 必须是对象")
+        errors.append("android_change files 必须是对象")
         files = {}
 
     case_path = require_file(files.get("case"), "files.case")
@@ -160,7 +160,7 @@ def validate_framework_change_manifest_and_files(
         patch_paths = []
 
     if not isinstance(display_paths, list) or not display_paths:
-        errors.append("framework_change files.display 必须包含 materials/display/patch_view.json")
+        errors.append("android_change files.display 必须包含 materials/display/patch_view.json")
         display_paths = []
     if not isinstance(evidence_paths, list) or not evidence_paths:
         errors.append("files.evidence 必须是非空数组")
@@ -195,7 +195,7 @@ def validate_framework_change_manifest_and_files(
     )
 
 
-def validate_framework_change_structure(
+def validate_android_change_structure(
     *,
     package_dir: Path,
     manifest: dict[str, Any],
@@ -282,7 +282,7 @@ def validate_framework_change_structure(
 
     for kind in framework_required_evidence_kinds:
         if kind not in evidence_by_kind:
-            errors.append(f"framework_change 缺少 {kind} evidence")
+            errors.append(f"android_change 缺少 {kind} evidence")
 
     return FrameworkChangeStructureContext(
         case_problem=case_problem,
@@ -396,7 +396,6 @@ def validate_patch_template_leaks(
                 modified_files=modified_files,
             )
         )
-
 
 def evidence_payload(evidence: dict[str, Any]) -> dict[str, Any]:
     payload = evidence.get("payload")
@@ -613,7 +612,7 @@ def validate_patch_pre_change_search(
         "historical_import",
     }:
         errors.append(
-            "framework_change 必须显式记录 workflow_contract="
+            "android_change 必须显式记录 workflow_contract="
             "current_codex_skill/manual_import/historical_import；"
             "不能根据 implementation_origins 猜测工作流。"
         )

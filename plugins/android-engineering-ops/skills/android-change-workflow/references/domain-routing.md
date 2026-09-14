@@ -7,26 +7,24 @@ Choose exactly one layer from:
 application | platform | native | hal | kernel | device | build
 ```
 
-Always record the independent facets `component.type`, `component.partition`, and
-`component.ownership`. A type or ownership name does not become a layer: Framework,
-SystemApp, App, and driver are types; vendor is an ownership/partition facet. For
-example:
+Classify every patch explicitly. Compatibility inputs map to the seven layers as
+follows:
 
 ```text
-SystemUI       application / system_app / system_ext / aosp
-Framework svc  platform    / framework  / system     / aosp
-Vendor HAL     hal         / aidl_hal   / vendor     / vendor
-Kernel driver  kernel      / driver     / boot       / vendor
+framework             -> platform
+system_app, app        -> application
+native                 -> native
+hal                    -> hal
+kernel, driver         -> kernel
+device                 -> device
+build                  -> build
 ```
 
-The deprecated `--change-domain` input exists only for compatibility. `framework`,
-`system_app`, `app`, `hal`, `native`, `kernel`, `driver`, `device`, and `build` provide
-only frozen layer/type hints in `contracts/change-domain/v1/domain-profiles.json`.
-Missing partition/ownership remain `unknown`; `vendor` has no safe layer/type hint and
-therefore requires all four canonical fields. Never infer native/hal/device from a
+The deprecated `--change-domain` input exists only for compatibility. `vendor` is not
+a layer and is rejected as a layer selector. Do not infer native/hal/device from a
 vendor path.
 
-Use layer-specific evidence, then refine it with the type and facets. A normal build
+Use layer-specific evidence. A normal build
 file touched beside an implementation does not move the change to the build layer;
 choose build only when the build/release graph is itself the behavior. If one request
 contains independently owned features with separate acceptance or rollback, split the
@@ -44,7 +42,7 @@ Choose authority per repository, independently of the component:
 
 ## Build Route
 
-Choose from real project ownership rather than a layer label:
+Choose from the real project build mechanism rather than a layer label:
 
 | Route | Use when | Executor |
 | --- | --- | --- |

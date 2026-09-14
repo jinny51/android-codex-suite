@@ -329,7 +329,7 @@ def legacy_patch_contract_error(payload: dict[str, Any]) -> str:
             for child in value:
                 visit(child)
 
-    if payload.get("package_kind") == "framework_change" or set(payload) & retired_patch_business_fields():
+    if payload.get("package_kind") == "android_change" or set(payload) & retired_patch_business_fields():
         visit(payload)
     fields = sorted(fields)
     values = sorted(values)

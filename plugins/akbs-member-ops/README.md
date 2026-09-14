@@ -1,6 +1,6 @@
 # AKBS Member Ops
 
-Standalone AKBS member plugin, version 2.1.1. It owns member setup, knowledge
+Standalone AKBS member plugin, version 2.1.2. It owns member setup, knowledge
 search and merge review, personal daily/weekly reports, and Android change
 package handling without depending on the engineering or optional practices
 plugins at runtime.
@@ -44,24 +44,14 @@ read-only compatibility source. Historical packages are not moved or rewritten.
 
 ## Incoming contracts
 
-There is one incoming v1 implementation at
-`internal/incoming-v1/scripts/akbs_member_intake.py`. Legacy Framework
-`knowledge-incoming-package/1/framework_change` remains genuinely submittable.
-The pinned public contract and verification reference stay byte-compatible with
-incoming v1.
+There is one incoming implementation at
+`internal/incoming-v1/scripts/akbs_member_intake.py`. Current capture and submit use
+`knowledge-incoming-package/1/android_change`. Its `components[].layer` classifies
+each patch into application, platform, native, hal, kernel, device, or build; all
+other package fields and the upload lifecycle remain the stable v1 contract.
 
-`akbs-patch-submit` also handles final
-`akbs-android-change-package-v2/2/android_change` directories produced directly by
-`android-patch-capture`. It strictly reads, checks, byte-preserves, and submits them
-for all seven component layers. V1 and v2 are two input formats on the same member
-profile, patch-upload endpoint, idempotency rule, and ordinary server receipt. There
-is no intermediate capture conversion, separate approval lifecycle, or v1 fallback.
-
-The v2 checker enforces exact file inventory and hashes, component/source/patch/
-evidence references, and per-component patch/evidence coverage. Formal target
-platform is only `mtk`, `rk`, or `unisoc`; Android version is a separate decimal
-field. Capture CLI inputs such as `mtk16` are split before the manifest is written,
-and a formal package containing `mtk16` is rejected.
+Historical `knowledge-incoming-package/1/framework_change` archives remain readable
+without rewriting their bytes. Current tools do not create or submit that legacy kind.
 
 ## Install-family boundary
 

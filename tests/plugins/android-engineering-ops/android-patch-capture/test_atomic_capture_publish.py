@@ -104,20 +104,19 @@ def test_concurrent_publish_has_one_complete_winner(tmp_path: Path) -> None:
     assert not list(destination.parent.glob(".concurrent.staging-*"))
 
 
-def test_capture_v2_schema_is_packaged_with_the_runtime() -> None:
+def test_capture_uses_single_v1_handoff_contract() -> None:
     package_schema = PLUGIN / "contracts/incoming/v2/akbs-android-change-package.schema.json"
-    assert package_schema.is_file()
+    assert not package_schema.exists()
     script = (
         PLUGIN
         / "skills/android-patch-capture/scripts/capture_android_patch.py"
     ).read_text(encoding="utf-8")
-    assert "akbs-android-change-package.schema.json" in script
-    assert "validate_final_manifest(manifest, package_dir)" in script
-    assert "capture-package-v2.1.schema.json" not in script
+    assert '"package_type": "android_feature_patch"' in script
+    assert '"components": component_rows(patch_layers)' in script
     assert "qualification" not in script
     reference = (
         PLUGIN
         / "skills/android-patch-capture/references/package-contract.md"
     ).read_text(encoding="utf-8")
-    assert "akbs-android-change-package-v2" in reference
+    assert "knowledge-incoming-package / schema_version 1 / android_change" in reference
     assert "adapt-capture" not in reference

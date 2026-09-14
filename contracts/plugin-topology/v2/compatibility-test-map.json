@@ -3,7 +3,7 @@
   "matrix": {
     "path": "compatibility-matrix.json",
     "matrix_id": "akbs2-three-plugin-compatibility-v1",
-    "sha256": "703016d9198474f0d660d479fa56e2a3d2c3f616b677597aacaa8e0808928513"
+    "sha256": "6d7eab7d70ead48463fc0697884b7829fb9912ee11e3c31216ebb9a9eeda66c8"
   },
   "identity_resolution": {
     "source": "migration-topology.json#/engineering_identity_resolution/semantics",
@@ -31,7 +31,7 @@
   "proof_requirements": {
     "phase2": "target_and_rollback_plugin_test_suites_plus_final_plugin_validation_receipt",
     "phase3": "isolated_model_routing_experiment_receipt",
-    "phase4": "real_workflow_receipts_for_wsl_macos_gms_modes_and_v1_v2_knowledge_loop",
+    "phase4": "real_workflow_receipts_for_wsl_macos_gms_modes_and_v1_android_change_knowledge_loop",
     "phase5": "per_member_target_only_migration_and_rollback_receipts",
     "phase6": "new_repository_target_only_and_legacy_repository_receipts"
   }

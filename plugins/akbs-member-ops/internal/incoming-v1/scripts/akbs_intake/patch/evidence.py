@@ -182,6 +182,7 @@ def incoming_patch_item(package_dir: Path, patch_entry: dict[str, Any]) -> dict[
     return {
         "id": Path(str(patch_entry["path"])).stem,
         "path": patch_entry["path"],
+        "layer": str(patch_entry.get("layer") or ""),
         "readme": patch_entry.get("readme", ""),
         "content_sha1": content_sha1,
         "status": patch_entry.get("status", "candidate"),

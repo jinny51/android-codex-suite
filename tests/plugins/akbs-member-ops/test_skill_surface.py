@@ -57,23 +57,10 @@ class SkillSurfaceTest(unittest.TestCase):
             [PLUGIN / "internal" / "incoming-v1" / "scripts" / "akbs_member_intake.py"],
         )
 
-    def test_every_v2_help_path_bypasses_install_family_business_gate(self) -> None:
+    def test_retired_v2_command_is_not_available(self) -> None:
         script = PLUGIN / "skills" / "akbs-patch-submit" / "scripts" / "akbs_patch_submit.py"
-        env = os.environ.copy()
-        env["PYTHONDONTWRITEBYTECODE"] = "1"
-        for arguments in (
-            ["android-change-v2", "--help"],
-            ["android-change-v2", "read", "--help"],
-            ["android-change-v2", "check", "--help"],
-            ["android-change-v2", "prepare", "--help"],
-            ["android-change-v2", "submit", "--help"],
-        ):
-            with self.subTest(arguments=arguments):
-                completed = subprocess.run(
-                    [sys.executable, str(script), *arguments], cwd="/tmp", env=env,
-                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
-                )
-                self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertNotIn("android-change-v2", script.read_text(encoding="utf-8"))
+        self.assertFalse((PLUGIN / "lib/akbs_member_ops/incoming_v2").exists())
 
     def test_search_literal_help_after_option_terminator_cannot_bypass_family_gate(self) -> None:
         script = PLUGIN / "skills/akbs-knowledge-search/scripts/akbs_knowledge_search.py"
@@ -88,20 +75,7 @@ class SkillSurfaceTest(unittest.TestCase):
         family_gate.assert_called_once_with()
         business.assert_not_called()
 
-    def test_patch_literal_help_after_option_terminator_cannot_bypass_family_gate(self) -> None:
-        script = PLUGIN / "skills/akbs-patch-submit/scripts/akbs_patch_submit.py"
-        module = self.load_script("akbs_patch_submit_help_gate_test", script)
-        with mock.patch.object(
-            module,
-            "installed_plugin_family_status",
-            return_value={"blocking": True, "message": "target not active"},
-        ) as family_gate, mock.patch.object(module, "incoming_v2_main") as business:
-            with self.assertRaisesRegex(SystemExit, "target not active"):
-                module.main(["android-change-v2", "prepare", "--", "--help"])
-        family_gate.assert_called_once_with()
-        business.assert_not_called()
-
-    def test_direct_v2_boundary_is_aligned_across_public_surfaces(self) -> None:
+    def test_single_v1_boundary_is_aligned_across_public_surfaces(self) -> None:
         surfaces = (
             PLUGIN / "README.md",
             PLUGIN / ".codex-plugin" / "plugin.json",
@@ -119,10 +93,11 @@ class SkillSurfaceTest(unittest.TestCase):
         docs = surfaces[4].read_text(encoding="utf-8")
         for text in (skill, docs):
             normalized = " ".join(text.split())
-            self.assertIn("最终 v2", normalized)
+            self.assertIn("knowledge-incoming-package", normalized)
+            self.assertIn("android_change", normalized)
             for layer in ("application", "platform", "native", "hal", "kernel", "device", "build"):
                 self.assertIn(layer, normalized)
-            self.assertIn("同一补丁上传生命周期", normalized)
+            self.assertNotIn("akbs-android-change-package-v2", normalized)
 
     def test_canonical_search_covers_non_framework_android_changes(self) -> None:
         skill = (PLUGIN / "skills" / "akbs-knowledge-search" / "SKILL.md").read_text(

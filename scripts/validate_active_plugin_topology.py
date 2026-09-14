@@ -42,8 +42,8 @@ TARGET_PLUGINS = {
     ),
 }
 TARGET_PLUGIN_VERSIONS = {
-    "akbs-member-ops": "2.1.1",
-    "android-engineering-ops": "2.1.1",
+    "akbs-member-ops": "2.1.2",
+    "android-engineering-ops": "2.1.2",
     "jinny-android-practices": "2.0.1",
 }
 MIGRATION_ALIASES = {
@@ -226,11 +226,11 @@ SURFACE_PHASE_BINDINGS = {
     "artifact.android-patch-capture": ("phase2", "phase2"),
     "artifact.android-remote-build-deploy": ("phase2", "phase4"),
     "package.framework-change-v1": ("current", "current"),
-    "package.android-change-v2": ("phase2", "phase2"),
+    "package.android-change-v1": ("phase2", "phase2"),
     "cache.legacy-installations": ("phase5", "phase5"),
     "marketplace.entries": ("phase2", "phase5"),
 }
-PHASE_CONTRACT_SHA256 = "cbebbcd80b3226a973d83480ca86ffff04e69734b48f0d3b9e6eb3a97651960a"
+PHASE_CONTRACT_SHA256 = "2df306109326e00d1b38e0c13cd02a923ad4e2f0c050c3851d40e3e7f8225fde"
 ENGINEERING_IDENTITY_RESOLUTION_SHA256 = (
     "a51a3d17279c26c04d5ba23f7e8fe5ead5964687219df231a7be99012556ab87"
 )
@@ -242,7 +242,7 @@ ENGINEERING_IDENTITY_MATRIX_SHA256 = (
     "1956a123cccb1ffece974d9f8d430bb728d03a72c24da9ab9785fa579b56f666"
 )
 SURFACE_ACTIVATION_SHA256 = {
-    "plugin.akbs-member-ops": "e8e462b6872cfe198d73b8da5967c7fead70de76fb29dc059ee269e6dd37b3e9",
+    "plugin.akbs-member-ops": "b15696af8593cd0d0728fb18391bc0b3ce38901fc83be1c6091bf0bd6e9f3d23",
     "plugin.android-engineering-ops": "94033cd811852dad2eb7d3cb22f079fc0b3fdf3d3dd801739761759c8f8a40f2",
     "plugin.jinny-android-practices": "17545c4dd13c20f219d23a39f675387da13166de9ec2f4ec0881cee96987ae88",
     "plugin.legacy-android-ops": "f841247cff744c068f07fb1dbdd5f4123065ac4a6349663e8bbce520385df6ac",
@@ -252,7 +252,7 @@ SURFACE_ACTIVATION_SHA256 = {
     "skill.android-source-access": "739ebe560dfcdcaa934aa47535819b345e6521ce4cbeede5358e1dd6882d5bb6",
     "skill.jinny-provider-family": "af6374a382c0960f0b0749e37a477f3ca0122b56d70844c05a4ad09db592b707",
     "skill.android-knowledge-intake": "f436ee73f6c81b46705899994f0e57d11da76725c964fd9893ba759fd2e78133",
-    "cli.akbs-member": "151d2f0ae4676f9e94334d6f25a7faa5e12681ddfb60e0a931bf4156d5e61e7a",
+    "cli.akbs-member": "45c8166ee3b5395ec159a8e98024d84813b1b1a0bade75bed3863a5d73be1e5f",
     "cli.android-engineering": "d3dc379ace0e396c0deab3a768ec5f3d135612510e32bf5f7bda6f7a09d98d48",
     "cli.android-practices-provider": "add7c3eeb94670d9d770318abb9aaa284dd7407efb09f889e0354b519b274d3d",
     "cli.source-access": "d7a1207f69c845a7184f1bb35f40db6336948da56884bcd1fd9a1de21f498e98",
@@ -260,10 +260,10 @@ SURFACE_ACTIVATION_SHA256 = {
     "config.android-engineering-extension": "34c2f8dcd7f37eeabce048d0f02338976728f27e69ee4dead845da1c55236c57",
     "state.source-access": "059f7b598e8fcbba81911336e0b9ccd34a1e990fc37e2c5bc45024b4cd825f46",
     "artifact.akbs-member": "fcdc229e403d574bd28c04136d1d371df63fcfdf1b59af62c23dfd00559e05e3",
-    "artifact.android-patch-capture": "381d078d0b28c57d40da1e86263cb0b72ab15d96e29951be11026fb54ac314b9",
+    "artifact.android-patch-capture": "f0cbdf155a25187a14be7fe05d5cfefd015a5a8cd756012f0b147c7ac9e64465",
     "artifact.android-remote-build-deploy": "b0c9b6b85f8213974fde9dcfe694fcf694c35ab386a4b437b5583309dfc0630e",
-    "package.framework-change-v1": "d5c012849422e3d4e59f6928d451e574727032bbec4872377eac5ac57896dccc",
-    "package.android-change-v2": "c8618f71512f707fe36e94415b81f60e0f6343a3f852b31b9b0a119f3dd0448a",
+    "package.framework-change-v1": "b5a99db0a10bf83f7695bdeb1437d6259cfc3b9dee7e908a342b75a10c6b3572",
+    "package.android-change-v1": "673c666a10035e9335f580784f85207a4ca69c6dcbc9c24382e1f67ff2507ca6",
     "cache.legacy-installations": "5d3abc52e67e2ecf73eed490ee140eac4bba2fafedac461940395804613f7d61",
     "marketplace.entries": "05ac96f642e211b2f00e5194e7895192f9f79a9f59273b70337065d3e498d1f5",
 }
@@ -289,7 +289,7 @@ SURFACE_DEFAULT_BINDINGS = {
     "artifact.android-patch-capture": (("legacy-capture",), ("legacy-capture",), ("android-patch-capture",), ("android-patch-capture",)),
     "artifact.android-remote-build-deploy": (("android-framework-ops",), ("android-framework-ops",), ("android-engineering-ops",), ("android-engineering-ops",)),
     "package.framework-change-v1": (("framework-change-v1",), ("framework-change-v1",), ("framework-change-v1",), ("server-policy",)),
-    "package.android-change-v2": ((), (), ("server-policy",), ("server-policy",)),
+    "package.android-change-v1": ((), (), ("server-policy",), ("server-policy",)),
     "cache.legacy-installations": (("legacy-install-family",), ("legacy-install-family",), ("target-install-family",), ("target-install-family",)),
     "marketplace.entries": (("android-framework-ops",), ("android-framework-ops",), ("role-selected-target",), ("role-selected-target",)),
 }
@@ -315,7 +315,7 @@ SURFACE_COINSTALL_BINDINGS = {
     "artifact.android-patch-capture": ("android-framework-ops",),
     "artifact.android-remote-build-deploy": ("android-framework-ops",),
     "package.framework-change-v1": (),
-    "package.android-change-v2": (),
+    "package.android-change-v1": (),
     "cache.legacy-installations": ("legacy_install_family", "target_install_family"),
     "marketplace.entries": ("legacy_install_family", "target_install_family"),
 }
@@ -341,7 +341,7 @@ SURFACE_REMOVAL_BINDINGS = {
     "artifact.android-patch-capture": ("never_delete_historical_captures",),
     "artifact.android-remote-build-deploy": ("never_delete_historical_artifacts",),
     "package.framework-change-v1": ("v1_read_is_permanent",),
-    "package.android-change-v2": ("separate_contract_revision",),
+    "package.android-change-v1": ("separate_contract_revision",),
     "cache.legacy-installations": ("member_target_only_receipt", "rollback_available"),
     "marketplace.entries": ("new_repository_target_only_receipt", "legacy_repository_preserved"),
 }
@@ -641,9 +641,9 @@ def validate_packaged_contract_parity(root: Path) -> None:
             "plugins/android-engineering-ops/contracts/android-change-workflow/v1/"
             "worker-result.schema.json"
         ),
-        "contracts/incoming/v2/akbs-android-change-package.schema.json": (
-            "plugins/akbs-member-ops/contracts/incoming/v2/"
-            "akbs-android-change-package.schema.json"
+        "contracts/incoming/v1/knowledge-incoming-package.schema.json": (
+            "plugins/akbs-member-ops/internal/incoming-v1/references/"
+            "knowledge-incoming-package.schema.json"
         ),
         "contracts/incoming/v1/verification-acceptance-v2.json": (
             "plugins/akbs-member-ops/internal/incoming-v1/references/"
@@ -667,13 +667,6 @@ def validate_packaged_contract_parity(root: Path) -> None:
             )
     if not engineering_acceptance.is_file() or acceptance.read_bytes() != engineering_acceptance.read_bytes():
         raise TopologyError("engineering verification acceptance contract drifted")
-    v2_authority = root / "contracts/incoming/v2/akbs-android-change-package.schema.json"
-    v2_engineering = (
-        root
-        / "plugins/android-engineering-ops/contracts/incoming/v2/akbs-android-change-package.schema.json"
-    )
-    if not v2_engineering.is_file() or v2_authority.read_bytes() != v2_engineering.read_bytes():
-        raise TopologyError("engineering Android change v2 package contract drifted")
 
 
 def _state_map(topology: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -774,7 +767,7 @@ def _validate_phase_lifecycle_contract(matrix: dict[str, Any]) -> None:
     if not {
         "real_wsl_engineering_member", "real_macos_engineering_member",
         "real_gms_report_only_member", "none_jinny_custom_modes",
-        "v1_v2_common_patch_upload_lifecycle",
+        "v1_android_change_common_patch_upload_lifecycle",
         "capture_submit_queue_curation_knowledge_search_loop",
     }.issubset(phases["phase4"]["required"]):
         raise TopologyError("Phase 4 real workflow scope differs")
@@ -1257,21 +1250,21 @@ def validate_contract_documents(
     legacy_v1 = by_id["package.framework-change-v1"]
     if legacy_v1["removal"]["legacy_reader_retention"] != "permanent" or legacy_v1["removal"]["history_rewrite"] is not False:
         raise TopologyError("Framework v1 permanent-read contract differs")
-    android_v2 = by_id["package.android-change-v2"]
-    if android_v2["write"] != {
+    android_v1 = by_id["package.android-change-v1"]
+    if android_v1["write"] != {
         "current": "unsupported",
         "migration": "common patch upload lifecycle",
         "target": "common patch upload lifecycle",
     }:
-        raise TopologyError("Android change v2 does not use the common patch lifecycle")
-    if android_v2["activation"]["gates_by_phase"] != {
-        "phase2": ["direct_final_v2_schema", "seven_component_layers", "common_patch_endpoint"]
+        raise TopologyError("Android change v1 does not use the common patch lifecycle")
+    if android_v1["activation"]["gates_by_phase"] != {
+        "phase2": ["v1_android_change_schema", "seven_component_layers", "common_patch_endpoint"]
     }:
-        raise TopologyError("Android change v2 direct input gates differ")
-    if set(android_v2["test"]["negative_ids"]) != {
-        "versioned-platform-formal-field", "silent-v1-fallback"
+        raise TopologyError("Android change v1 direct input gates differ")
+    if set(android_v1["test"]["negative_ids"]) != {
+        "framework-change-new-write", "incomplete-component-coverage"
     }:
-        raise TopologyError("Android change v2 negative tests differ")
+        raise TopologyError("Android change v1 negative tests differ")
 
 
 def validate_compatibility_test_map(root: Path, matrix: dict[str, Any]) -> None:
@@ -1343,7 +1336,7 @@ def validate_compatibility_test_map(root: Path, matrix: dict[str, Any]) -> None:
     if payload.get("proof_requirements") != {
         "phase2": "target_and_rollback_plugin_test_suites_plus_final_plugin_validation_receipt",
         "phase3": "isolated_model_routing_experiment_receipt",
-        "phase4": "real_workflow_receipts_for_wsl_macos_gms_modes_and_v1_v2_knowledge_loop",
+        "phase4": "real_workflow_receipts_for_wsl_macos_gms_modes_and_v1_android_change_knowledge_loop",
         "phase5": "per_member_target_only_migration_and_rollback_receipts",
         "phase6": "new_repository_target_only_and_legacy_repository_receipts",
     }:
@@ -1771,114 +1764,85 @@ def canonical_json_sha256_v1(value: Any) -> str:
 
 def normalized_archive_path(value: object) -> str:
     if not isinstance(value, str) or not value or value.startswith("/") or "\\" in value:
-        raise TopologyError("Android change v2 archive path is unsafe")
+        raise TopologyError("Android change v1 archive path is unsafe")
     path = PurePosixPath(value)
     if (
         path.as_posix() != value
         or value in {".", ".."}
         or any(part in {"", ".", ".."} for part in path.parts)
     ):
-        raise TopologyError("Android change v2 archive path is not canonical")
+        raise TopologyError("Android change v1 archive path is not canonical")
     return value
 
 
 def source_package_key(package: dict[str, Any]) -> str:
-    identity = package.get("identity") or {}
-    member_alias = identity.get("member_alias")
-    run_id = identity.get("run_id")
+    explicit = package.get("package_key")
+    if isinstance(explicit, str) and explicit:
+        return explicit
+    member_alias = package.get("member_alias")
+    run_id = package.get("run_id")
     if not isinstance(member_alias, str) or not isinstance(run_id, str):
-        raise TopologyError("Android change v2 source package identity differs")
+        raise TopologyError("Android change v1 source package identity differs")
     return f"{run_id[:8]}/{member_alias}/{run_id}"
-
-
-def _rows_by_id(package: dict[str, Any], name: str) -> dict[str, dict[str, Any]]:
-    rows = package.get(name)
-    if not isinstance(rows, list) or not rows or any(not isinstance(row, dict) for row in rows):
-        raise TopologyError(f"Android change v2 {name} must be non-empty objects")
-    identifiers = [row.get("id") for row in rows]
-    if any(not isinstance(item, str) for item in identifiers) or len(identifiers) != len(set(identifiers)):
-        raise TopologyError(f"Android change v2 {name} IDs must be unique")
-    return {str(row["id"]): row for row in rows}
 
 
 def validate_android_change_package_semantics(
     manifest_bytes: bytes,
     archive_entries: dict[str, tuple[str, int]],
 ) -> dict[str, Any]:
-    """Validate the minimal server-facing v2 references and file/hash rules."""
-    package = load_json_bytes(manifest_bytes, label="Android change v2 manifest")
+    """Validate the v1 Android change identity and exact patch-layer coverage."""
+    package = load_json_bytes(manifest_bytes, label="Android change v1 manifest")
     if (
-        package.get("schema") != "akbs-android-change-package-v2"
-        or package.get("schema_version") != "2"
+        package.get("schema") != "knowledge-incoming-package"
+        or package.get("schema_version") != "1"
         or package.get("package_kind") != "android_change"
         or package.get("package_status") != "validated"
     ):
-        raise TopologyError("Android change v2 package identity differs")
-    if {"qualification", "files", "changes", "extensions"} & set(package):
-        raise TopologyError("Android change v2 contains a retired control-plane field")
-    target = (package.get("subject") or {}).get("target") or {}
-    if target.get("platform") not in {"mtk", "rk", "unisoc"}:
-        raise TopologyError("Android change v2 target.platform must be canonical")
-    if not re.fullmatch(r"(?:0|[1-9][0-9]*)(?:\.[0-9]+)?", str(target.get("android_version") or "")):
-        raise TopologyError("Android change v2 target.android_version must be canonical")
+        raise TopologyError("Android change v1 package identity differs")
+    if {"qualification", "subject", "sources", "patches", "evidence", "changes", "extensions"} & set(package):
+        raise TopologyError("Android change v1 contains a retired package-v2 field")
 
-    components = _rows_by_id(package, "components")
-    sources = _rows_by_id(package, "sources")
-    patches = _rows_by_id(package, "patches")
-    evidence = _rows_by_id(package, "evidence")
+    files = package.get("files")
+    components = package.get("components")
+    if not isinstance(files, dict) or not isinstance(components, list) or not components:
+        raise TopologyError("Android change v1 files or components differ")
+    patch_paths = files.get("patches")
+    if (
+        not isinstance(patch_paths, list)
+        or not patch_paths
+        or any(not isinstance(path, str) or not path for path in patch_paths)
+        or len(patch_paths) != len(set(patch_paths))
+    ):
+        raise TopologyError("Android change v1 patch list differs")
+
     allowed_layers = {"application", "platform", "native", "hal", "kernel", "device", "build"}
-    if any(component.get("layer") not in allowed_layers for component in components.values()):
-        raise TopologyError("Android change v2 component layer differs")
-    if (package.get("subject") or {}).get("primary_component_id") not in components:
-        raise TopologyError("Android change v2 primary component does not resolve")
+    classified: list[str] = []
+    for component in components:
+        if not isinstance(component, dict) or set(component) != {"layer", "patches"}:
+            raise TopologyError("Android change v1 component shape differs")
+        if component.get("layer") not in allowed_layers:
+            raise TopologyError("Android change v1 component layer differs")
+        paths = component.get("patches")
+        if not isinstance(paths, list) or not paths or any(not isinstance(path, str) for path in paths):
+            raise TopologyError("Android change v1 component patch list differs")
+        classified.extend(paths)
+    if len(classified) != len(set(classified)) or sorted(classified) != sorted(patch_paths):
+        raise TopologyError("Android change v1 components must classify every patch exactly once")
 
-    patched_components: set[str] = set()
-    evidenced_components: set[str] = set()
-    used_sources: set[str] = set()
-    for patch in patches.values():
-        bound = set(patch.get("component_ids") or [])
-        if not bound or not bound.issubset(components):
-            raise TopologyError("Android change v2 patch component references differ")
-        if patch.get("source_id") not in sources:
-            raise TopologyError("Android change v2 patch source reference differs")
-        patched_components.update(bound)
-        used_sources.add(str(patch["source_id"]))
-    for item in evidence.values():
-        bound = set(item.get("component_ids") or [])
-        if not bound or not bound.issubset(components):
-            raise TopologyError("Android change v2 evidence component references differ")
-        evidenced_components.update(bound)
-    if patched_components != set(components):
-        raise TopologyError("every Android change v2 component must have a patch")
-    if evidenced_components != set(components):
-        raise TopologyError("every Android change v2 component must have evidence")
-    if used_sources != set(sources):
-        raise TopologyError("every Android change v2 source must be used by a patch")
-
-    descriptors = [package.get("readme"), *patches.values(), *evidence.values()]
-    if any(not isinstance(row, dict) for row in descriptors):
-        raise TopologyError("Android change v2 payload descriptor differs")
-    paths = [normalized_archive_path(row.get("path")) for row in descriptors]
-    if len(paths) != len(set(paths)):
-        raise TopologyError("Android change v2 payload paths must be unique")
-    expected: dict[str, tuple[str, int]] = {}
-    for row, path in zip(descriptors, paths):
-        digest = row.get("sha256")
-        size = row.get("size_bytes")
-        if (
-            not isinstance(digest, str)
-            or re.fullmatch(r"[0-9a-f]{64}", digest) is None
-            or type(size) is not int
-            or size < 0
-        ):
-            raise TopologyError("Android change v2 payload hash or size differs")
-        expected[path] = (digest, size)
-    if archive_entries != expected:
-        raise TopologyError("Android change v2 archive inventory or file integrity differs")
+    declared: list[str] = []
+    for field, value in files.items():
+        values = value if isinstance(value, list) else [value]
+        if any(not isinstance(path, str) or not path for path in values):
+            raise TopologyError(f"Android change v1 files.{field} differs")
+        declared.extend(normalized_archive_path(path) for path in values)
+    if len(declared) != len(set(declared)):
+        raise TopologyError("Android change v1 file paths must be unique")
+    if set(archive_entries) != set(declared):
+        raise TopologyError("Android change v1 archive inventory differs")
     return {
-        "schema": "akbs-android-change-package-coherence-v2",
+        "schema": "akbs-android-change-package-coherence-v1",
         "source_package_key": source_package_key(package),
-        "component_layers": sorted({item["layer"] for item in components.values()}),
+        "component_layers": sorted({item["layer"] for item in components}),
         "reference_integrity_valid": True,
         "archive_inventory_binding_valid": True,
     }
@@ -1892,16 +1856,17 @@ def validate_phase0_schema_documents(root: Path) -> None:
         "contracts/android-change-workflow/v1/stage-snapshot.schema.json": "stage-snapshot-v1",
         "contracts/android-change-workflow/v1/worker-assignment.schema.json": "worker-assignment-v1",
         "contracts/android-change-workflow/v1/worker-result.schema.json": "worker-result-v1",
-        "contracts/incoming/v2/akbs-android-change-package.schema.json": "akbs-android-change-package-v2",
+        "contracts/incoming/v1/knowledge-incoming-package.schema.json": "knowledge-incoming-package",
     }
     documents: dict[str, dict[str, Any]] = {}
     for relative, schema_name in expected.items():
         value = load_json(root / relative)
         documents[relative] = value
+        closed_schema = not relative.startswith("contracts/incoming/v1/")
         if (
             value.get("$schema") != "https://json-schema.org/draft/2020-12/schema"
             or value.get("type") != "object"
-            or value.get("additionalProperties") is not False
+            or (closed_schema and value.get("additionalProperties") is not False)
             or value.get("properties", {}).get("schema", {}).get("const") != schema_name
             or "schema" not in value.get("required", [])
         ):
@@ -1930,24 +1895,17 @@ def validate_phase0_schema_documents(root: Path) -> None:
     result = documents["contracts/android-change-workflow/v1/worker-result.schema.json"]
     if set(result["properties"]["outcome"]["enum"]) != {"completed", "partial", "blocked", "failed"}:
         raise TopologyError("worker result outcome can impersonate acceptance")
-    package = documents["contracts/incoming/v2/akbs-android-change-package.schema.json"]
+    package = documents["contracts/incoming/v1/knowledge-incoming-package.schema.json"]
     if (
-        package["properties"]["schema_version"].get("const") != "2"
-        or package["properties"]["package_kind"].get("const") != "android_change"
-        or package["properties"]["package_status"].get("const") != "validated"
-        or set(package["$defs"]["component"]["properties"]["layer"]["enum"])
+        package["properties"]["schema_version"].get("const") != "1"
+        or package["properties"]["package_kind"].get("enum")
+        != ["daily_trace", "weekly_trace", "android_change"]
+        or set(package["properties"]["components"]["items"]["properties"]["layer"]["enum"])
         != {"application", "platform", "native", "hal", "kernel", "device", "build"}
-        or package["$defs"]["subject"]["properties"]["target"]["properties"]["platform"].get("enum")
-        != ["mtk", "rk", "unisoc"]
-        or set(package.get("required") or ())
-        != {
-            "schema", "schema_version", "package_kind", "package_status", "identity",
-            "subject", "workflow", "components", "sources", "readme", "patches", "evidence",
-        }
-        or {"qualification", "files", "changes", "extensions"}
-        & set(package.get("properties") or {})
+        or set(package["properties"]["components"]["items"].get("required") or ())
+        != {"layer", "patches"}
     ):
-        raise TopologyError("Android change v2 package identity or layers differ")
+        raise TopologyError("Android change v1 package identity or layers differ")
     core_contracts = [
         value for path, value in documents.items()
         if path.startswith("contracts/android-practices-provider")

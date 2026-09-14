@@ -12,6 +12,22 @@
 | `android-remote-build-deploy` | 受控 build、artifact 校验和 adb 交付 |
 | `android-patch-capture` | 直接生成七层 component 标注的稳定 v1 `android_change` 包 |
 
+## 安装
+
+首次使用先添加 marketplace，再安装本插件；使用 AKBS 的成员同时安装
+`akbs-member-ops`：
+
+```bash
+codex plugin marketplace add jinny51/android-codex-suite --ref main --json
+codex plugin add android-engineering-ops@android-codex-suite --json
+codex plugin add akbs-member-ops@android-codex-suite --json
+codex plugin list --json
+```
+
+不使用 AKBS 上传、报告或知识检索的独立工程成员，可以只安装
+`android-engineering-ops`。可选编排插件不属于核心安装族，也不会因为存在于 marketplace
+中自动生效。
+
 ## 可选编排扩展
 
 扩展只决定“这个任务如何组织”，不改变 Android 工程规则。项目配置优先于用户配置：
@@ -48,12 +64,33 @@ plugin_name = "my-android-orchestrator"
 orchestrator Skill。核心协议不规定角色、模型、任务分类、worker 文档或执行状态机。
 显式选择的扩展缺失或损坏时失败关闭；未选择时核心不会读取或校验它。
 
+最小自定义扩展 manifest 示例：
+
+```json
+{
+  "schema": "android-orchestration-extension-v1",
+  "provider_id": "my-android-orchestrator",
+  "provider_version": "1.0.0",
+  "compatible_core_contracts": ["android-engineering-orchestration-v1"],
+  "orchestrator": {"skill_id": "my-android-orchestrator"}
+}
+```
+
+插件的 `.codex-plugin/plugin.json` 中 `name` 必须与 `provider_id` 一致，并在
+`skills/<skill_id>/SKILL.md` 提供声明的 Skill。这里的 `provider_id` 只是扩展插件身份字段，
+不代表旧版 decision provider 或第二套控制流程。
+
 可用只读入口查看解析结果：
 
 ```bash
 python3 skills/android-change-workflow/scripts/resolve_android_orchestration.py \
   --project-root "$PWD"
 ```
+
+结果中的 `source=core` 表示当前任务直接执行；`source=extension` 会同时给出已安装插件根和
+唯一 orchestrator Skill 路径。常见失败只有三类：配置选择了未安装插件、同名插件存在多个
+active 实例，或源码与运行时 manifest 不一致。不要通过扫描缓存、选择最高版本或自动切换
+其他扩展绕过这些错误。
 
 旧配置中的 provider 版本和 hash 字段只为读取迁移而忽略，不再参与运行时协议。
 

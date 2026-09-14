@@ -44,7 +44,7 @@ jinny-android-practices
 - `android-source-access` 自动识别 WSL 或 macOS，并选择插件内对应适配器；成员不再按操作系统安装两个入口插件。
 - 日报、周报、知识检索和补丁提交属于 AKBS 成员能力；源码修改、构建和本地材料采集属于 Android 工程能力。
 - 当前源码材料默认由远端通道一步生成最新快照并原子打包，避免人工衔接命令导致快照仅因等待而过期。
-- 旧 v1 配置、材料和历史包永久可读，不改写、不搬家；新写入使用新路径。
+- 旧配置、材料和历史包按声明永久可读，不改写、不搬家；当前 Android change 继续写入稳定 v1 包。
 - `android-patch-capture` 直接生成 `knowledge-incoming-package/1/android_change` 包，`akbs-patch-submit` 负责检查、准备和提交；七层分类只通过 `components[].layer` 增加到稳定 v1 合同，不新增第二套包格式或生命周期。
 
 ## 可选扩展
@@ -61,12 +61,71 @@ jinny-android-practices
 Skill。公共协议不包含模型、角色、任务分类、worker 文档或阶段状态。显式选择的插件缺失
 或损坏时 fail closed；没有配置时核心完全不读取它。
 
+默认直接使用核心，不需要创建配置文件；也可以显式写出：
+
+```toml
+[extension]
+mode = "none"
+```
+
+选择官方 Jinny：
+
+```toml
+[extension]
+mode = "jinny"
+```
+
+选择成员自己实现的扩展：
+
+```toml
+[extension]
+mode = "custom"
+plugin_name = "my-android-orchestrator"
+```
+
+项目配置优先于用户配置。安装 Jinny 插件本身不会改变默认行为，只有上述显式配置或用户
+直接调用 `jinny-android-orchestrator` 时才生效。
+
 Jinny 实现中，简单任务直接完成，复杂任务才按需创建 investigator、implementer、
 verifier、researcher 或 reviewer。每种角色包含可复用的任务边界和交付合同；当前任务
 仍负责架构、集成与最终验收。根任务模型保持人工选择，角色模型只是 Jinny 的默认建议，
 不属于核心协议，也不会自动轮换或退休当前任务。
 
+两个典型例子：
+
+- “修改一个已知位置的 Settings 文案并运行相关测试”：当前任务直接修改和验证，不创建子智能体。
+- “调查偶现的开机卡死，问题可能横跨 system_server、SystemUI 和设备日志”：可以先让
+  investigator 分别读取日志和源码；当前任务确定根因和方案后，再把互不重叠的修改交给
+  implementer，最后按需要使用 verifier 或 reviewer。当前任务始终负责整合和最终答复，
+  不会把所有角色机械地创建一遍。
+
 ## 安装与升级
+
+首次安装 marketplace 和两个必需插件：
+
+```bash
+codex plugin marketplace add jinny51/android-codex-suite --ref main --json
+codex plugin add akbs-member-ops@android-codex-suite --json
+codex plugin add android-engineering-ops@android-codex-suite --json
+```
+
+只有确定选择 `mode="jinny"` 的成员才安装可选插件：
+
+```bash
+codex plugin add jinny-android-practices@android-codex-suite --json
+```
+
+以后更新 marketplace 并刷新已安装插件：
+
+```bash
+codex plugin marketplace upgrade android-codex-suite --json
+codex plugin add akbs-member-ops@android-codex-suite --json
+codex plugin add android-engineering-ops@android-codex-suite --json
+codex plugin list --json
+```
+
+选择了 Jinny 的成员在更新时再执行一次对应的 `codex plugin add`。安装或更新只刷新磁盘
+文件，不会热加载已经打开任务中的 Skill；按提示新建任务或重启 Codex 后再使用新版本。
 
 成员端和工程端共用一份通用更新源码，分别随插件打包并校验一致性，不新增更新插件或运行时依赖。日报、周报、补丁继续使用成员内核的版本门禁；工程任务由六个 Skill 共用的启动入口检查更新，同一任务后续步骤不反复联网或中途切换版本。自动更新后按提示重启 Codex。旧工程版本需先升级一次，才具备这一启动检查能力。
 

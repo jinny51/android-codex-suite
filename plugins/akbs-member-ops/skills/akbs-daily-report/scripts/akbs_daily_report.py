@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare, validate, or submit an AKBS member daily report through incoming v1."""
+"""Prepare, validate, or submit an AKBS member daily report through incoming v2."""
 
 from __future__ import annotations
 
@@ -8,11 +8,11 @@ from pathlib import Path
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[3]
-for path in (PLUGIN_ROOT / "lib", PLUGIN_ROOT / "internal" / "incoming-v1" / "scripts"):
+for path in (PLUGIN_ROOT / "lib", PLUGIN_ROOT / "internal" / "incoming-v2" / "scripts"):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from akbs_member_ops.incoming_v1.cli import route_arguments  # noqa: E402
+from akbs_member_ops.incoming_v2.cli import route_arguments  # noqa: E402
 from akbs_member_intake import main as incoming_main  # noqa: E402
 
 

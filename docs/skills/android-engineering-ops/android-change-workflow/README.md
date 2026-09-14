@@ -12,4 +12,4 @@ Android policy、源码权威、远端通道、构建/设备安全、capture 和
 
 Extension 按项目配置优先于本地配置解析；选择 provider 后只从 Codex active installed+enabled inventory 取得固定插件根，异常 fail closed，能力缺失或不适用才回 core。
 
-Canonical layer 只有 application/platform/native/hal/kernel/device/build。任何 layer 的已验证变更都由 `android-patch-capture` 直接生成 `knowledge-incoming-package/1/android_change` 包，再把同一目录交给 `akbs-patch-submit` 检查、准备或提交。七层分类只增加 `components[].layer`，不存在第二套包格式或生命周期。
+Canonical layer 只有 application/platform/native/hal/kernel/device/build。任何 layer 的已验证变更都由 `android-patch-capture` 直接生成 `knowledge-incoming-package/2/android_change` 包，再把同一目录交给 `akbs-patch-submit` 检查、准备或提交。七层分类只增加 `components[].layer`，不存在第二套补丁格式或生命周期。

@@ -12,7 +12,7 @@ weekly, or patch packages. It applies to every AKBS member, including GMS and
 report-only members; setup is not restricted to Framework or source-development work.
 
 For first setup, read the existing canonical prompt at
-`../../internal/incoming-v1/references/member-setup-prompt.md`. That internal-kernel
+`../../internal/incoming-v2/references/member-setup-prompt.md`. That internal-kernel
 location remains the single source; do not duplicate member configuration rules.
 
 Before creating or modifying `$CODEX_HOME/akbs-member-ops.toml`, run the read-only
@@ -49,7 +49,7 @@ installed active plugin.
 
 The member profile supplies `member_alias`; do not derive it from Git author, invent an
 alias, or ask ordinary members to configure server tokens, cookies, roles, database
-paths, or client-IP headers. Incoming v1 support is an internal data-compatibility
+paths, or client-IP headers. Incoming v2 support is an internal data-compatibility
 kernel, not a public legacy Skill.
 
 Local doctor reports `configured_unverified`, not authenticated identity. With

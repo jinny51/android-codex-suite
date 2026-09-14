@@ -36,7 +36,7 @@ checkout 只能作为开发证据。
 管理员参与开发、检索和贡献时也使用普通成员 profile，不需要管理员权限。
 
 首次配置读取共享内核中的唯一
-`plugins/akbs-member-ops/internal/incoming-v1/references/member-setup-prompt.md`，避免维护两套身份和 endpoint 规则。
+`plugins/akbs-member-ops/internal/incoming-v2/references/member-setup-prompt.md`，避免维护两套身份和 endpoint 规则。
 现行入口统一为 `akbs-member-setup doctor`。
 
 只要 `$CODEX_HOME/akbs-member-ops.toml` 存在，它就是唯一 AKBS 配置权威；此时不探测、

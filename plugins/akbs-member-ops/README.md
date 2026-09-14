@@ -1,6 +1,6 @@
 # AKBS Member Ops
 
-Standalone AKBS member plugin, version 2.1.2. It owns member setup, knowledge
+Standalone AKBS member plugin, version 2.2.0. It owns member setup, knowledge
 search and merge review, personal daily/weekly reports, and Android change
 package handling without depending on the engineering or optional practices
 plugins at runtime.
@@ -45,10 +45,10 @@ read-only compatibility source. Historical packages are not moved or rewritten.
 ## Incoming contracts
 
 There is one incoming implementation at
-`internal/incoming-v1/scripts/akbs_member_intake.py`. Current capture and submit use
-`knowledge-incoming-package/1/android_change`. Its `components[].layer` classifies
+`internal/incoming-v2/scripts/akbs_member_intake.py`. Current capture and submit use
+`knowledge-incoming-package/2/android_change`. Its `components[].layer` classifies
 each patch into application, platform, native, hal, kernel, device, or build; all
-other package fields and the upload lifecycle remain the stable v1 contract.
+other package fields and the upload lifecycle remain the current v2 contract.
 
 Historical `knowledge-incoming-package/1/framework_change` archives remain readable
 without rewriting their bytes. Current tools do not create or submit that legacy kind.

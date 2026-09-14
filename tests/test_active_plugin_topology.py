@@ -60,7 +60,7 @@ def test_compatibility_matrix_explains_every_changed_surface() -> None:
         "contract.android-orchestration-extension",
         "config.android-engineering.extension",
         "runtime.controller-worker-protocol",
-        "contract.knowledge-incoming-package-v1",
+        "contract.knowledge-incoming-package-v2",
     } == set(rows)
     assert all(required.issubset(row) for row in rows.values())
 
@@ -68,7 +68,8 @@ def test_compatibility_matrix_explains_every_changed_surface() -> None:
 def test_removed_runtime_is_physically_absent() -> None:
     assert not (ROOT / "contracts/android-practices-provider").exists()
     assert not (ROOT / "contracts/android-change-workflow").exists()
-    assert not (ROOT / "contracts/incoming/v2").exists()
+    assert (ROOT / "contracts/incoming/v2/knowledge-incoming-package.schema.json").is_file()
+    assert not (ROOT / "contracts/incoming/v2/akbs-android-change-package.schema.json").exists()
     assert not (
         ROOT / "plugins/android-engineering-ops/lib/android_engineering_ops/workflow"
     ).exists()

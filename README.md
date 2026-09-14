@@ -44,8 +44,8 @@ jinny-android-practices
 - `android-source-access` 自动识别 WSL 或 macOS，并选择插件内对应适配器；成员不再按操作系统安装两个入口插件。
 - 日报、周报、知识检索和补丁提交属于 AKBS 成员能力；源码修改、构建和本地材料采集属于 Android 工程能力。
 - 当前源码材料默认由远端通道一步生成最新快照并原子打包，避免人工衔接命令导致快照仅因等待而过期。
-- 旧配置、材料和历史包按声明永久可读，不改写、不搬家；当前 Android change 继续写入稳定 v1 包。
-- `android-patch-capture` 直接生成 `knowledge-incoming-package/1/android_change` 包，`akbs-patch-submit` 负责检查、准备和提交；七层分类只通过 `components[].layer` 增加到稳定 v1 合同，不新增第二套包格式或生命周期。
+- 旧配置、材料和合法历史 v1 包按声明只读；所有当前入站统一写入正式 v2 包。
+- `android-patch-capture` 直接生成 `knowledge-incoming-package/2/android_change` 包，`akbs-patch-submit` 负责检查、准备和提交；七层分类只通过 `components[].layer` 加入正式 incoming v2 合同，不新增第二套补丁格式或生命周期。
 
 ## 可选扩展
 

@@ -14,7 +14,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_ROOT = REPO_ROOT / "plugins" / "akbs-member-ops"
 PLUGIN_LIB = PLUGIN_ROOT / "lib"
-INTAKE_SCRIPTS = PLUGIN_ROOT / "internal" / "incoming-v1" / "scripts"
+INTAKE_SCRIPTS = PLUGIN_ROOT / "internal" / "incoming-v2" / "scripts"
 for path in (PLUGIN_LIB, INTAKE_SCRIPTS):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
@@ -52,7 +52,7 @@ def base_config(root: Path) -> dict[str, str]:
         "timezone": "Asia/Shanghai",
         "synthetic_data": "false",
         "include_patches": "false",
-        "incoming_schema_version": "1",
+        "incoming_schema_version": "2",
     }
 
 
@@ -202,7 +202,7 @@ def test_missing_consent_stops_before_session_read_packaging_and_http(tmp_path: 
             date,
             config,
             run_id=f"{date:%Y%m%d}-090000-daily",
-            incoming_schema_version="1",
+            incoming_schema_version="2",
             validate_package_fn=validate_spy,
             write_package_source_fn=source_spy,
             parse_sessions_fn=Mock(side_effect=AssertionError("session parser must not start")),
@@ -343,7 +343,7 @@ def test_package_contains_only_minimal_session_provenance_and_sanitized_derivati
         date,
         config,
         run_id=f"{date:%Y%m%d}-091500-daily",
-        incoming_schema_version="1",
+        incoming_schema_version="2",
         validate_package_fn=lambda _path: {"status": "PASS", "errors": []},
         write_package_source_fn=write_source,
         parse_sessions_fn=lambda cfg, dates: report_sessions.parse_sessions(cfg, dates, successful_command),

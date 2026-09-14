@@ -2,7 +2,7 @@
 
 > GitHub 说明页。Runtime skill 文件位于 [../../../../plugins/akbs-member-ops/skills/akbs-daily-report](../../../../plugins/akbs-member-ops/skills/akbs-daily-report)。
 
-成员个人日报入口。它只负责生成、修订、检查和提交日报包（daily report package），通过日报专用入口复用共享 incoming v1 内核和上传协议。
+成员个人日报入口。它只负责生成、修订、检查和提交日报包（daily report package），通过日报专用入口复用共享 incoming v2 内核和上传协议。
 
 读取日报输入、创建/修改 daily-facts 或执行生成、检查、提交前，必须先运行
 `akbs_member_setup.py preflight-install-family`；只有返回码 0 且 JSON

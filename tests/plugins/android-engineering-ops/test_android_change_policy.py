@@ -60,7 +60,7 @@ def test_component_contract_is_seven_layers_on_single_v1_package() -> None:
     ]
     assert "orthogonal_facets" not in contract["component_model"]
     assert contract["submission"]["canonical_package_type"] == (
-        "knowledge-incoming-package/1/android_change"
+        "knowledge-incoming-package/2/android_change"
     )
 
 

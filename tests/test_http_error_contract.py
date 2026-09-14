@@ -17,7 +17,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_ROOT = REPO_ROOT / "plugins" / "akbs-member-ops"
 PLUGIN_LIB = PLUGIN_ROOT / "lib"
-INTAKE_SCRIPTS = PLUGIN_ROOT / "internal" / "incoming-v1" / "scripts"
+INTAKE_SCRIPTS = PLUGIN_ROOT / "internal" / "incoming-v2" / "scripts"
 SCRIPTS_ROOT = REPO_ROOT / "scripts"
 for path in (PLUGIN_LIB, INTAKE_SCRIPTS, SCRIPTS_ROOT):
     if str(path) not in sys.path:
@@ -36,7 +36,7 @@ from validate_incoming_contract_gate import verify_public_contract  # noqa: E402
 
 
 ERROR_SCHEMA_SHA256 = "82840edf68f219c52b3b031d3d789d22400bedbb1785dfa855722f30dec77c94"
-PUBLIC_CONTRACT_SHA256 = "0c2e3046b6b0889a3317e527d8374f8e206675a20cdd445f11fb0b1dc1b8536c"
+PUBLIC_CONTRACT_SHA256 = "3e046b00d3291dea8af9fc9cd51c88792db83295d785aa1de393bc79adf1533b"
 REQUEST_ID = "req_0123456789abcdef0123456789abcdef"
 
 
@@ -72,14 +72,14 @@ def make_http_error(
 
 
 def test_vendored_error_schema_and_incoming_pin_are_exact() -> None:
-    pin = json.loads((REPO_ROOT / "contracts" / "incoming" / "v1" / "contract-pin.json").read_text(encoding="utf-8"))
+    pin = json.loads((REPO_ROOT / "contracts" / "incoming" / "v2" / "contract-pin.json").read_text(encoding="utf-8"))
     public = json.loads(
         (
             PLUGIN_ROOT
             / "internal"
-            / "incoming-v1"
+            / "incoming-v2"
             / "references"
-            / "incoming-public-contract-v1.json"
+            / "incoming-public-contract-v2.json"
         ).read_text(encoding="utf-8")
     )
 
@@ -93,7 +93,7 @@ def test_vendored_error_schema_and_incoming_pin_are_exact() -> None:
     assert len(public["reason_code_families"]["archive"]) == 12
 
 
-def test_client_only_gate_builds_the_frozen_v1_package_flow() -> None:
+def test_client_only_gate_builds_the_current_v2_package_flow() -> None:
     result = subprocess.run(
         [
             sys.executable,
@@ -111,7 +111,7 @@ def test_client_only_gate_builds_the_frozen_v1_package_flow() -> None:
     payload = json.loads(result.stdout)
     assert payload == {
         "status": "PASS",
-        "contract": "incoming-v1-client",
+        "contract": "incoming-v2-client",
         "execution": "local-fixture-only",
         "packages": ["daily", "patch", "weekly"],
     }
@@ -245,17 +245,17 @@ def test_shared_request_client_preserves_modern_code_and_request_id() -> None:
 
 def make_synthetic_system_root(root: Path) -> Path:
     system_root = root / "synthetic-system"
-    incoming_root = system_root / "contracts" / "incoming" / "v1"
+    incoming_root = system_root / "contracts" / "incoming" / "v2"
     incoming_root.mkdir(parents=True)
     shutil.copy2(
         PLUGIN_ROOT
         / "internal"
-        / "incoming-v1"
+        / "incoming-v2"
         / "references"
-        / "incoming-public-contract-v1.json",
+        / "incoming-public-contract-v2.json",
         incoming_root / "public-contract.json",
     )
-    plugin_contract_root = REPO_ROOT / "contracts" / "incoming" / "v1"
+    plugin_contract_root = REPO_ROOT / "contracts" / "incoming" / "v2"
     shutil.copy2(plugin_contract_root / "knowledge-incoming-package.schema.json", incoming_root)
     shutil.copy2(plugin_contract_root / "verification-acceptance-v2.json", incoming_root)
     shutil.copytree(plugin_contract_root / "fixtures", incoming_root / "fixtures")
@@ -268,6 +268,7 @@ def make_synthetic_system_root(root: Path) -> Path:
     error_root = system_root / "contracts" / "http"
     error_root.mkdir(parents=True)
     shutil.copy2(PLUGIN_ROOT / "contracts" / "http" / "error-envelope-v1.schema.json", error_root)
+    shutil.copy2(REPO_ROOT / "contracts" / "contract-set.json", system_root / "contracts")
     (system_root / "unrelated.txt").write_text("synthetic unrelated source commit\n", encoding="utf-8")
     subprocess.run(["git", "init", "-q", "-b", "main", str(system_root)], check=True)
     subprocess.run(["git", "config", "user.email", "contract@example.invalid"], cwd=system_root, check=True)
@@ -306,7 +307,7 @@ def test_unrelated_system_commit_with_identical_contract_content_passes(tmp_path
 )
 def test_contract_content_drift_still_fails_closed(tmp_path: Path, drift: str) -> None:
     system_root = make_synthetic_system_root(tmp_path)
-    incoming_root = system_root / "contracts" / "incoming" / "v1"
+    incoming_root = system_root / "contracts" / "incoming" / "v2"
     if drift == "contract_hash":
         path = incoming_root / "public-contract.json"
         path.write_bytes(path.read_bytes() + b"\n")

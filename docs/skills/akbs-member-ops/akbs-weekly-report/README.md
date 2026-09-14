@@ -2,7 +2,7 @@
 
 > GitHub 说明页。Runtime skill 文件位于 [../../../../plugins/akbs-member-ops/skills/akbs-weekly-report](../../../../plugins/akbs-member-ops/skills/akbs-weekly-report)。
 
-成员个人周报入口。它只负责生成、修订、检查和提交周报包（weekly report package），通过周报专用入口复用共享 incoming v1 内核和上传协议。成员侧不生成、不理解团队汇总报告；管理端汇总是管理员侧能力。
+成员个人周报入口。它只负责生成、修订、检查和提交周报包（weekly report package），通过周报专用入口复用共享 incoming v2 内核和上传协议。成员侧不生成、不理解团队汇总报告；管理端汇总是管理员侧能力。
 
 读取周报输入、创建/修改 weekly-facts 或执行生成、检查、提交前，必须先运行
 `akbs_member_setup.py preflight-install-family`；只有返回码 0 且 JSON

@@ -17,11 +17,11 @@ JINNY = ROOT / "plugins/jinny-android-practices"
 TOPOLOGY = ROOT / "contracts/plugin-topology/v3/active-topology.json"
 MATRIX = ROOT / "contracts/plugin-topology/v3/compatibility-matrix.json"
 EXTENSION_SCHEMA = ROOT / "contracts/android-orchestration-extension/v1/extension.schema.json"
-PACKAGE_SCHEMA = ROOT / "contracts/incoming/v1/knowledge-incoming-package.schema.json"
-PACKAGE_FIXTURE = ROOT / "contracts/incoming/v1/fixtures/patch.manifest.json"
+PACKAGE_SCHEMA = ROOT / "contracts/incoming/v2/knowledge-incoming-package.schema.json"
+PACKAGE_FIXTURE = ROOT / "contracts/incoming/v2/fixtures/patch.manifest.json"
 EXPECTED = {
     "akbs-member-ops": {
-        "version": "2.1.2",
+        "version": "2.2.0",
         "skills": {
             "akbs-member-setup", "akbs-knowledge-search",
             "akbs-knowledge-merge-review", "akbs-daily-report",
@@ -29,7 +29,7 @@ EXPECTED = {
         },
     },
     "android-engineering-ops": {
-        "version": "3.0.0",
+        "version": "3.1.0",
         "skills": {
             "android-change-policy", "android-change-workflow",
             "android-source-access", "android-remote-channel",
@@ -171,9 +171,9 @@ def validate_extension() -> None:
 
 
 def validate_preserved_contracts() -> None:
-    member_schema = MEMBER / "internal/incoming-v1/references/knowledge-incoming-package.schema.json"
+    member_schema = MEMBER / "internal/incoming-v2/references/knowledge-incoming-package.schema.json"
     if PACKAGE_SCHEMA.read_bytes() != member_schema.read_bytes():
-        raise TopologyError("stable v1 package schema copies differ")
+        raise TopologyError("current v2 package schema copies differ")
 
     sys.path.insert(0, str(CORE / "lib"))
     from android_engineering_ops.json_contract import validate_document
@@ -181,8 +181,8 @@ def validate_preserved_contracts() -> None:
 
     package = load(PACKAGE_FIXTURE)
     validate_document(package, PACKAGE_SCHEMA)
-    if package.get("package_kind") != "android_change" or package.get("schema_version") != "1":
-        raise TopologyError("Android changes no longer use the stable v1 package")
+    if package.get("package_kind") != "android_change" or package.get("schema_version") != "2":
+        raise TopologyError("Android changes no longer use the current v2 package")
     components = package.get("components")
     if not isinstance(components, list) or not components:
         raise TopologyError("Android change components are missing")
@@ -201,10 +201,10 @@ def validate_removed_runtime() -> None:
     forbidden = [
         ROOT / "contracts/android-practices-provider",
         ROOT / "contracts/android-change-workflow",
-        ROOT / "contracts/incoming/v2",
         CORE / "contracts/android-practices-provider",
         CORE / "contracts/android-change-workflow",
-        CORE / "contracts/incoming/v2",
+        ROOT / "contracts/incoming/v2/akbs-android-change-package.schema.json",
+        CORE / "contracts/incoming/v2/akbs-android-change-package.schema.json",
         CORE / "lib/android_engineering_ops/practices",
         CORE / "lib/android_engineering_ops/workflow",
         CORE / "skills/android-change-workflow/scripts/android_change_controller.py",

@@ -1,0 +1,34 @@
+{
+  "schema": "akbs-contract-set/v1",
+  "authority": "AKBS system",
+  "incoming_package": {
+    "current": {
+      "schema": "knowledge-incoming-package",
+      "schema_version": "2",
+      "public_contract": "contracts/incoming/v2/public-contract.json",
+      "write_policy": "required_for_all_new_incoming_packages",
+      "package_kinds": ["daily_trace", "weekly_trace", "android_change"]
+    },
+    "historical": {
+      "schema": "knowledge-incoming-package",
+      "schema_version": "1",
+      "manifest_schema": "contracts/incoming/v1/knowledge-incoming-package.schema.json",
+      "write_policy": "read_only",
+      "package_kinds": ["daily_trace", "weekly_trace", "framework_change"]
+    },
+    "rejected": [
+      {
+        "schema": "akbs-android-change-package-v2",
+        "reason": "retired_experimental_contract"
+      }
+    ]
+  },
+  "independent_contract_namespaces": {
+    "patch_lifecycle": "akbs-patch-package-contract/v2",
+    "verification_evidence": "akbs-verification-evidence/v2",
+    "knowledge_case": "akbs-knowledge-case/v2",
+    "relation_registry": "akbs-relation-registry-v2",
+    "curation_decision_artifact": "akbs-curation-decision-artifact/v3",
+    "http_error_envelope": "akbs-error-envelope/v1"
+  }
+}

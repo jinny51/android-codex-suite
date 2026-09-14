@@ -1,6 +1,6 @@
 ---
 name: akbs-patch-submit
-description: "Use when an AKBS member needs to prepare, validate, submit, or complete information for an Android change package. Uses the single knowledge-incoming-package v1 contract across all seven Android layers; excludes source implementation, patch capture, and administrator curation."
+description: "Use when an AKBS member needs to prepare, validate, submit, or complete information for an Android change package. Uses the single knowledge-incoming-package v2 contract across all seven Android layers; excludes source implementation, patch capture, and administrator curation."
 ---
 
 # AKBS Patch Submit
@@ -13,7 +13,7 @@ There is one current package contract:
 ```json
 {
   "schema": "knowledge-incoming-package",
-  "schema_version": "1",
+  "schema_version": "2",
   "package_kind": "android_change",
   "files": {
     "patches": ["patches/example.patch"],
@@ -27,7 +27,7 @@ There is one current package contract:
 
 `components` is only a patch-to-layer map. Every `files.patches` path appears
 exactly once. Allowed layers are `application`, `platform`, `native`, `hal`,
-`kernel`, `device`, and `build`. The package keeps the stable v1 directory,
+`kernel`, `device`, and `build`. The package keeps the stable v2 directory,
 evidence, validation, upload, queue, information-completion, and curation lifecycle.
 
 Historical `framework_change` packages remain readable on the server. This Skill

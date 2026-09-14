@@ -8,7 +8,7 @@ description: "Use after one coherent Android change is implemented and verified 
 Use this Skill after `android-change-workflow` has completed and verified one
 coherent change. It creates an engineering capture directory; `akbs-patch-submit`
 then turns that directory into the single final
-`knowledge-incoming-package/1/android_change` package.
+`knowledge-incoming-package/2/android_change` package.
 
 ## Task startup
 

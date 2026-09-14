@@ -1,6 +1,6 @@
 {
   "name": "android-engineering-ops",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Standalone Android engineering core with an optional orchestration extension protocol.",
   "author": {
     "name": "Jinny Android Team",
@@ -20,7 +20,7 @@
   "interface": {
     "displayName": "Android Engineering Ops",
     "shortDescription": "独立完成 Android 变更、源码访问、远程构建验证和本地 patch capture",
-    "longDescription": "Android 工程核心插件。独立提供变更策略、七层 workflow、WSL/macOS source-access、远程通道、构建交付和稳定 v1 android_change 包；默认直接执行，也可显式加载一个遵守最小协议的编排扩展。",
+    "longDescription": "Android 工程核心插件。独立提供变更策略、七层 workflow、WSL/macOS source-access、远程通道、构建交付和正式 incoming v2 android_change 包；默认直接执行，也可显式加载一个遵守最小协议的编排扩展。",
     "developerName": "Jinny Android Team",
     "category": "Coding",
     "capabilities": [

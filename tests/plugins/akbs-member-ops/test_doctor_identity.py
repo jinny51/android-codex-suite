@@ -15,7 +15,7 @@ import urllib.error
 ROOT = Path(__file__).resolve().parents[3]
 PLUGIN = ROOT / "plugins" / "akbs-member-ops"
 sys.path.insert(0, str(PLUGIN / "lib"))
-sys.path.insert(0, str(PLUGIN / "internal" / "incoming-v1" / "scripts"))
+sys.path.insert(0, str(PLUGIN / "internal" / "incoming-v2" / "scripts"))
 
 from akbs_intake import config, doctor  # noqa: E402
 from akbs_member_ops import http_client  # noqa: E402

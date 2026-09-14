@@ -8,7 +8,7 @@ description: "Use when generating, revising, checking, or submitting a member pe
 Use this member-facing skill for personal 周报包（weekly report package） work. It answers one question: 这一周完成多少、还剩多少、风险和依赖是什么.
 
 This skill owns the weekly command entrypoint `scripts/akbs_weekly_report.py`.
-It routes to the shared member incoming v1 kernel, so member identity, server submission,
+It routes to the shared member incoming v2 kernel, so member identity, server submission,
 manifest protocol, replacement metadata, plugin version gate, session cache gate,
 duplicate guard, and local validation remain shared with daily and patch intake. The old
 umbrella `android_knowledge_intake.py ... weekly` command remains compatible.
@@ -83,7 +83,7 @@ prove project role, requirement date, requirement source, project totals, or
 remaining-item identity, local check must fail with exact missing fields. Ask the member
 only for those facts, write an `akbs-weekly-work-facts-v6` JSON file under
 `$CODEX_HOME/artifacts/akbs-member-ops/weekly-facts/`, and regenerate
-with `--weekly-facts`. Read `../../internal/incoming-v1/references/weekly-facts-contract.md`
+with `--weekly-facts`. Read `../../internal/incoming-v2/references/weekly-facts-contract.md`
 when this fact-completion path is needed. Do not ask the member to repair a
 large part of generated Markdown manually.
 

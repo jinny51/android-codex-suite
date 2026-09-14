@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from akbs_member_ops.incoming_v1.patch_markers import (
+from akbs_member_ops.incoming_v2.patch_markers import (
     MARKER_RE,
     analyze_unified_diff_markers,
 )
@@ -17,7 +17,7 @@ XML_RESOURCE_NAME_RE = re.compile(
     r"<(?:string|string-array|array|plurals|bool|integer|color|dimen|style)\b[^>]*\bname=[\"']([^\"']+)[\"']"
 )
 # Compatibility export for legacy callers. Canonical parsing lives in
-# The frozen incoming-v1 adapter owns this compatibility copy of the marker grammar.
+# The frozen incoming-v2 adapter owns this compatibility copy of the marker grammar.
 AUTHOR_DATE_RE = MARKER_RE
 BANNED_LOG_PATTERNS = (
     "Log.v(",

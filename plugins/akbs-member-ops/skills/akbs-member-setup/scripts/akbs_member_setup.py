@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[3]
-INCOMING_SCRIPTS = PLUGIN_ROOT / "internal" / "incoming-v1" / "scripts"
+INCOMING_SCRIPTS = PLUGIN_ROOT / "internal" / "incoming-v2" / "scripts"
 for path in (PLUGIN_ROOT / "lib", INCOMING_SCRIPTS):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
@@ -59,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(family, ensure_ascii=False, indent=2, sort_keys=True))
         return 1 if family.get("blocking") else 0
     if args.command == "print-setup-prompt":
-        prompt = PLUGIN_ROOT / "internal" / "incoming-v1" / "references" / "member-setup-prompt.md"
+        prompt = PLUGIN_ROOT / "internal" / "incoming-v2" / "references" / "member-setup-prompt.md"
         print(prompt.read_text(encoding="utf-8"), end="")
         return 0
     return incoming_main(incoming_arguments(args))

@@ -1,7 +1,7 @@
 # akbs-patch-submit
 
 成员侧只负责最终补丁包的读取、检查、准备和上传。当前格式只有
-`knowledge-incoming-package/1/android_change`；它沿用稳定 v1 合同和上传生命周期，
+`knowledge-incoming-package/2/android_change`；它使用正式 incoming v2 合同并沿用既有上传生命周期，
 只增加 `components[].layer` 对每个 patch 做七层分类。
 
 允许的 layer 是 `application`、`platform`、`native`、`hal`、`kernel`、`device`、`build`。

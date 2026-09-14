@@ -11,7 +11,7 @@ from .verification_acceptance import authoritative_requirement_result_error
 VERIFICATION_ACCEPTANCE_CONTRACT_PATH = (
     Path(__file__).resolve().parents[2]
     / "internal"
-    / "incoming-v1"
+    / "incoming-v2"
     / "references"
     / "verification-acceptance-v2.json"
 )

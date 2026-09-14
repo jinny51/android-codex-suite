@@ -22,8 +22,8 @@ from android_engineering_ops.json_contract import (  # noqa: E402
 from android_engineering_ops.knowledge_rules import VALID_FRAMEWORK_PLATFORMS  # noqa: E402
 
 
-PACKAGE_SCHEMA = ROOT / "contracts/incoming/v1/knowledge-incoming-package.schema.json"
-PACKAGE_FIXTURE = ROOT / "contracts/incoming/v1/fixtures/patch.manifest.json"
+PACKAGE_SCHEMA = ROOT / "contracts/incoming/v2/knowledge-incoming-package.schema.json"
+PACKAGE_FIXTURE = ROOT / "contracts/incoming/v2/fixtures/patch.manifest.json"
 
 
 def load(path: Path):
@@ -33,13 +33,13 @@ def load(path: Path):
 def test_android_change_uses_one_stable_v1_schema() -> None:
     copies = [
         PACKAGE_SCHEMA,
-        MEMBER / "internal/incoming-v1/references/knowledge-incoming-package.schema.json",
+        MEMBER / "internal/incoming-v2/references/knowledge-incoming-package.schema.json",
     ]
     assert len({path.read_bytes() for path in copies}) == 1
     package = load(PACKAGE_FIXTURE)
     validate_document(package, PACKAGE_SCHEMA)
     assert package["schema"] == "knowledge-incoming-package"
-    assert package["schema_version"] == "1"
+    assert package["schema_version"] == "2"
     assert package["package_kind"] == "android_change"
     assert package["components"] == [
         {"layer": "platform", "patches": ["patches/frameworks-base.patch"]}
@@ -65,4 +65,5 @@ def test_new_extension_contract_replaces_only_the_retired_control_protocol() -> 
     validate_document(load(manifest), schema)
     assert not (ROOT / "contracts/android-practices-provider").exists()
     assert not (ROOT / "contracts/android-change-workflow").exists()
-    assert not (ROOT / "contracts/incoming/v2").exists()
+    assert (ROOT / "contracts/incoming/v2/knowledge-incoming-package.schema.json").is_file()
+    assert not (ROOT / "contracts/incoming/v2/akbs-android-change-package.schema.json").exists()

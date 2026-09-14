@@ -8,7 +8,7 @@ description: "Use when generating, revising, checking, or submitting a member pe
 Use this member-facing skill for personal 日报包（daily report package） work. It answers one question: 今天干了什么、怎么干的、结果是什么.
 
 This skill owns the daily command entrypoint `scripts/akbs_daily_report.py`.
-It routes to the shared member incoming v1 kernel, so member identity, server submission,
+It routes to the shared member incoming v2 kernel, so member identity, server submission,
 manifest protocol, replacement metadata, plugin version gate, session cache gate,
 duplicate guard, and local validation remain shared with weekly and patch intake. The old
 umbrella `android_knowledge_intake.py ... daily` command remains compatible.
@@ -132,7 +132,7 @@ authorized evidence. Use `akbs-daily-work-facts-v4` under
 an unresolved scope, correct an inference, preserve explicit key points or
 dependencies, or make an explicit member override;
 pass it with `--daily-facts`. Read
-`../../internal/incoming-v1/references/daily-facts-contract.md`. Explicit facts
+`../../internal/incoming-v2/references/daily-facts-contract.md`. Explicit facts
 take precedence over inferred scope. For multiple unresolved scopes under one
 project, assign each work item to its scope explicitly.
 

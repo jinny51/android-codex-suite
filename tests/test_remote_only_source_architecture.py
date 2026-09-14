@@ -21,7 +21,7 @@ RUNTIME_SCAN_ROOTS = (
     Path("plugins/android-engineering-ops/skills/android-change-workflow/scripts"),
     Path("plugins/android-engineering-ops/skills/android-patch-capture/scripts"),
     Path("plugins/android-engineering-ops/skills/android-remote-build-deploy/scripts"),
-    Path("plugins/akbs-member-ops/internal/incoming-v1/scripts"),
+    Path("plugins/akbs-member-ops/internal/incoming-v2/scripts"),
     Path("plugins/android-engineering-ops/skills/android-source-access/scripts"),
     Path("plugins/android-engineering-ops/adapters/source-access/wsl"),
     Path("plugins/android-engineering-ops/adapters/source-access/macos"),
@@ -136,23 +136,23 @@ class RemoteOnlySourceArchitectureTests(unittest.TestCase):
     def test_knowledge_intake_has_no_implicit_android_cwd_patch_fallback(self) -> None:
         sessions = (
             REPO_ROOT
-            / "plugins/akbs-member-ops/internal/incoming-v1/scripts/akbs_intake/report_sessions.py"
+            / "plugins/akbs-member-ops/internal/incoming-v2/scripts/akbs_intake/report_sessions.py"
         ).read_text(encoding="utf-8")
         summary = (
             REPO_ROOT
-            / "plugins/akbs-member-ops/internal/incoming-v1/scripts/akbs_intake/reports/session_summary.py"
+            / "plugins/akbs-member-ops/internal/incoming-v2/scripts/akbs_intake/reports/session_summary.py"
         ).read_text(encoding="utf-8")
         assets = (
             REPO_ROOT
-            / "plugins/akbs-member-ops/internal/incoming-v1/scripts/akbs_intake/patch/assets.py"
+            / "plugins/akbs-member-ops/internal/incoming-v2/scripts/akbs_intake/patch/assets.py"
         ).read_text(encoding="utf-8")
         builder = (
             REPO_ROOT
-            / "plugins/akbs-member-ops/internal/incoming-v1/scripts/akbs_intake/patch/builder.py"
+            / "plugins/akbs-member-ops/internal/incoming-v2/scripts/akbs_intake/patch/builder.py"
         ).read_text(encoding="utf-8")
         intake_entry = (
             REPO_ROOT
-            / "plugins/akbs-member-ops/internal/incoming-v1/scripts/akbs_member_intake.py"
+            / "plugins/akbs-member-ops/internal/incoming-v2/scripts/akbs_member_intake.py"
         ).read_text(encoding="utf-8")
 
         self.assertIn("registered_android_mapping(raw_cwd, config)", sessions)

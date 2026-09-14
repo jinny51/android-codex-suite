@@ -1,6 +1,6 @@
 ---
 name: android-change-workflow
-description: "Use when implementing, diagnosing, modifying, or verifying Android source changes across application, platform, native, HAL, kernel, device, or build layers. Coordinates source authority, optional AKBS knowledge search, optional orchestration, policy, build-route selection, layer-aware verification, stable v1 Android change capture, and submission."
+description: "Use when implementing, diagnosing, modifying, or verifying Android source changes across application, platform, native, HAL, kernel, device, or build layers. Coordinates source authority, optional AKBS knowledge search, optional orchestration, policy, build-route selection, layer-aware verification, current v2 Android change capture, and submission."
 ---
 
 # Android Change Workflow
@@ -171,7 +171,7 @@ explicitly retain temporary diagnostics with a reason.
 
 Use `android-patch-capture --component-layer ...` and, for a multi-repository change,
 `--repo-layer REPO_PATH=LAYER` to create one coherent package. Capture verifies
-policy/evidence and directly writes a `knowledge-incoming-package/1/android_change`
+policy/evidence and directly writes a `knowledge-incoming-package/2/android_change`
 directory. Every `files.patches` path appears exactly once in `components[].patches`.
 
 Pass that same directory to `akbs-patch-submit read`, `check`, `prepare`, or `submit`.

@@ -150,7 +150,7 @@ akbs-daily-report / akbs-weekly-report / akbs-patch-submit
 android-patch-capture
   负责把 Android 各工程层的修改整理成标准补丁资料
 
-akbs-member-ops internal/incoming-v1
+akbs-member-ops internal/incoming-v2
   提供唯一共享内核、当前配置诊断和插件更新检查
 
 akbs-knowledge-search

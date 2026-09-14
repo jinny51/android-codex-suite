@@ -138,10 +138,10 @@ def _git_head(root: Path) -> str:
 
 
 def verify_public_contract(system_root: Path, suite_root: Path = REPO_ROOT) -> tuple[dict[str, Any], dict[str, Any]]:
-    plugin_contract_root = suite_root / "contracts" / "incoming" / "v1"
+    plugin_contract_root = suite_root / "contracts" / "incoming" / "v2"
     pin = load_json(plugin_contract_root / "contract-pin.json")
-    if pin.get("schema_version") != "1" or pin.get("compatibility") != "strict-content-hash-equality":
-        raise AssertionError("plugin compatibility pin must enforce strict incoming v1 content-hash equality")
+    if pin.get("schema_version") != "2" or pin.get("compatibility") != "strict-content-hash-equality":
+        raise AssertionError("plugin compatibility pin must enforce strict incoming v2 content-hash equality")
     provenance = pin.get("source_provenance")
     if not isinstance(provenance, dict):
         raise AssertionError("plugin compatibility pin is missing source provenance")
@@ -149,6 +149,25 @@ def verify_public_contract(system_root: Path, suite_root: Path = REPO_ROOT) -> t
     if not re.fullmatch(r"[0-9a-f]{40}", provenance_commit) or provenance.get("compatibility_condition") is not False:
         raise AssertionError("source provenance must be an audit-only Git commit")
     observed_system_commit = _git_head(system_root)
+
+    contract_set = pin.get("contract_set")
+    if not isinstance(contract_set, dict):
+        raise AssertionError("plugin compatibility pin is missing the AKBS contract set")
+    system_contract_set = system_root / _relative_contract_path(
+        contract_set.get("system_path"), label="system contract-set path"
+    )
+    consumer_contract_set = suite_root / _relative_contract_path(
+        contract_set.get("consumer_path"), label="plugin contract-set path"
+    )
+    expected_contract_set_sha = str(contract_set.get("sha256") or "")
+    if (
+        not re.fullmatch(r"[0-9a-f]{64}", expected_contract_set_sha)
+        or not system_contract_set.is_file()
+        or not consumer_contract_set.is_file()
+        or system_contract_set.read_bytes() != consumer_contract_set.read_bytes()
+        or sha256(system_contract_set) != expected_contract_set_sha
+    ):
+        raise AssertionError("AKBS contract set drift")
 
     source = pin.get("public_contract")
     if not isinstance(source, dict):
@@ -332,6 +351,7 @@ def verify_public_contract(system_root: Path, suite_root: Path = REPO_ROOT) -> t
             "artifacts": len(public_artifacts),
             "fixtures": len(fixtures),
             "reason_codes": len(reason_codes),
+            "contract_set_sha256": expected_contract_set_sha,
             "public_contract_sha256": system_public_sha,
             "verification_evaluator_sha256": system_evaluator_sha,
             "error_envelope_sha256": system_error_sha,
@@ -426,7 +446,7 @@ def write_config(root: Path) -> tuple[dict[str, str], dict[str, Path]]:
         textwrap.dedent(
             f"""
             default_profile = "wick"
-            incoming_schema_version = "1"
+            incoming_schema_version = "2"
 
             [paths]
             out_dir = "{(codex_home / 'artifacts/akbs-member-ops').as_posix()}"
@@ -483,7 +503,7 @@ def init_framework_source(root: Path) -> Path:
 def build_legacy_framework_capture_fixture(
     env: dict[str, str], source_root: Path, patch_artifact: Path
 ) -> Path:
-    """Build a frozen v1 capture fixture for the single Android change package path."""
+    """Build a current v2 capture fixture for the single Android change package path."""
     capture = (
         Path(env["CODEX_HOME"])
         / "artifacts/android-framework-patch-capture/packages"
@@ -504,7 +524,7 @@ def build_legacy_framework_capture_fixture(
 
 ## 修改点
 
-- 修改 SystemUI 测试属性，用于验证 v1 capture reader 和提交路由。
+- 修改 SystemUI 测试属性，用于验证 v2 capture reader 和提交路由。
 
 ## 日志控制
 
@@ -547,7 +567,7 @@ def build_legacy_framework_capture_fixture(
     manifest = {
         "package_type": "framework_feature_patch",
         "change_domain": "framework",
-        "summary": "incoming v1 跨仓合同门禁",
+        "summary": "incoming v2 跨仓合同门禁",
         "feature": "incoming-contract-gate",
         "project": "TVE8402M",
         "platform_token": "mtk15",
@@ -599,7 +619,7 @@ def build_legacy_framework_capture_fixture(
                 "kind": "verification_result",
                 "path": verification_rel,
                 "result": "PASS",
-                "summary": "legacy Framework v1 contract verification",
+                "summary": "legacy Framework v2 contract verification",
             }
         ],
     }
@@ -617,7 +637,7 @@ def generate_real_packages(
 ) -> dict[str, Path]:
     intake_script = (
         runtimes["akbs-member-ops"]
-        / "internal/incoming-v1/scripts/akbs_member_intake.py"
+        / "internal/incoming-v2/scripts/akbs_member_intake.py"
     )
     common = [sys.executable, str(intake_script), "--profile", "wick"]
     daily = run_json(common + ["daily", "--date", "2026-07-11", "--run-id", "20260711-090000-daily", "--prepare"], REPO_ROOT, env)
@@ -646,7 +666,7 @@ def generate_real_packages(
             "--patch-package",
             str(target_capture),
             "--summary",
-            "incoming v1 跨仓合同门禁",
+            "incoming v2 跨仓合同门禁",
             "--status",
             "validated",
             "--prepare",
@@ -758,7 +778,7 @@ class _TestClientUrlopen:
 
 def load_plugin_submit(suite_root: Path) -> Any:
     plugin_root = suite_root / "plugins" / "akbs-member-ops"
-    scripts_root = plugin_root / "internal" / "incoming-v1" / "scripts"
+    scripts_root = plugin_root / "internal" / "incoming-v2" / "scripts"
     plugin_lib = plugin_root / "lib"
     if not (scripts_root / "akbs_intake" / "submit.py").is_file():
         raise AssertionError(f"plugin HTTP client is missing: {scripts_root}")
@@ -1045,12 +1065,12 @@ def retarget_member(package: Path, manifest: dict[str, Any], member: str, run_id
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate the stable incoming v1 contract.")
+    parser = argparse.ArgumentParser(description="Validate the stable incoming v2 contract.")
     parser.add_argument(
         "--mode",
         choices=("client-only", "remote-pilot"),
         default="client-only",
-        help="Local v1 checks are the default; remote-pilot checks the stable v1 server contract.",
+        help="Local v1 checks are the default; remote-pilot checks the current v2 server contract.",
     )
     parser.add_argument("--system-root", type=Path, help="Read-only AKBS system repository root")
     parser.add_argument("--server-host", default="test35", help="SSH host providing the authoritative system Python runtime")
@@ -1094,7 +1114,7 @@ def main() -> int:
                     json.dumps(
                         {
                             "status": "PASS",
-                            "contract": "incoming-v1-client",
+                            "contract": "incoming-v2-client",
                             "execution": "local-fixture-only",
                             "packages": sorted(packages),
                         },
@@ -1110,7 +1130,7 @@ def main() -> int:
                 raise SystemExit(f"invalid system root: {system_root}")
             public, _ = verify_public_contract(system_root)
             runtime = exercise_remote_server(packages, args.server_host, args.server_runtime_root, args.server_python_path)
-        print(json.dumps({"status": "PASS", "contract": "incoming-v1", **public, **runtime}, ensure_ascii=False, sort_keys=True))
+        print(json.dumps({"status": "PASS", "contract": "incoming-v2", **public, **runtime}, ensure_ascii=False, sort_keys=True))
         return 0
 
 

@@ -118,5 +118,5 @@ def test_capture_uses_single_v1_handoff_contract() -> None:
         PLUGIN
         / "skills/android-patch-capture/references/package-contract.md"
     ).read_text(encoding="utf-8")
-    assert "knowledge-incoming-package / schema_version 1 / android_change" in reference
+    assert "knowledge-incoming-package / schema_version 2 / android_change" in reference
     assert "adapt-capture" not in reference

@@ -45,7 +45,7 @@
     "history_rewrite": false
   },
   "submission": {
-    "canonical_package_type": "knowledge-incoming-package/1/android_change",
+    "canonical_package_type": "knowledge-incoming-package/2/android_change",
     "final_package_owner": "android-patch-capture",
     "local_prepare_owner": "akbs-patch-submit",
     "upload_lifecycle": "common_patch_upload",

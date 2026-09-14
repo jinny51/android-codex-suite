@@ -36,7 +36,7 @@ not valid substitutes for repository patches.
 The final package is constructed by `akbs-patch-submit` and uses only:
 
 ```text
-knowledge-incoming-package / schema_version 1 / android_change
+knowledge-incoming-package / schema_version 2 / android_change
 ```
 
 The final `components` rows contain only `layer` and `patches`. Evidence

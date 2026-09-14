@@ -1,6 +1,6 @@
 {
   "name": "akbs-member-ops",
-  "version": "2.1.2",
+  "version": "2.2.0",
   "description": "Standalone AKBS member setup, knowledge, reporting, and patch submission workflows.",
   "author": {
     "name": "Jinny Android Team",
@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "AKBS Member Ops",
     "shortDescription": "成员配置、知识检索、个人报告与补丁提交",
-    "longDescription": "为 AKBS 成员提供独立的首次配置、知识检索与合并确认、个人日报周报以及补丁包准备和提交。当前补丁使用稳定 incoming v1 的 android_change 类型，并以简单 components 映射覆盖七层；成员身份、上传接口和幂等重试生命周期保持不变。",
+    "longDescription": "为 AKBS 成员提供独立的首次配置、知识检索与合并确认、个人日报周报以及补丁包准备和提交。所有新入站使用正式 knowledge-incoming-package/2；补丁采用 android_change 和最小 components 七层映射，上传接口和既有生命周期保持不变。",
     "developerName": "Jinny Android Team",
     "category": "Coding",
     "capabilities": [

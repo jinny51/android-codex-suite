@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://akbs.internal/contracts/incoming/v2/knowledge-incoming-package.schema.json",
+  "title": "AKBS server incoming package v2",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "schema_version",
+    "package_kind",
+    "member_alias",
+    "member_name",
+    "date",
+    "run_id",
+    "tool",
+    "summary",
+    "files"
+  ],
+  "properties": {
+    "schema": {"const": "knowledge-incoming-package"},
+    "schema_version": {"const": "2"},
+    "package_key": {"type": "string", "pattern": "^[0-9]{8}/[^/]+/[0-9]{8}-[0-9]{6}(?:-[A-Za-z0-9_.-]+)?$"},
+    "package_kind": {"enum": ["daily_trace", "weekly_trace", "android_change"]},
+    "member_alias": {"type": "string", "minLength": 1},
+    "member_name": {"type": "string", "minLength": 1},
+    "date": {"type": "string", "format": "date"},
+    "run_id": {"type": "string", "pattern": "^[0-9]{8}-[0-9]{6}(?:-[A-Za-z0-9_.-]+)?$"},
+    "tool": {"type": "string", "minLength": 1},
+    "summary": {"type": "string", "minLength": 1},
+    "files": {"type": "object"},
+    "components": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["layer", "patches"],
+        "properties": {
+          "layer": {"enum": ["application", "platform", "native", "hal", "kernel", "device", "build"]},
+          "patches": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+        }
+      }
+    },
+    "workflow_contract": {
+      "enum": ["current_codex_skill", "manual_import", "historical_import"]
+    },
+    "package_status": {"enum": ["validated", "candidate", "draft", "failed", "blocked"]},
+    "logical_package_key": false,
+    "logical_root_package_key": false,
+    "original_package_key": false,
+    "root_original_package_key": false,
+    "supplement_delta": false,
+    "supplement_for": false,
+    "supplement_for_package_key": false,
+    "supplement_reason": false,
+    "supplement_intent": false,
+    "supplement_mode": false,
+    "supplement_package_key": false,
+    "supplement_task": false
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"package_kind": {"const": "android_change"}}},
+      "then": {
+        "required": ["case_id", "variant_id", "package_status", "project", "platform", "android_version", "workflow_contract", "components"],
+        "properties": {"package_status": {"const": "validated"}}
+      }
+    }
+  ]
+}

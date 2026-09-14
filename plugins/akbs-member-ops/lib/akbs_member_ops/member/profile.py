@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from akbs_member_ops.incoming_v1.patch_markers import require_valid_alias
+from akbs_member_ops.incoming_v2.patch_markers import require_valid_alias
 from akbs_member_ops.member_config import (
     default_codex_home,
     load_toml,

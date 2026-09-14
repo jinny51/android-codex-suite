@@ -35,7 +35,7 @@ def test_current_plugin_validator_inventory_is_explicit() -> None:
         Path("scripts/validate_skill_layout.sh"),
         Path("scripts/test_validator_cleanup.py"),
         Path(
-            "plugins/akbs-member-ops/internal/incoming-v1/"
+            "plugins/akbs-member-ops/internal/incoming-v2/"
             "scripts/akbs_intake/doctor.py"
         ),
     }
@@ -112,7 +112,7 @@ def test_python_validator_components_use_parent_or_finally_cleanup() -> None:
 def test_doctors_are_read_only_and_shared_guard_copies_are_declared() -> None:
     doctors = (
         REPO_ROOT
-        / "plugins/akbs-member-ops/internal/incoming-v1/scripts/akbs_intake/doctor.py",
+        / "plugins/akbs-member-ops/internal/incoming-v2/scripts/akbs_intake/doctor.py",
     )
     for doctor_path in doctors:
         doctor = doctor_path.read_text(encoding="utf-8")

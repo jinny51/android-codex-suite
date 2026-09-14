@@ -50,17 +50,20 @@ class SkillSurfaceTest(unittest.TestCase):
                 )
                 self.assertEqual(completed.returncode, 0, completed.stderr)
 
-    def test_only_one_incoming_v1_kernel_entry_exists(self) -> None:
+    def test_only_one_incoming_v2_kernel_entry_exists(self) -> None:
         kernels = list(PLUGIN.rglob("akbs_member_intake.py"))
         self.assertEqual(
             kernels,
-            [PLUGIN / "internal" / "incoming-v1" / "scripts" / "akbs_member_intake.py"],
+            [PLUGIN / "internal" / "incoming-v2" / "scripts" / "akbs_member_intake.py"],
         )
 
     def test_retired_v2_command_is_not_available(self) -> None:
         script = PLUGIN / "skills" / "akbs-patch-submit" / "scripts" / "akbs_patch_submit.py"
         self.assertNotIn("android-change-v2", script.read_text(encoding="utf-8"))
-        self.assertFalse((PLUGIN / "lib/akbs_member_ops/incoming_v2").exists())
+        current = PLUGIN / "lib/akbs_member_ops/incoming_v2"
+        self.assertTrue(current.exists())
+        for retired in ("schema.py", "submission.py", "validation.py"):
+            self.assertFalse((current / retired).exists())
 
     def test_search_literal_help_after_option_terminator_cannot_bypass_family_gate(self) -> None:
         script = PLUGIN / "skills/akbs-knowledge-search/scripts/akbs_knowledge_search.py"
@@ -75,7 +78,7 @@ class SkillSurfaceTest(unittest.TestCase):
         family_gate.assert_called_once_with()
         business.assert_not_called()
 
-    def test_single_v1_boundary_is_aligned_across_public_surfaces(self) -> None:
+    def test_single_v2_boundary_is_aligned_across_public_surfaces(self) -> None:
         surfaces = (
             PLUGIN / "README.md",
             PLUGIN / ".codex-plugin" / "plugin.json",
@@ -179,7 +182,7 @@ class SkillSurfaceTest(unittest.TestCase):
 
         prompt = (
             PLUGIN
-            / "internal/incoming-v1/references/member-setup-prompt.md"
+            / "internal/incoming-v2/references/member-setup-prompt.md"
         ).read_text(encoding="utf-8")
         self.assertLess(
             prompt.index("preflight-install-family"),
@@ -189,7 +192,7 @@ class SkillSurfaceTest(unittest.TestCase):
     def test_v1_validate_cannot_bypass_target_install_family_gate(self) -> None:
         script = (
             PLUGIN
-            / "internal/incoming-v1/scripts/akbs_member_intake.py"
+            / "internal/incoming-v2/scripts/akbs_member_intake.py"
         )
         module = self.load_script("akbs_member_intake_validate_gate_test", script)
         output = io.StringIO()
@@ -250,7 +253,7 @@ class SkillSurfaceTest(unittest.TestCase):
             )
             facts = (
                 PLUGIN
-                / f"internal/incoming-v1/references/{report_type}-facts-contract.md"
+                / f"internal/incoming-v2/references/{report_type}-facts-contract.md"
             ).read_text(encoding="utf-8")
             docs = (
                 ROOT
@@ -282,7 +285,7 @@ class SkillSurfaceTest(unittest.TestCase):
             PLUGIN / "README.md",
             PLUGIN / "skills" / "akbs-member-setup" / "SKILL.md",
             PLUGIN / "skills" / "akbs-knowledge-search" / "SKILL.md",
-            PLUGIN / "internal" / "incoming-v1" / "references" / "member-setup-prompt.md",
+            PLUGIN / "internal" / "incoming-v2" / "references" / "member-setup-prompt.md",
             ROOT / "docs" / "skills" / "akbs-member-ops" / "akbs-member-setup" / "README.md",
             ROOT / "docs" / "skills" / "akbs-member-ops" / "akbs-knowledge-search" / "README.md",
         )

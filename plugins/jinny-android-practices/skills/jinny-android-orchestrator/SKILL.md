@@ -1,6 +1,6 @@
 ---
 name: jinny-android-orchestrator
-description: "Use when jinny-android-practices is explicitly selected for an Android engineering task, or when the user explicitly invokes Jinny Android orchestration. Keep simple work in the current task and create real bounded subagents only when independent investigation, implementation, verification, or review will materially improve a complex Android task."
+description: "Use when jinny-android-practices is explicitly selected for an Android engineering task, or when the user explicitly invokes Jinny Android orchestration. Keep simple work in the current task and coordinate real bounded subagents for complex Android investigation, implementation, verification, technical research, or independent review."
 ---
 
 # Jinny Android Orchestrator
@@ -22,7 +22,22 @@ selected, and then continue its remaining engineering gates without running the
 extension resolver. This is still one workflow in the current task, not a handoff or a
 second controller.
 
-## Decide whether delegation helps
+## Root task ownership
+
+The current task remains the orchestrator. It owns:
+
+- the user's actual outcome and authorization boundary;
+- requirement clarification, architecture, and decomposition;
+- deciding which work is independent and which must be serialized;
+- assigning one writer to each file or subsystem;
+- resolving conflicting findings and integrating the final change;
+- final verification and the response to the user.
+
+Subagents return bounded evidence or implementation. They do not change the overall
+architecture, broaden scope, accept the final result, contact another persistent task,
+or create a second control plane.
+
+## Delegation gate
 
 Work directly in the current task when the next safe action is clear and one reasoning
 thread can implement and verify it efficiently. Typical direct tasks include:
@@ -32,8 +47,9 @@ thread can implement and verify it efficiently. Typical direct tasks include:
 - explaining a known log failure without modifying code;
 - capturing an already completed and verified change.
 
-Use real subagents only when the work contains genuinely separable uncertainty or
-review value. Typical complex tasks include:
+Classify the work as delegated only when at least one real subtask is both bounded and
+materially improved by separate context, parallel evidence collection, specialized
+execution, or independent review. Typical delegated tasks include:
 
 - an intermittent boot failure requiring independent log/source investigation before
   one bounded implementation;
@@ -48,32 +64,91 @@ Multiple files, a long prompt, or an available model is not by itself a reason t
 delegate. Do not delegate a tiny edit, split sequential work into artificial roles, or
 create an agent merely to repeat checks the current task already ran.
 
-## Define bounded roles
+If the user explicitly requests subagents or delegation, use at least one real
+subagent unless the requested operation is impossible in the current environment. Do
+not describe or simulate delegation. If a task does not pass this gate, proceed
+directly without creating any agent.
 
-Create only the roles the task needs. Each prompt must state the objective, allowed
-scope, known context, constraints, exact deliverable, and acceptance evidence.
+## Select only the needed roles
 
-- `investigator`: read-only evidence collection and root-cause analysis;
-- `implementer`: one explicitly bounded write scope;
-- `verifier`: independent focused tests and regression evidence, normally read-only;
-- `reviewer`: independent design/risk review, read-only.
+Before spawning a role, read its reference completely and include its role contract in
+the delegation message together with the task-specific assignment:
+
+- [investigator](references/investigator.md): repository mapping, logs, execution flow,
+  competing root causes, and read-only diagnosis;
+- [implementer](references/implementer.md): one explicitly bounded write scope after
+  the direction and acceptance criteria are known;
+- [verifier](references/verifier.md): reproduction, focused tests, device/build
+  evidence, and nearby regression checks;
+- [researcher](references/researcher.md): current or version-specific Android, API,
+  dependency, and compatibility facts from authoritative sources;
+- [reviewer](references/reviewer.md): independent post-change correctness, security,
+  concurrency, compatibility, and missing-test review.
+
+Do not create every role mechanically. Investigation can be performed by the current
+task when the code path is already known. Verification remains required, but it need
+not be delegated unless separate context adds value. Review is reserved for material
+risk or a user request, not every patch.
+
+## Build each delegation contract
+
+Every spawned task must receive one concrete contract containing:
+
+1. objective: one outcome, not a broad theme;
+2. scope: exact repository, module, files, symbols, or question when known;
+3. context: only the facts and prior evidence needed for that assignment;
+4. constraints: protected behavior, forbidden paths, authority, and ownership limits;
+5. deliverable: evidence, files changed, or review findings;
+6. acceptance: the check that proves the delegated work is complete.
+
+Use a descriptive task name tied to the assignment rather than a generic role name.
+For example, `trace_systemui_wake_lock` is useful; `investigator_1` is not. Keep the
+returned task identifier so the current task can wait for and account for it.
+
+The role reference is reusable behavior, not a substitute for the six task-specific
+fields. Do not send a vague message such as "inspect the bug" or "fix the framework."
+
+## Models belong to Jinny, not the core
+
+Never change or restart the current task's model. The model and reasoning level chosen
+for the root task remain exactly as selected by the user or current task.
+
+When the user has not specified a subagent model, Jinny recommends:
+
+- investigator, implementer, verifier, and researcher: `gpt-5.6-luna`, high reasoning;
+- reviewer: `gpt-6-astra`, low reasoning.
+
+An explicit user choice for a role or all subagents wins. If a recommended model is
+unavailable, do not probe a sequence of alternatives or rotate models. Use the
+current/inherited model only when it preserves the user's request, and disclose the
+substitution in the final summary when it matters.
+
+## Coordinate real work
 
 Use one writer per file or subsystem. Never ask two agents to edit overlapping paths.
 Start independent read-only investigation in parallel; serialize implementation before
-verification when verification depends on the change. Return ordinary concise messages
-and filesystem changes—there is no worker receipt or controller approval document.
+verification when verification depends on the change. Spawn independent roles before
+waiting for any of them; do not create a serial chain when no dependency exists.
 
-When the environment supports an explicit model override and the user has not chosen a
-model, these are Jinny defaults rather than protocol requirements:
+A normal complex implementation usually has this shape, with unneeded roles omitted:
 
-- investigator: `gpt-5.6-luna`, high reasoning;
-- implementer: `gpt-5.6-terra`, high reasoning;
-- verifier: `gpt-5.6-luna`, high reasoning;
-- reviewer: `gpt-6-astra`, low reasoning.
+1. investigate the unknown code paths or external facts;
+2. current task chooses the direction;
+3. assign bounded, non-overlapping implementation;
+4. verify the original behavior and the changed behavior;
+5. independently review only when risk warrants it;
+6. current task resolves findings, integrates, and performs final acceptance.
 
-The user's explicit model or reasoning choice wins. If a suggested model is unavailable,
-use the current/inherited model; do not run an automatic fallback chain or silently
-cycle models.
+Subagents return concise messages and actual filesystem changes. There is no worker
+receipt, assignment/result JSON, stage snapshot, controller approval document, or
+hidden polling loop.
+
+If a subagent fails, inspect the actual failure. Retry only when a narrower equivalent
+assignment is clearly justified; do not keep respawning agents or broaden scope. The
+current task may finish the bounded work directly when safe, but must not claim the
+failed delegation succeeded. A failure requiring a different architecture,
+authorization, dependency, or destructive action returns to the user as a real
+decision or blocker.
 
 ## Integrate once
 
@@ -82,6 +157,11 @@ in the current task, preserve unrelated user changes, and run only missing check
 not rerun an already valid full build solely because a subagent ran it. Keep Android
 source authority, build/deploy safety, patch policy, and submission authority in the
 corresponding Android Engineering Ops Skills.
+
+Before finishing a delegated task, confirm that every required subagent completed or
+explicitly failed, no required agent is still running, material findings were resolved,
+and the highest-value verification is bound to the integrated change. A reviewer
+reports findings; it does not become another acceptance gate.
 
 Finish only when the user's acceptance criteria are met or a genuine blocker is stated
 in plain language. The final response comes from the current task and summarizes the

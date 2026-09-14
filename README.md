@@ -62,8 +62,9 @@ Skill。公共协议不包含模型、角色、任务分类、worker 文档或�
 或损坏时 fail closed；没有配置时核心完全不读取它。
 
 Jinny 实现中，简单任务直接完成，复杂任务才按需创建 investigator、implementer、
-verifier 或 reviewer。用户模型选择优先；角色模型只是 Jinny 的默认建议，不属于核心协议，
-也不会自动轮换或退休当前任务。
+verifier、researcher 或 reviewer。每种角色包含可复用的任务边界和交付合同；当前任务
+仍负责架构、集成与最终验收。根任务模型保持人工选择，角色模型只是 Jinny 的默认建议，
+不属于核心协议，也不会自动轮换或退休当前任务。
 
 ## 安装与升级
 

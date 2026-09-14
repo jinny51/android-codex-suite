@@ -24,11 +24,20 @@ def test_manifest_exposes_only_the_minimal_orchestrator_binding() -> None:
 
 
 def test_orchestrator_is_real_but_bounded_and_old_runtime_is_absent() -> None:
-    skill = (PLUGIN / "skills/jinny-android-orchestrator/SKILL.md").read_text()
-    assert "real subagents" in skill
-    assert "Multiple files" in skill
-    assert "one writer per file or subsystem" in skill
-    assert "user's explicit model or reasoning choice wins" in skill
+    root = PLUGIN / "skills/jinny-android-orchestrator"
+    skill = (root / "SKILL.md").read_text()
+    roles = {path.stem: path.read_text() for path in (root / "references").glob("*.md")}
+    assert set(roles) == {
+        "implementer",
+        "investigator",
+        "researcher",
+        "reviewer",
+        "verifier",
+    }
+    assert all(f"references/{role}.md" in skill for role in roles)
+    assert all("## Role contract" in content for content in roles.values())
+    assert all("TODO" not in content for content in roles.values())
+    assert not (root / "scripts").exists()
     assert not (PLUGIN / "skills/jinny-android-execution-policy").exists()
     assert not (PLUGIN / "lib/jinny_android_practices/decision.py").exists()
     assert not (PLUGIN / "contracts/android-practices-provider").exists()

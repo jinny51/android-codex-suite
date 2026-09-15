@@ -1,6 +1,6 @@
 ---
 name: android-patch-capture
-description: "Use after one coherent Android change is implemented and verified to capture its README, repository patches, evidence, and seven-layer classification for AKBS v1 submission. Supports application, platform, native, HAL, kernel, device, and build; excludes upload and curation."
+description: "Use after one coherent Android change is implemented and verified to capture its README, repository patches, evidence, and seven-layer classification for the current AKBS incoming v2 submission. Supports application, platform, native, HAL, kernel, device, and build; excludes upload and curation."
 ---
 
 # Android Patch Capture
@@ -124,5 +124,5 @@ split packages by functional goal, not merely by repository or layer.
 
 - `android-change-workflow` owns implementation and final verification.
 - This Skill owns source capture, engineering evidence, and layer assignment.
-- `akbs-patch-submit` owns final v1 package construction, local validation, and upload.
+- `akbs-patch-submit` owns final incoming v2 package construction, local validation, and upload.
 - The server owns final acceptance and queue identity.

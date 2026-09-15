@@ -16,7 +16,7 @@ RequireFile = Callable[[Any, str], Optional[Path]]
 ReadReferencedJson = Callable[[Path, str], Optional[dict[str, Any]]]
 ReadJsonFile = Callable[[Path], dict[str, Any]]
 LoadEvidence = Callable[[list[Any]], dict[str, dict[str, Any]]]
-ValidatePatchReadme = Callable[[Path], list[str]]
+ValidatePatchReadme = Callable[..., list[str]]
 HasUncontrolledPatchAssetPrefix = Callable[[Any], bool]
 ValueValidator = Callable[[str], bool]
 TextFieldQualityErrors = Callable[[dict[str, Any]], list[str]]
@@ -177,7 +177,13 @@ def validate_android_change_manifest_and_files(
             )
 
     if readme_path:
-        errors.extend(validate_patch_readme(readme_path))
+        errors.extend(
+            validate_patch_readme(
+                readme_path,
+                expected_version=str(manifest.get("schema_version") or ""),
+                expected_kind=str(manifest.get("package_kind") or ""),
+            )
+        )
     for patch_readme_path in sorted((package_dir / "patches").glob("*.readme.md")):
         errors.extend(validate_patch_readme(patch_readme_path))
 

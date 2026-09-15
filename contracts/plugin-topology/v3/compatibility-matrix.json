@@ -18,7 +18,7 @@
       "write": "The same core Skills retain source, build, device and capture ownership.",
       "default": "core-direct; no optional plugin is inspected.",
       "fallback": "No extension fallback is needed because core is complete by itself.",
-      "activation": "Version 3.1.0 becomes active only through the normal plugin release/install flow.",
+      "activation": "Version 3.1.1 becomes active only through the normal plugin release/install flow.",
       "deprecation": "The v2 provider/controller surface is no longer active.",
       "removal": "Provider decisions, worker documents and stage state are removed together.",
       "test": ["core-direct", "install-family-ignores-optional", "package-capture-import"]

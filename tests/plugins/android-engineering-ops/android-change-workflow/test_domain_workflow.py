@@ -47,7 +47,7 @@ def test_legacy_routes_map_only_to_canonical_layers() -> None:
     assert legacy["ambiguous_inputs"]["vendor"]["requires_explicit"] == ["layer"]
 
 
-def test_submission_boundary_is_single_v1_android_change_lifecycle() -> None:
+def test_submission_boundary_is_single_incoming_v2_android_change_lifecycle() -> None:
     contract = component_contract()["submission"]
     assert contract["canonical_package_type"] == "knowledge-incoming-package/2/android_change"
     assert contract["final_package_owner"] == "android-patch-capture"

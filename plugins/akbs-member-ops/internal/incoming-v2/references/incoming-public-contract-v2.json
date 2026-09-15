@@ -6,12 +6,12 @@
   "manifest_schema": {
     "path": "knowledge-incoming-package.schema.json",
     "id": "https://akbs.internal/contracts/incoming/v2/knowledge-incoming-package.schema.json",
-    "sha256": "fa41ab4073c46b079f781cfc4d24ea2697d1526768055edacefe2b22e15bfe27"
+    "sha256": "98599e5fb3677c78ad0d746c83eb2741bd8533ecec1d2494bc7e582458daa020"
   },
   "verification_acceptance": {
     "path": "verification-acceptance-v2.json",
     "schema": "akbs-verification-acceptance-contract-v2",
-    "sha256": "2f559b6a05d032691904516d5bde4d8a284247a05e6704f9f14113804a08032d"
+    "sha256": "8c99969c0aca18ec63598a90ce444a522d7caaa2a5783232fff461422c2a87a0"
   },
   "golden_fixtures": {
     "daily": {
@@ -92,6 +92,7 @@
       "package_status_not_validated",
       "patch_asset_trace_mismatch",
       "pre_change_search_required",
+      "readme_contract_mismatch",
       "variant_binding_mismatch",
       "variant_status_mismatch",
       "variant_trace_mismatch",
@@ -244,6 +245,10 @@
       ]
     },
     "retired_business_fields": [
+      "component_ids",
+      "declared_claims",
+      "evidence_ids",
+      "extensions",
       "logical_package_key",
       "logical_root_package_key",
       "original_package_key",
@@ -255,7 +260,14 @@
       "supplement_mode",
       "supplement_package_key",
       "supplement_reason",
-      "supplement_task"
+      "supplement_task",
+      "ownership",
+      "partition",
+      "patch_ids",
+      "qualification",
+      "source_ids",
+      "sources",
+      "type"
     ],
     "retired_business_values": [
       "original_package",

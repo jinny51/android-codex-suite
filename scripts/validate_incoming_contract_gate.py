@@ -1070,7 +1070,7 @@ def main() -> int:
         "--mode",
         choices=("client-only", "remote-pilot"),
         default="client-only",
-        help="Local v1 checks are the default; remote-pilot checks the current v2 server contract.",
+        help="Local client checks are the default; remote-pilot checks the current v2 server contract.",
     )
     parser.add_argument("--system-root", type=Path, help="Read-only AKBS system repository root")
     parser.add_argument("--server-host", default="test35", help="SSH host providing the authoritative system Python runtime")

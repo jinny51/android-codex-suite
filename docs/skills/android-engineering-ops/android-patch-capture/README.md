@@ -14,4 +14,4 @@
 
 远程构建投递工具生成的 `build_delivery/unverified` 回执可直接通过 `--build-result` 传入，原内容保存在独立辅助材料中，不会替代需求验收。
 
-旧 `android-framework-patch-capture` 和 `framework_change` 历史材料只读兼容，不复制或改写。当前 capture 只生成 v1 `android_change` 包，整个目录可直接交给 `akbs-patch-submit` 做检查、准备或提交。
+旧 `android-framework-patch-capture` 和 `framework_change` 历史材料只读兼容，不复制或改写。当前 capture 只生成 `knowledge-incoming-package/2/android_change` 包，整个目录可直接交给 `akbs-patch-submit` 做检查、准备或提交。

@@ -3,7 +3,7 @@
   "schema_version": "2",
   "compatibility": "strict-content-hash-equality",
   "source_provenance": {
-    "commit": "cb1719c0da1ff50689bbda329ffafc5a85ede625",
+    "commit": "a5388689fa770d172e8c2689914bca86e86d97c7",
     "compatibility_condition": false
   },
   "contract_set": {
@@ -14,7 +14,7 @@
   "public_contract": {
     "system_path": "contracts/incoming/v2/public-contract.json",
     "consumer_path": "plugins/akbs-member-ops/internal/incoming-v2/references/incoming-public-contract-v2.json",
-    "sha256": "3e046b00d3291dea8af9fc9cd51c88792db83295d785aa1de393bc79adf1533b"
+    "sha256": "23fcb16e40be3a9c4f2795bdc740ce5afea48c91a81d9f6e684d11d1d4856f95"
   },
   "verification_reference_evaluator": {
     "source_path": "plugins/akbs-member-ops/lib/akbs_member_ops/verification_acceptance.py",
@@ -27,11 +27,11 @@
     "sha256": "82840edf68f219c52b3b031d3d789d22400bedbb1785dfa855722f30dec77c94"
   },
   "artifact_sha256": {
-    "knowledge-incoming-package.schema.json": "fa41ab4073c46b079f781cfc4d24ea2697d1526768055edacefe2b22e15bfe27",
+    "knowledge-incoming-package.schema.json": "98599e5fb3677c78ad0d746c83eb2741bd8533ecec1d2494bc7e582458daa020",
     "fixtures/daily.manifest.json": "f8d31ba497c7429a9c8630d3a15d8aea32365250a3a774fa92ddae2810a29cb0",
     "fixtures/patch.manifest.json": "18f5c6098173d37e33b9f672b947d877a49d18a0627d4000667ddd808e914e01",
     "fixtures/weekly.manifest.json": "cd1f49b50fee84434d7a5ac3fbac1e77d5e0f24cac8a8a03609f60e77966a284",
-    "verification-acceptance-v2.json": "2f559b6a05d032691904516d5bde4d8a284247a05e6704f9f14113804a08032d"
+    "verification-acceptance-v2.json": "8c99969c0aca18ec63598a90ce444a522d7caaa2a5783232fff461422c2a87a0"
   },
   "success_reason_codes": [
     "server_contract_v2_pass"
@@ -117,6 +117,7 @@
     "queue_state_closed",
     "queue_state_not_admitted",
     "queue_state_not_reviewable",
+    "readme_contract_mismatch",
     "report_type_mismatch",
     "route_kind_mismatch",
     "unsupported_schema",

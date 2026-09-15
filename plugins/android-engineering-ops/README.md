@@ -1,6 +1,6 @@
 # Android Engineering Ops
 
-`android-engineering-ops` 3.1.0 是独立的 Android 工程核心。默认不需要任何
+`android-engineering-ops` 3.1.1 是独立的 Android 工程核心。默认不需要任何
 编排插件：没有配置扩展时，当前任务直接使用核心 Skill 完成工作。
 
 | Skill | 职责 |

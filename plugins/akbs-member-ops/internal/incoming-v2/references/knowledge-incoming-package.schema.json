@@ -45,6 +45,10 @@
       "enum": ["current_codex_skill", "manual_import", "historical_import"]
     },
     "package_status": {"enum": ["validated", "candidate", "draft", "failed", "blocked"]},
+    "component_ids": false,
+    "declared_claims": false,
+    "evidence_ids": false,
+    "extensions": false,
     "logical_package_key": false,
     "logical_root_package_key": false,
     "original_package_key": false,
@@ -56,7 +60,14 @@
     "supplement_intent": false,
     "supplement_mode": false,
     "supplement_package_key": false,
-    "supplement_task": false
+    "supplement_task": false,
+    "ownership": false,
+    "partition": false,
+    "patch_ids": false,
+    "qualification": false,
+    "source_ids": false,
+    "sources": false,
+    "type": false
   },
   "allOf": [
     {

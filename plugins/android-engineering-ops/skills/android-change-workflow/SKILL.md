@@ -175,8 +175,9 @@ policy/evidence and directly writes a `knowledge-incoming-package/2/android_chan
 directory. Every `files.patches` path appears exactly once in `components[].patches`.
 
 Pass that same directory to `akbs-patch-submit read`, `check`, `prepare`, or `submit`.
-There is one v1 package contract and one existing patch upload lifecycle; there is no
-v2 package, conversion step, relabel fallback, or second approval path. Historical
+There is one current incoming v2 package contract and one existing patch upload
+lifecycle; there is no second Android-only package, conversion step, relabel fallback,
+or second approval path. Historical
 `framework_change` archives remain readable without rewriting their bytes, but current
 tools never create or submit a new `framework_change` package.
 

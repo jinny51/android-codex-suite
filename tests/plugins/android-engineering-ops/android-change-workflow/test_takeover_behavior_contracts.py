@@ -65,7 +65,7 @@ def test_every_canonical_skill_requires_target_install_family_before_effects() -
     assert "subagent result cannot replace" in gate
 
 
-def test_canonical_capture_and_submit_use_single_v1_android_change_contract() -> None:
+def test_canonical_capture_and_submit_use_single_incoming_v2_android_change_contract() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     capture = CAPTURE.read_text(encoding="utf-8")
     assert "knowledge-incoming-package/2/android_change" in workflow

@@ -189,7 +189,7 @@ class SkillSurfaceTest(unittest.TestCase):
             prompt.index("仅在第 1 步门禁通过后创建"),
         )
 
-    def test_v1_validate_cannot_bypass_target_install_family_gate(self) -> None:
+    def test_incoming_v2_validate_cannot_bypass_target_install_family_gate(self) -> None:
         script = (
             PLUGIN
             / "internal/incoming-v2/scripts/akbs_member_intake.py"

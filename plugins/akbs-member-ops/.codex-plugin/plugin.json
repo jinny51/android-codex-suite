@@ -1,6 +1,6 @@
 {
   "name": "akbs-member-ops",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Standalone AKBS member setup, knowledge, reporting, and patch submission workflows.",
   "author": {
     "name": "Jinny Android Team",

@@ -30,9 +30,10 @@ exactly once. Allowed layers are `application`, `platform`, `native`, `hal`,
 `kernel`, `device`, and `build`. The package keeps the stable v2 directory,
 evidence, validation, upload, queue, information-completion, and curation lifecycle.
 
-Historical `framework_change` packages remain readable on the server. This Skill
-must not create or submit a new `framework_change` package. Android package v2 is
-retired and must not be used as a fallback.
+Historical `knowledge-incoming-package/1/framework_change` packages remain readable
+on the server. This Skill must not create or submit a new `framework_change` package.
+The retired Android-only experimental schema must not be confused with or used as a
+fallback for the current `knowledge-incoming-package/2`.
 
 ## Startup and update check
 

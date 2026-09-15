@@ -21,6 +21,9 @@ PATCH_README_FORBIDDEN_MARKERS = (
     "根据补丁 diff 自动生成",
     "当前说明仅根据 diff 自动生成",
 )
+PACKAGE_CONTRACT_URI_RE = re.compile(
+    r"knowledge-incoming-package/(?P<version>[0-9]+)/(?P<kind>[a-z][a-z0-9_]*)"
+)
 
 
 @dataclass
@@ -194,7 +197,12 @@ def has_heading(text: str, heading: str) -> bool:
     return re.search(rf"^##\s+{re.escape(heading)}\s*$", text, re.M) is not None
 
 
-def validate_patch_readme(path: Path) -> list[str]:
+def validate_patch_readme(
+    path: Path,
+    *,
+    expected_version: str = "",
+    expected_kind: str = "",
+) -> list[str]:
     errors: list[str] = []
     text = path.read_text(encoding="utf-8", errors="ignore")
     if not text.strip():
@@ -207,6 +215,16 @@ def validate_patch_readme(path: Path) -> list[str]:
     for heading in PATCH_README_HEADINGS:
         if not has_heading(text, heading):
             errors.append(f"{path.name} 缺少必填章节: ## {heading}")
+    if expected_version and expected_kind:
+        declared = {
+            (match.group("version"), match.group("kind"))
+            for match in PACKAGE_CONTRACT_URI_RE.finditer(text)
+        }
+        if any(item != (expected_version, expected_kind) for item in declared):
+            errors.append(
+                f"{path.name} 包合同标识必须与 manifest 一致: "
+                f"knowledge-incoming-package/{expected_version}/{expected_kind}"
+            )
     return errors
 
 

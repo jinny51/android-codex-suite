@@ -12,14 +12,21 @@ ROOT = Path(__file__).resolve().parents[1]
 MEMBER = ROOT / "plugins/akbs-member-ops"
 CORE = ROOT / "plugins/android-engineering-ops"
 LIB = CORE / "lib"
+MEMBER_LIB = MEMBER / "lib"
+MEMBER_SCRIPTS = MEMBER / "internal/incoming-v2/scripts"
 if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
+for path in (MEMBER_LIB, MEMBER_SCRIPTS):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
 from android_engineering_ops.json_contract import (  # noqa: E402
     ContractValidationError,
     validate_document,
 )
 from android_engineering_ops.knowledge_rules import VALID_FRAMEWORK_PLATFORMS  # noqa: E402
+from akbs_intake.patch.assets import validate_patch_readme  # noqa: E402
+from akbs_member_ops.incoming_v2.contract import legacy_patch_contract_error  # noqa: E402
 
 
 PACKAGE_SCHEMA = ROOT / "contracts/incoming/v2/knowledge-incoming-package.schema.json"
@@ -30,7 +37,7 @@ def load(path: Path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def test_android_change_uses_one_stable_v1_schema() -> None:
+def test_android_change_uses_one_current_incoming_v2_schema() -> None:
     copies = [
         PACKAGE_SCHEMA,
         MEMBER / "internal/incoming-v2/references/knowledge-incoming-package.schema.json",
@@ -51,6 +58,60 @@ def test_v1_component_rows_reject_the_retired_flat_shape() -> None:
     invalid["components"] = ["platform"]
     with pytest.raises(ContractValidationError):
         validate_document(invalid, PACKAGE_SCHEMA)
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "component_ids",
+        "declared_claims",
+        "evidence_ids",
+        "extensions",
+        "ownership",
+        "partition",
+        "patch_ids",
+        "qualification",
+        "source_ids",
+        "sources",
+        "type",
+    ),
+)
+def test_experimental_android_only_v2_fields_are_rejected(field: str) -> None:
+    invalid = copy.deepcopy(load(PACKAGE_FIXTURE))
+    invalid[field] = []
+    with pytest.raises(ContractValidationError):
+        validate_document(invalid, PACKAGE_SCHEMA)
+    assert field in legacy_patch_contract_error(invalid)
+
+
+def test_readme_explicit_contract_uri_must_match_manifest(tmp_path: Path) -> None:
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        "\n".join(
+            (
+                "# sample",
+                "## 功能描述",
+                "knowledge-incoming-package/1/android_change",
+                "## 修改点",
+                "- sample",
+                "## 日志控制",
+                "无",
+                "## SystemProperties",
+                "无",
+                "## 字符串国际化",
+                "无",
+                "## 可回滚性",
+                "可回滚",
+            )
+        ),
+        encoding="utf-8",
+    )
+    errors = validate_patch_readme(
+        readme,
+        expected_version="2",
+        expected_kind="android_change",
+    )
+    assert any("knowledge-incoming-package/2/android_change" in error for error in errors)
 
 
 def test_controlled_platform_tokens_are_unchanged() -> None:

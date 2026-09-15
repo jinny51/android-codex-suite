@@ -1,7 +1,7 @@
 {
   "schema": "akbs-verification-acceptance-contract-v2",
   "evidence_contract_version": "akbs-verification-evidence/v2",
-  "semantic_owner": "android-framework-ops/verification-acceptance-v2",
+  "semantic_owner": "android-engineering-ops/verification-acceptance-v2",
   "current_acceptance": {
     "scope": "feature",
     "result_acceptance": {

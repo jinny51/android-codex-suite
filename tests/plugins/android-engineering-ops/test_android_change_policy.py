@@ -49,7 +49,7 @@ def test_policy_contract_is_the_canonical_three_layer_source() -> None:
     assert policy["profiles"]["legacy_jinny_style"]["mandatory"] is False
 
 
-def test_component_contract_is_seven_layers_on_single_v1_package() -> None:
+def test_component_contract_is_seven_layers_on_single_incoming_v2_package() -> None:
     contract = json.loads(
         (PLUGIN_ROOT / "contracts/change-domain/v1/domain-profiles.json").read_text(encoding="utf-8")
     )

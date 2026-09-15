@@ -15,13 +15,7 @@
       "manifest_schema": "contracts/incoming/v1/knowledge-incoming-package.schema.json",
       "write_policy": "read_only",
       "package_kinds": ["daily_trace", "weekly_trace", "framework_change"]
-    },
-    "rejected": [
-      {
-        "schema": "akbs-android-change-package-v2",
-        "reason": "retired_experimental_contract"
-      }
-    ]
+    }
   },
   "independent_contract_namespaces": {
     "patch_lifecycle": "akbs-patch-package-contract/v2",

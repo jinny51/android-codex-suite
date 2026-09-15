@@ -23,20 +23,12 @@ LEGACY_PATCH_CONTRACT_ERROR_CODE = "legacy_patch_contract_not_supported"
 def public_contract() -> dict[str, Any]:
     contract_set = json.loads(CONTRACT_SET_PATH.read_text(encoding="utf-8"))
     current = (contract_set.get("incoming_package") or {}).get("current")
-    rejected = (contract_set.get("incoming_package") or {}).get("rejected")
     if (
         contract_set.get("schema") != "akbs-contract-set/v1"
         or not isinstance(current, dict)
         or current.get("schema") != "knowledge-incoming-package"
         or current.get("schema_version") != "2"
         or current.get("write_policy") != "required_for_all_new_incoming_packages"
-        or not isinstance(rejected, list)
-        or not any(
-            isinstance(item, dict)
-            and item.get("schema") == "akbs-android-change-package-v2"
-            and item.get("reason") == "retired_experimental_contract"
-            for item in rejected
-        )
     ):
         raise RuntimeError("packaged AKBS contract set is invalid")
     payload = json.loads(PUBLIC_CONTRACT_PATH.read_text(encoding="utf-8"))

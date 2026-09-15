@@ -50,9 +50,9 @@ spans layers, give a default and override only the affected repositories:
 --repo-layer packages/apps/Settings=application
 ```
 
-Every generated patch is assigned exactly once. The capture writes only
-`{"layer", "patches"}` component rows; it does not require component IDs, type,
-partition, ownership, qualifiers, or evidence bindings.
+Every generated patch is assigned exactly once. Each component row contains
+only `layer` and `patches`; together the rows map every generated patch to one
+of the seven canonical layers.
 
 ## Remote-Only Source Contract
 

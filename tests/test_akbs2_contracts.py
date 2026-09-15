@@ -26,7 +26,6 @@ from android_engineering_ops.json_contract import (  # noqa: E402
 )
 from android_engineering_ops.knowledge_rules import VALID_FRAMEWORK_PLATFORMS  # noqa: E402
 from akbs_intake.patch.assets import validate_patch_readme  # noqa: E402
-from akbs_member_ops.incoming_v2.contract import legacy_patch_contract_error  # noqa: E402
 
 
 PACKAGE_SCHEMA = ROOT / "contracts/incoming/v2/knowledge-incoming-package.schema.json"
@@ -53,36 +52,11 @@ def test_android_change_uses_one_current_incoming_v2_schema() -> None:
     ]
 
 
-def test_v1_component_rows_reject_the_retired_flat_shape() -> None:
+def test_component_rows_require_patch_to_layer_mapping() -> None:
     invalid = copy.deepcopy(load(PACKAGE_FIXTURE))
     invalid["components"] = ["platform"]
     with pytest.raises(ContractValidationError):
         validate_document(invalid, PACKAGE_SCHEMA)
-
-
-@pytest.mark.parametrize(
-    "field",
-    (
-        "component_ids",
-        "declared_claims",
-        "evidence_ids",
-        "extensions",
-        "ownership",
-        "partition",
-        "patch_ids",
-        "qualification",
-        "source_ids",
-        "sources",
-        "type",
-    ),
-)
-def test_experimental_android_only_v2_fields_are_rejected(field: str) -> None:
-    invalid = copy.deepcopy(load(PACKAGE_FIXTURE))
-    invalid[field] = []
-    with pytest.raises(ContractValidationError):
-        validate_document(invalid, PACKAGE_SCHEMA)
-    assert field in legacy_patch_contract_error(invalid)
-
 
 def test_readme_explicit_contract_uri_must_match_manifest(tmp_path: Path) -> None:
     readme = tmp_path / "README.md"

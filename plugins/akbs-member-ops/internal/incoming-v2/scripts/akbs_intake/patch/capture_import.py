@@ -39,14 +39,16 @@ def capture_patch_layers(manifest: dict[str, Any], patch_paths: list[str]) -> di
         raise SystemExit("android-patch-capture 工作包缺少 components")
     assigned: dict[str, str] = {}
     for component in components:
-        if not isinstance(component, dict):
-            raise SystemExit("capture components 项必须是对象")
-        layer = str(component.get("layer") or "")
+        if not isinstance(component, dict) or set(component) != {"layer", "patches"}:
+            raise SystemExit("capture components 项只能包含 layer 和 patches")
+        layer = component.get("layer")
         paths = component.get("patches")
         if layer not in COMPONENT_LAYERS or not isinstance(paths, list) or not paths:
             raise SystemExit("capture components 必须声明有效 layer 和非空 patches")
         for path in paths:
-            relative = str(path or "")
+            if not isinstance(path, str) or not path:
+                raise SystemExit("capture components.patches 必须只包含非空字符串路径")
+            relative = path
             if relative not in patch_paths or relative in assigned:
                 raise SystemExit("capture components 必须对每个 patch 精确分类一次")
             assigned[relative] = layer

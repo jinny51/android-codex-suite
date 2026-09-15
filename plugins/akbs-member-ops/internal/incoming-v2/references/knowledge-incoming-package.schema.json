@@ -27,6 +27,11 @@
     "run_id": {"type": "string", "pattern": "^[0-9]{8}-[0-9]{6}(?:-[A-Za-z0-9_.-]+)?$"},
     "tool": {"type": "string", "minLength": 1},
     "summary": {"type": "string", "minLength": 1},
+    "case_id": {"type": "string", "minLength": 1},
+    "variant_id": {"type": "string", "minLength": 1},
+    "project": {"type": "string", "minLength": 1},
+    "platform": {"type": "string", "minLength": 1},
+    "android_version": {"type": "string", "minLength": 1},
     "files": {"type": "object"},
     "components": {
       "type": "array",
@@ -45,10 +50,6 @@
       "enum": ["current_codex_skill", "manual_import", "historical_import"]
     },
     "package_status": {"enum": ["validated", "candidate", "draft", "failed", "blocked"]},
-    "component_ids": false,
-    "declared_claims": false,
-    "evidence_ids": false,
-    "extensions": false,
     "logical_package_key": false,
     "logical_root_package_key": false,
     "original_package_key": false,
@@ -60,14 +61,7 @@
     "supplement_intent": false,
     "supplement_mode": false,
     "supplement_package_key": false,
-    "supplement_task": false,
-    "ownership": false,
-    "partition": false,
-    "patch_ids": false,
-    "qualification": false,
-    "source_ids": false,
-    "sources": false,
-    "type": false
+    "supplement_task": false
   },
   "allOf": [
     {

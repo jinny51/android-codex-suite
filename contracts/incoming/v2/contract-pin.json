@@ -3,18 +3,18 @@
   "schema_version": "2",
   "compatibility": "strict-content-hash-equality",
   "source_provenance": {
-    "commit": "a5388689fa770d172e8c2689914bca86e86d97c7",
+    "commit": "342295bcc4ce433eb5c41d4486e9bf5b91c655a0",
     "compatibility_condition": false
   },
   "contract_set": {
     "system_path": "contracts/contract-set.json",
     "consumer_path": "plugins/akbs-member-ops/contracts/contract-set.json",
-    "sha256": "584f61b90b7c5bdcb6973310c6d58c5e7783c29772844960ca0bbe48b9ebd991"
+    "sha256": "24fcf2ca5ccd1fb800f4afca28e3c3247e930cb3093cb02026d8d6d1dccd74f5"
   },
   "public_contract": {
     "system_path": "contracts/incoming/v2/public-contract.json",
     "consumer_path": "plugins/akbs-member-ops/internal/incoming-v2/references/incoming-public-contract-v2.json",
-    "sha256": "23fcb16e40be3a9c4f2795bdc740ce5afea48c91a81d9f6e684d11d1d4856f95"
+    "sha256": "510141ce1ba9083b7952128c228bf3c08d7f36899b0da39dd85bf9ad667eed6b"
   },
   "verification_reference_evaluator": {
     "source_path": "plugins/akbs-member-ops/lib/akbs_member_ops/verification_acceptance.py",
@@ -27,7 +27,7 @@
     "sha256": "82840edf68f219c52b3b031d3d789d22400bedbb1785dfa855722f30dec77c94"
   },
   "artifact_sha256": {
-    "knowledge-incoming-package.schema.json": "98599e5fb3677c78ad0d746c83eb2741bd8533ecec1d2494bc7e582458daa020",
+    "knowledge-incoming-package.schema.json": "d061ae53721812b5ee37323db02a33c0392bcc2f59c478c6a83ff673ae3c6d47",
     "fixtures/daily.manifest.json": "f8d31ba497c7429a9c8630d3a15d8aea32365250a3a774fa92ddae2810a29cb0",
     "fixtures/patch.manifest.json": "18f5c6098173d37e33b9f672b947d877a49d18a0627d4000667ddd808e914e01",
     "fixtures/weekly.manifest.json": "cd1f49b50fee84434d7a5ac3fbac1e77d5e0f24cac8a8a03609f60e77966a284",

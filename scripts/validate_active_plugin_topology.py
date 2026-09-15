@@ -21,7 +21,7 @@ PACKAGE_SCHEMA = ROOT / "contracts/incoming/v2/knowledge-incoming-package.schema
 PACKAGE_FIXTURE = ROOT / "contracts/incoming/v2/fixtures/patch.manifest.json"
 EXPECTED = {
     "akbs-member-ops": {
-        "version": "2.2.1",
+        "version": "2.2.2",
         "skills": {
             "akbs-member-setup", "akbs-knowledge-search",
             "akbs-knowledge-merge-review", "akbs-daily-report",
@@ -29,7 +29,7 @@ EXPECTED = {
         },
     },
     "android-engineering-ops": {
-        "version": "3.1.1",
+        "version": "3.1.2",
         "skills": {
             "android-change-policy", "android-change-workflow",
             "android-source-access", "android-remote-channel",

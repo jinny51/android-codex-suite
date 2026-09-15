@@ -71,8 +71,7 @@ def test_canonical_capture_and_submit_use_single_incoming_v2_android_change_cont
     assert "knowledge-incoming-package/2/android_change" in workflow
     assert "knowledge-incoming-package/2/android_change" in capture
     assert "Every `files.patches` path appears exactly once" in workflow
-    assert "component IDs" in capture
-    assert "akbs-android-change-package-v2" not in workflow
+    assert "only `layer` and `patches`" in capture
     assert "Framework-only" not in capture
 
 

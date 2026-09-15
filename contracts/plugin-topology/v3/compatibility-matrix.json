@@ -18,7 +18,7 @@
       "write": "The same core Skills retain source, build, device and capture ownership.",
       "default": "core-direct; no optional plugin is inspected.",
       "fallback": "No extension fallback is needed because core is complete by itself.",
-      "activation": "Version 3.1.1 becomes active only through the normal plugin release/install flow.",
+      "activation": "Version 3.1.2 becomes active only through the normal plugin release/install flow.",
       "deprecation": "The v2 provider/controller surface is no longer active.",
       "removal": "Provider decisions, worker documents and stage state are removed together.",
       "test": ["core-direct", "install-family-ignores-optional", "package-capture-import"]
@@ -72,11 +72,11 @@
       "read": "Legitimate knowledge-incoming-package/1 archives remain read-only; current packages use knowledge-incoming-package/2.",
       "write": "All new daily_trace, weekly_trace and android_change packages use the single current incoming v2 contract.",
       "default": "Seven component layers are expressed only by components rows; mtk/rk/unisoc platform tokens remain unchanged.",
-      "fallback": "The retired akbs-android-change-package-v2 experiment has no parser, adapter, fallback, or parallel upload lifecycle.",
+      "fallback": "Only knowledge-incoming-package/2 is produced for new Android change uploads; there is no parallel upload lifecycle.",
       "activation": "Unchanged by orchestration selection.",
-      "deprecation": "The experimental Android-only V2 surface is rejected; incoming v2 is the only current package contract.",
-      "removal": "Experimental schemas, clients, adapters and lifecycle-specific runtime are physically absent.",
-      "test": ["incoming-v2-schema-parity", "historical-v1-read-only", "component-row-validation", "experimental-v2-rejected"]
+      "deprecation": "Historical knowledge-incoming-package/1 archives are read-only; incoming v2 is the only current package contract.",
+      "removal": "No alternate Android package schema, client, adapter, or lifecycle is active.",
+      "test": ["incoming-v2-schema-parity", "historical-v1-read-only", "component-row-validation", "single-current-write-contract"]
     }
   ]
 }

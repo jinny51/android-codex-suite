@@ -30,6 +30,15 @@ SearchPayloadPredicate = Callable[[dict[str, Any]], bool]
 
 SCOPE_POLLUTION_UNRELATED_ANCHOR_THRESHOLD = 4
 SCOPE_POLLUTION_REPORT_LIMIT = 8
+COMPONENT_LAYERS = {
+    "application",
+    "platform",
+    "native",
+    "hal",
+    "kernel",
+    "device",
+    "build",
+}
 PATCH_SCOPE_README_HEADINGS = {"功能描述", "修改点"}
 SCOPE_TEXT_ALIASES = {
     "电池": ["battery"],
@@ -76,7 +85,7 @@ SCOPE_ANCHOR_GENERIC_TOKENS = {
 
 
 @dataclass
-class FrameworkChangeValidationContext:
+class AndroidChangeValidationContext:
     manifest_platform: str
     manifest_android_version: str
     package_status: str
@@ -90,7 +99,7 @@ class FrameworkChangeValidationContext:
 
 
 @dataclass
-class FrameworkChangeStructureContext:
+class AndroidChangeStructureContext:
     case_problem: str
     case_solution: str
     evidence_by_kind: dict[str, dict[str, Any]]
@@ -113,9 +122,10 @@ def validate_android_change_manifest_and_files(
     is_valid_platform_value: ValueValidator,
     is_valid_android_version_value: ValueValidator,
     errors: list[str],
-) -> FrameworkChangeValidationContext:
+) -> AndroidChangeValidationContext:
     for field in ("case_id", "variant_id", "package_status", "platform", "android_version", "project"):
-        if not manifest.get(field):
+        value = manifest.get(field)
+        if not isinstance(value, str) or not value.strip():
             errors.append(f"android_change 缺少 {field}")
 
     manifest_platform = str(manifest.get("platform") or "").strip().lower()
@@ -158,6 +168,9 @@ def validate_android_change_manifest_and_files(
     elif not patch_paths:
         errors.append("files.patches 必须是非空数组")
         patch_paths = []
+    elif any(not isinstance(path, str) or not path for path in patch_paths):
+        errors.append("files.patches 必须只包含非空字符串路径")
+        patch_paths = []
 
     if not isinstance(display_paths, list) or not display_paths:
         errors.append("android_change files.display 必须包含 materials/display/patch_view.json")
@@ -176,6 +189,33 @@ def validate_android_change_manifest_and_files(
                 "前缀必须是合法项目名（project）或 mtk/rk/unisoc 受控平台 Android 版本前缀。"
             )
 
+    component_rows = manifest.get("components")
+    assigned: list[str] = []
+    seen_layers: set[str] = set()
+    if not isinstance(component_rows, list) or not component_rows:
+        errors.append("android_change components 必须是非空数组")
+    else:
+        for index, component in enumerate(component_rows):
+            if not isinstance(component, dict) or set(component) != {"layer", "patches"}:
+                errors.append(f"components[{index}] 只能包含 layer 和 patches")
+                continue
+            layer = component.get("layer")
+            paths = component.get("patches")
+            if layer not in COMPONENT_LAYERS or layer in seen_layers:
+                errors.append(f"components[{index}].layer 非法或重复")
+            else:
+                seen_layers.add(layer)
+            if (
+                not isinstance(paths, list)
+                or not paths
+                or any(not isinstance(path, str) or not path for path in paths)
+            ):
+                errors.append(f"components[{index}].patches 必须是非空字符串数组")
+                continue
+            assigned.extend(paths)
+    if sorted(assigned) != sorted(patch_paths) or len(assigned) != len(set(assigned)):
+        errors.append("components 必须将 files.patches 中每个补丁恰好分类一次")
+
     if readme_path:
         errors.extend(
             validate_patch_readme(
@@ -187,7 +227,7 @@ def validate_android_change_manifest_and_files(
     for patch_readme_path in sorted((package_dir / "patches").glob("*.readme.md")):
         errors.extend(validate_patch_readme(patch_readme_path))
 
-    return FrameworkChangeValidationContext(
+    return AndroidChangeValidationContext(
         manifest_platform=manifest_platform,
         manifest_android_version=manifest_android_version,
         package_status=package_status,
@@ -217,7 +257,7 @@ def validate_android_change_structure(
     is_valid_android_version_value: ValueValidator,
     framework_required_evidence_kinds: set[str],
     errors: list[str],
-) -> FrameworkChangeStructureContext:
+) -> AndroidChangeStructureContext:
     case_problem = ""
     case_solution = ""
     if case_path:
@@ -290,7 +330,7 @@ def validate_android_change_structure(
         if kind not in evidence_by_kind:
             errors.append(f"android_change 缺少 {kind} evidence")
 
-    return FrameworkChangeStructureContext(
+    return AndroidChangeStructureContext(
         case_problem=case_problem,
         case_solution=case_solution,
         evidence_by_kind=evidence_by_kind,

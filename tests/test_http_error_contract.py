@@ -36,7 +36,7 @@ from validate_incoming_contract_gate import verify_public_contract  # noqa: E402
 
 
 ERROR_SCHEMA_SHA256 = "82840edf68f219c52b3b031d3d789d22400bedbb1785dfa855722f30dec77c94"
-PUBLIC_CONTRACT_SHA256 = "23fcb16e40be3a9c4f2795bdc740ce5afea48c91a81d9f6e684d11d1d4856f95"
+PUBLIC_CONTRACT_SHA256 = "510141ce1ba9083b7952128c228bf3c08d7f36899b0da39dd85bf9ad667eed6b"
 REQUEST_ID = "req_0123456789abcdef0123456789abcdef"
 
 

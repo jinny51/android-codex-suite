@@ -100,7 +100,6 @@ class SkillSurfaceTest(unittest.TestCase):
             self.assertIn("android_change", normalized)
             for layer in ("application", "platform", "native", "hal", "kernel", "device", "build"):
                 self.assertIn(layer, normalized)
-            self.assertNotIn("akbs-android-change-package-v2", normalized)
 
     def test_canonical_search_covers_non_framework_android_changes(self) -> None:
         skill = (PLUGIN / "skills" / "akbs-knowledge-search" / "SKILL.md").read_text(

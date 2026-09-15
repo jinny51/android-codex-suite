@@ -108,16 +108,10 @@ def inspect_legacy_package(package: Path) -> dict[str, Any]:
         "source_manifest_sha256": hashlib.sha256(manifest_raw).hexdigest(),
         "source_schema_version": manifest.get("schema_version"),
         "source_status": manifest.get("status"),
-        "normalized_component": {
-            "layer": "platform",
-            "type": "framework",
-            "partition": None,
-            "ownership": None,
-        },
+        "normalized_classification": {"layer": "platform"},
         "read_only": True,
         "history_rewritten": False,
         "copied_to_new_root": False,
-        "server_v2_writer": "disabled",
         "tree_sha256": tree.hexdigest(),
         "files": files,
     }

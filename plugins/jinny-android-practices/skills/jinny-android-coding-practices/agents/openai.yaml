@@ -1,4 +1,4 @@
 interface:
   display_name: "Jinny Android Coding Practices"
   short_description: "应用不覆盖核心 policy 的 Jinny Android 编码建议"
-  default_prompt: "Use $jinny-android-coding-practices to apply relevant Jinny Android coding recommendations without weakening $android-change-policy or existing project rules."
+  default_prompt: "Use $jinny-android-coding-practices to apply relevant Jinny Android coding recommendations without weakening the shared core Android change policy or existing project rules."

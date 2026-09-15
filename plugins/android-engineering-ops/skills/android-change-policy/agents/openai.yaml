@@ -1,7 +1,0 @@
-interface:
-  display_name: "Android Change Policy"
-  short_description: "Apply member-bound Android patch and component policy"
-  default_prompt: "Use $android-change-policy to apply or review the canonical Android change policy for this patch-archived change."
-
-policy:
-  allow_implicit_invocation: true

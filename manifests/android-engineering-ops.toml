@@ -1,14 +1,9 @@
 # Standalone Android engineering core.
 
 [[skills]]
-name = "android-change-policy"
-category = "Engineering Policy"
-summary = "应用 Android 全领域的强制变更、归档、作者保护和验证规则"
-
-[[skills]]
 name = "android-change-workflow"
 category = "Android Workflow"
-summary = "以七层正交 component 模型统筹实现与验收，并只加载显式选择的编排扩展"
+summary = "以七层 component 模型统筹实现与验收，并自动应用共享变更策略"
 
 [[skills]]
 name = "android-source-access"

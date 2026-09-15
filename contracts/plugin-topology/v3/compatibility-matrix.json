@@ -15,13 +15,24 @@
     {
       "surface_id": "plugin.android-engineering-ops",
       "read": "Existing Android source, project registries and patch inputs are unchanged.",
-      "write": "The same core Skills retain source, build, device and capture ownership.",
+      "write": "The five public core Skills retain source, build, device and capture ownership; the shared policy stays internal.",
       "default": "core-direct; no optional plugin is inspected.",
       "fallback": "No extension fallback is needed because core is complete by itself.",
-      "activation": "Version 3.1.2 becomes active only through the normal plugin release/install flow.",
+      "activation": "Version 3.2.0 becomes active only through the normal plugin release/install flow.",
       "deprecation": "The v2 provider/controller surface is no longer active.",
       "removal": "Provider decisions, worker documents and stage state are removed together.",
       "test": ["core-direct", "install-family-ignores-optional", "package-capture-import"]
+    },
+    {
+      "surface_id": "skill.android-change-policy",
+      "read": "The android-change-policy/v1 contract, stable policy_id, and existing policy evidence remain readable.",
+      "write": "android-change-workflow applies the shared contract before edits and android-patch-capture verifies it through the canonical policy module.",
+      "default": "Policy runs automatically inside the workflow and capture; it is not routed or displayed as a public Skill.",
+      "fallback": "Use android-change-workflow for implementation or review and android-patch-capture for capture; no compatibility wrapper or second policy implementation is created.",
+      "activation": "The internal policy module is active whenever the owning workflow or capture path runs.",
+      "deprecation": "The standalone public Skill wrapper is retired in android-engineering-ops 3.2.0 because it duplicated workflow intent.",
+      "removal": "Only the public SKILL.md, agent metadata, manifest entry, and per-Skill docs are removed; the contract, parser, evidence identity, and historical readers remain.",
+      "test": ["five-public-core-skills", "shared-policy-contract", "policy-wrapper-absent", "stable-policy-evidence"]
     },
     {
       "surface_id": "plugin.jinny-android-practices",

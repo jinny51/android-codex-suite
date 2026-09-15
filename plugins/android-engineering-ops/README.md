@@ -1,16 +1,21 @@
 # Android Engineering Ops
 
-`android-engineering-ops` 3.1.2 是独立的 Android 工程核心。默认不需要任何
+`android-engineering-ops` 3.2.0 是独立的 Android 工程核心。默认不需要任何
 编排插件：没有配置扩展时，当前任务直接使用核心 Skill 完成工作。
 
 | Skill | 职责 |
 | --- | --- |
-| `android-change-policy` | 七层 component 强制 policy 和 patch 归档规则 |
-| `android-change-workflow` | Android 工程总流程、集成和最终验收 |
+| `android-change-workflow` | Android 工程总流程、共享策略应用、集成和最终验收 |
 | `android-source-access` | 自动识别 WSL/macOS 并分派平台 adapter |
 | `android-remote-channel` | 远端 source/build 命令、锁和恢复 |
 | `android-remote-build-deploy` | 受控 build、artifact 校验和 adb 交付 |
-| `android-patch-capture` | 直接生成七层 component 标注的正式 incoming v2 `android_change` 包 |
+| `android-patch-capture` | 采集七层 component 标注的 Android 变更和证据 |
+
+强制变更规则不是需要成员单独调用的 Skill。规则合同位于
+`contracts/android-change-policy/v1/`，校验实现位于
+`lib/android_engineering_ops/policy/`；`android-change-workflow` 在修改前读取并应用，
+`android-patch-capture` 在采集时通过同一模块校验。内部 `policy_id` 保持稳定，以兼容
+既有证据和历史材料。
 
 ## 安装
 
@@ -113,5 +118,5 @@ Codex 编写的当前源码变更使用 `capture_remote_snapshot.py --package` �
 WSL 或 macOS，再执行插件内对应 adapter；普通 Linux 和错误主机命令均在副作用前失败。
 既有 `$HOME/.servers`、macOS Keychain 与 `$HOME/work` 身份原地读取，不复制凭据。
 
-六个核心 Skill 共用 `lib/android_engineering_ops/task_start.py` 做一次任务启动和
+五个公开核心 Skill 共用 `lib/android_engineering_ops/task_start.py` 做一次任务启动和
 安装检查。可选编排扩展不参与核心插件安装族校验，也不会因安装而改变默认行为。

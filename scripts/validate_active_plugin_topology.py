@@ -29,15 +29,15 @@ EXPECTED = {
         },
     },
     "android-engineering-ops": {
-        "version": "3.1.2",
+        "version": "3.2.0",
         "skills": {
-            "android-change-policy", "android-change-workflow",
-            "android-source-access", "android-remote-channel",
-            "android-remote-build-deploy", "android-patch-capture",
+            "android-change-workflow", "android-source-access",
+            "android-remote-channel", "android-remote-build-deploy",
+            "android-patch-capture",
         },
     },
     "jinny-android-practices": {
-        "version": "3.0.0",
+        "version": "3.0.1",
         "skills": {"jinny-android-orchestrator", "jinny-android-coding-practices"},
     },
 }
@@ -126,6 +126,14 @@ def validate_topology() -> None:
         row = rows[plugin_id]
         if row.get("version") != expected["version"] or set(row.get("skills", [])) != expected["skills"]:
             raise TopologyError(f"active topology row differs: {plugin_id}")
+    policy = (topology.get("internal_modules") or {}).get("android_change_policy") or {}
+    if policy != {
+        "contract": "plugins/android-engineering-ops/contracts/android-change-policy/v1/policy.json",
+        "runtime": "plugins/android-engineering-ops/lib/android_engineering_ops/policy",
+        "consumers": ["android-change-workflow", "android-patch-capture"],
+        "public_skill": False,
+    }:
+        raise TopologyError("shared Android change policy module differs")
     extension = topology.get("orchestration_extension") or {}
     if (
         extension.get("default_mode") != "none"
@@ -148,6 +156,8 @@ def validate_topology() -> None:
         missing = REQUIRED_BEHAVIOR - set(row)
         if missing:
             raise TopologyError(f"compatibility row {surface} misses {sorted(missing)}")
+    if "skill.android-change-policy" not in surface_ids:
+        raise TopologyError("removed public policy Skill lacks a compatibility row")
 
 
 def validate_extension() -> None:
@@ -163,7 +173,7 @@ def validate_extension() -> None:
     if extension != {
         "schema": "android-orchestration-extension-v1",
         "provider_id": "jinny-android-practices",
-        "provider_version": "3.0.0",
+        "provider_version": "3.0.1",
         "compatible_core_contracts": ["android-engineering-orchestration-v1"],
         "orchestrator": {"skill_id": "jinny-android-orchestrator"},
     }:
@@ -209,6 +219,8 @@ def validate_removed_runtime() -> None:
         CORE / "lib/android_engineering_ops/workflow",
         CORE / "skills/android-change-workflow/scripts/android_change_controller.py",
         CORE / "skills/android-change-workflow/scripts/resolve_android_practices.py",
+        CORE / "skills/android-change-policy",
+        ROOT / "docs/skills/android-engineering-ops/android-change-policy",
         JINNY / "contracts/android-practices-provider",
         JINNY / "lib/jinny_android_practices",
         JINNY / "skills/jinny-android-execution-policy",

@@ -103,7 +103,7 @@ def test_legacy_jinny_pins_are_accepted_but_not_part_of_resolution(tmp_path: Pat
     result = resolve_extension(
         project, inventory={"installed": [row]}, codex_home=home
     )
-    assert result.plugin_version == "3.0.0"
+    assert result.plugin_version == "3.0.1"
     assert "provider" not in result.as_dict()
 
 
@@ -132,7 +132,7 @@ def test_selected_extension_source_runtime_substitution_is_rejected(tmp_path: Pa
     home, row = install_jinny(tmp_path)
     project = tmp_path / "project"
     config(project, '[extension]\nmode = "jinny"\n')
-    runtime = home / "plugins/cache/android-codex-suite/jinny-android-practices/3.0.0"
+    runtime = home / "plugins/cache/android-codex-suite/jinny-android-practices/3.0.1"
     manifest = runtime / "contracts/android-orchestration-extension/v1/extension.json"
     manifest.write_text(manifest.read_text() + "\n", encoding="utf-8")
     with pytest.raises(ExtensionResolutionError, match="source/runtime extension manifest differs"):

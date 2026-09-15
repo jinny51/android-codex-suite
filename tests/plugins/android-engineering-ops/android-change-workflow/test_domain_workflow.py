@@ -78,12 +78,11 @@ def test_source_authority_and_build_routes_cover_remote_and_local_projects() -> 
     assert "not a generic Gradle" in build_deploy
 
 
-def test_manifest_publishes_six_canonical_skills() -> None:
+def test_manifest_publishes_five_canonical_skills() -> None:
     manifest = (ROOT / "manifests/android-engineering-ops.toml").read_text(
         encoding="utf-8"
     )
     assert [line for line in manifest.splitlines() if line.startswith("name = ")] == [
-        'name = "android-change-policy"',
         'name = "android-change-workflow"',
         'name = "android-source-access"',
         'name = "android-remote-channel"',

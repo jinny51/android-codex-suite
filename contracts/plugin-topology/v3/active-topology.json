@@ -18,11 +18,10 @@
     },
     {
       "id": "android-engineering-ops",
-      "version": "3.1.2",
+      "version": "3.2.0",
       "role": "standalone_android_engineering_core",
       "default_execution": "core-direct",
       "skills": [
-        "android-change-policy",
         "android-change-workflow",
         "android-source-access",
         "android-remote-channel",
@@ -32,7 +31,7 @@
     },
     {
       "id": "jinny-android-practices",
-      "version": "3.0.0",
+      "version": "3.0.1",
       "role": "optional_android_orchestration_extension",
       "activation": "explicit-only",
       "skills": [
@@ -41,6 +40,14 @@
       ]
     }
   ],
+  "internal_modules": {
+    "android_change_policy": {
+      "contract": "plugins/android-engineering-ops/contracts/android-change-policy/v1/policy.json",
+      "runtime": "plugins/android-engineering-ops/lib/android_engineering_ops/policy",
+      "consumers": ["android-change-workflow", "android-patch-capture"],
+      "public_skill": false
+    }
+  },
   "orchestration_extension": {
     "core_contract": "android-engineering-orchestration-v1",
     "schema": "contracts/android-orchestration-extension/v1/extension.schema.json",

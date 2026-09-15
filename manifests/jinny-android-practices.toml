@@ -8,4 +8,4 @@ summary = "简单 Android 任务直接处理，复杂任务按需创建边界明
 [[skills]]
 name = "jinny-android-coding-practices"
 category = "Optional Practices"
-summary = "应用不覆盖核心 android-change-policy 和项目规则的 Jinny 编码建议"
+summary = "应用不覆盖核心共享变更策略和项目规则的 Jinny 编码建议"

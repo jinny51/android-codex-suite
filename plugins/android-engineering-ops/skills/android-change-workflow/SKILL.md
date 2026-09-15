@@ -64,7 +64,8 @@ of the active extension protocol.
 Before modifying source, read:
 
 - `../../contracts/change-domain/v1/domain-profiles.json`
-- `../android-change-policy/SKILL.md`
+- `../../contracts/android-change-policy/v1/README.md`
+- `../../contracts/android-change-policy/v1/policy.json`
 - the current host's `android-source-access` Skill when source access or recovery is needed
 
 For Framework work in the `platform` layer, also read
@@ -114,8 +115,10 @@ verify its real Git root and project instructions, then use normal local project
 
 ## Gate 3: Policy and Change Plan
 
-Apply `android-change-policy` before edits. Universal member/patch attribution applies
-to every patch-archived Android change; only a matching component overlay applies.
+Apply the shared canonical Android change policy before edits. Universal member/patch
+attribution applies to every patch-archived Android change; only a matching component
+overlay applies. This policy is an internal contract and validator used automatically
+by the workflow and capture; it is not a separate user-facing step.
 
 Identify repositories and their source authority, modules, API/ABI boundaries,
 generated files, build targets and build route, runtime/deployment mechanism,

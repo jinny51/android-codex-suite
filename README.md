@@ -9,7 +9,7 @@ device 与 build 层。
 | 插件 | 职责 | 是否必需 |
 | --- | --- | --- |
 | [akbs-member-ops](plugins/akbs-member-ops/README.md) | 成员设置、知识检索、合并复核、日报、周报和 Android 补丁包提交 | 使用 AKBS 的成员安装 |
-| [android-engineering-ops](plugins/android-engineering-ops/README.md) | Android 变更规范、总工作流、跨平台源码接入、远程执行、构建交付和本地补丁采集 | 处理 Android 工程任务的成员安装 |
+| [android-engineering-ops](plugins/android-engineering-ops/README.md) | Android 总工作流、内置共享策略、跨平台源码接入、远程执行、构建交付和本地补丁采集 | 处理 Android 工程任务的成员安装 |
 | [jinny-android-practices](plugins/jinny-android-practices/README.md) | 可选的 Jinny Android 多智能体编排实现 | 按成员选择安装 |
 
 ## Skill 结构
@@ -24,7 +24,6 @@ akbs-member-ops
 └── akbs-patch-submit
 
 android-engineering-ops
-├── android-change-policy
 ├── android-change-workflow
 ├── android-source-access
 ├── android-remote-channel
@@ -39,7 +38,7 @@ jinny-android-practices
 ## 边界
 
 - `android-change-workflow` 是 Android 工程总流程；当前用户任务负责集成和最终答复。
-- `android-change-policy` 保存所有成员都不能绕过的身份、patch 溯源、真实证据和领域安全底线。
+- 强制变更策略是 `android-engineering-ops` 内部共享合同和校验模块，由 workflow 在修改前应用、capture 在打包时校验；成员不需要单独选择或调用一个 policy Skill。
 - `akbs-patch-submit` 面向所有受支持的 Android change domain，不把补丁业务限定为 Framework。
 - `android-source-access` 自动识别 WSL 或 macOS，并选择插件内对应适配器；成员不再按操作系统安装两个入口插件。
 - 日报、周报、知识检索和补丁提交属于 AKBS 成员能力；源码修改、构建和本地材料采集属于 Android 工程能力。
@@ -127,7 +126,7 @@ codex plugin list --json
 选择了 Jinny 的成员在更新时再执行一次对应的 `codex plugin add`。安装或更新只刷新磁盘
 文件，不会热加载已经打开任务中的 Skill；按提示新建任务或重启 Codex 后再使用新版本。
 
-成员端和工程端共用一份通用更新源码，分别随插件打包并校验一致性，不新增更新插件或运行时依赖。日报、周报、补丁继续使用成员内核的版本门禁；工程任务由六个 Skill 共用的启动入口检查更新，同一任务后续步骤不反复联网或中途切换版本。自动更新后按提示重启 Codex。旧工程版本需先升级一次，才具备这一启动检查能力。
+成员端和工程端共用一份通用更新源码，分别随插件打包并校验一致性，不新增更新插件或运行时依赖。日报、周报、补丁继续使用成员内核的版本门禁；工程任务由五个公开 Skill 共用的启动入口检查更新，同一任务后续步骤不反复联网或中途切换版本。自动更新后按提示重启 Codex。旧工程版本需先升级一次，才具备这一启动检查能力。
 
 当前 marketplace 只发布三个正式插件。旧 `android-framework-codex-suite` 安装族不与新安装族混用；
 成员升级时先添加 `android-codex-suite`、安装并确认所需的新插件可用，再卸载旧插件和旧 marketplace，随后重启 Codex。

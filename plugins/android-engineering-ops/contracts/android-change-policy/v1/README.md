@@ -3,6 +3,12 @@
 `policy.json` is the canonical, machine-readable policy. This README explains the
 boundary; it does not define a second copy of the rules.
 
+This is an internal shared module, not a public Skill. `android-change-workflow` reads
+and applies it before source edits, while `android-patch-capture` verifies it through
+`lib/android_engineering_ops/policy/patch_markers.py`. Members do not select or run a
+separate policy step. The stable `policy_id` remains in generated evidence so existing
+captures and historical material stay readable.
+
 The policy has three layers:
 
 1. Patch attribution applies to every Android change archived as patches.
@@ -40,3 +46,8 @@ No example person's alias is a policy value. Git author, an invented secondary a
 or a fabricated ticket number must not replace the current profile identity.
 Historical and external patches keep their original authorship and are assessed as
 imported material instead of being rewritten.
+
+For implementation origin, current Codex work uses the selected member's paired
+markers. Mixed work preserves historical markers and adds a current-member pair only
+around the newly authored part. Manual, external, and historical imports preserve the
+original author evidence and are never made compliant by rewriting attribution.

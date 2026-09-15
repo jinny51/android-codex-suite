@@ -430,17 +430,27 @@ def test_patch_analysis_ignores_markers_outside_added_lines() -> None:
     assert facts_from_diff(added)["author_date_marker_present"] is True
 
 
-def test_public_policy_skill_and_optional_jinny_layer_have_one_authority() -> None:
-    policy_skill = (
-        PLUGIN_ROOT / "skills/android-change-policy/SKILL.md"
+def test_internal_policy_module_and_optional_jinny_layer_have_one_authority() -> None:
+    policy_readme = (
+        PLUGIN_ROOT / "contracts/android-change-policy/v1/README.md"
+    ).read_text(encoding="utf-8")
+    workflow = (
+        PLUGIN_ROOT / "skills/android-change-workflow/SKILL.md"
     ).read_text(encoding="utf-8")
     practices_skill = (
         REPO_ROOT
         / "plugins/jinny-android-practices/skills/jinny-android-coding-practices/SKILL.md"
     ).read_text(encoding="utf-8")
-    assert "../../contracts/android-change-policy/v1/README.md" in policy_skill
-    assert "../../contracts/android-change-policy/v1/policy.json" in policy_skill
-    assert "android-change-policy" in practices_skill
+    practices_agent = (
+        REPO_ROOT
+        / "plugins/jinny-android-practices/skills/jinny-android-coding-practices/agents/openai.yaml"
+    ).read_text(encoding="utf-8")
+    assert "internal shared module" in policy_readme
+    assert "../../contracts/android-change-policy/v1/README.md" in workflow
+    assert "../../contracts/android-change-policy/v1/policy.json" in workflow
+    assert not (PLUGIN_ROOT / "skills/android-change-policy").exists()
+    assert "core Android change policy" in practices_skill
+    assert "$android-change-policy" not in practices_agent
     assert not (
         REPO_ROOT
         / "plugins/jinny-android-practices/skills/jinny-framework-coding-standards"

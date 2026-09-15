@@ -2,7 +2,7 @@
 
 Run the shared engineering startup entry once before starting a new engineering task,
 whether the user enters the full workflow or directly asks for source access, a build,
-policy review, or capture. It first checks the active installation, then checks the
+change review, or capture. It first checks the active installation, then checks the
 official engineering release and updates only this plugin when needed.
 
 ```bash

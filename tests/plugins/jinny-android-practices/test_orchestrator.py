@@ -13,11 +13,11 @@ def test_manifest_exposes_only_the_minimal_orchestrator_binding() -> None:
     extension = json.loads(
         (PLUGIN / "contracts/android-orchestration-extension/v1/extension.json").read_text()
     )
-    assert plugin["version"] == "3.0.0"
+    assert plugin["version"] == "3.0.1"
     assert extension == {
         "schema": "android-orchestration-extension-v1",
         "provider_id": "jinny-android-practices",
-        "provider_version": "3.0.0",
+        "provider_version": "3.0.1",
         "compatible_core_contracts": ["android-engineering-orchestration-v1"],
         "orchestrator": {"skill_id": "jinny-android-orchestrator"},
     }

@@ -1,6 +1,6 @@
 # Jinny Android Practices
 
-`jinny-android-practices` 3.0.0 是 Android Engineering Ops 的一个可选编排实现。
+`jinny-android-practices` 3.0.1 是 Android Engineering Ops 的一个可选编排实现。
 安装本插件不会改变核心行为；只有配置 `mode="jinny"` 或用户明确调用时才生效。
 
 | Skill | 用途 |

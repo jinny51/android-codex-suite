@@ -38,7 +38,6 @@ def test_change_workflow_keeps_ordered_engineering_gates() -> None:
 
 def test_every_canonical_skill_requires_target_install_family_before_effects() -> None:
     for name in (
-        "android-change-policy",
         "android-change-workflow",
         "android-source-access",
         "android-remote-channel",

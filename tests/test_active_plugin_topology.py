@@ -56,6 +56,7 @@ def test_compatibility_matrix_explains_every_changed_surface() -> None:
     rows = {row["surface_id"]: row for row in matrix["rows"]}
     assert {
         "plugin.android-engineering-ops",
+        "skill.android-change-policy",
         "plugin.jinny-android-practices",
         "contract.android-orchestration-extension",
         "config.android-engineering.extension",
@@ -73,6 +74,15 @@ def test_removed_runtime_is_physically_absent() -> None:
     assert not (
         ROOT / "plugins/android-engineering-ops/lib/android_engineering_ops/workflow"
     ).exists()
+    assert not (
+        ROOT / "plugins/android-engineering-ops/skills/android-change-policy"
+    ).exists()
+    assert (
+        ROOT / "plugins/android-engineering-ops/contracts/android-change-policy/v1/policy.json"
+    ).is_file()
+    assert (
+        ROOT / "plugins/android-engineering-ops/lib/android_engineering_ops/policy/patch_markers.py"
+    ).is_file()
     assert not (
         ROOT / "plugins/jinny-android-practices/skills/jinny-android-execution-policy"
     ).exists()

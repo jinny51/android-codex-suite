@@ -70,11 +70,17 @@ of the seven canonical layers.
 
 ## Remote-Only Source Contract
 
-For current Codex-authored work, obtain Git status, binary diffs, branch, HEAD,
-repo paths, and changed-file facts from an immutable snapshot created through
-`android-remote-channel`. Mounted source is a human CRUD and artifact bridge, not
-the Codex Git authority. Do not use direct SSH for capture. This describes the
-current Codex capture method, not which product-source Patches may be submitted.
+For current Codex-authored work in a `registered_remote_tree`, obtain Git status,
+binary diffs, branch, HEAD, repo paths, and changed-file facts from an immutable
+snapshot created through `android-remote-channel`. Mounted source is a human CRUD
+and artifact bridge, not the Codex Git authority. Do not use direct SSH for
+capture. A real local product Git repository is a different source authority:
+check its actual root and revision. Its pre-existing verified patch may use
+`manual_import`; current Codex-authored local Git work cannot use that label
+just because the source is local. The present `current_codex_skill` CLI only
+accepts registered remote snapshots; retain local-current Patch material
+until a truthful capture route is available. This describes capture methods,
+not which product-source Patches may be submitted.
 
 Use the one-step snapshot and package flow:
 
@@ -106,7 +112,7 @@ python3 "scripts/capture_remote_snapshot.py" \
   --rollback "恢复本次修改并重新构建相关模块"
 ```
 
-A truthful existing-code import may use `--patch-artifact` and
+A truthful pre-existing product-Git import may use `--patch-artifact` and
 `--patch-repo-path` under `manual_import` or `historical_import`. Each artifact
 must be generated from one actual Git repository and paired with that repository's
 path. Repeat both arguments for a cross-repository change; Android source root `.`

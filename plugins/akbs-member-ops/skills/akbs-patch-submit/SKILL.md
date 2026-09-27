@@ -65,8 +65,17 @@ python3 "scripts/akbs_patch_submit.py" --profile <member_alias> --prepare \
 ```
 
 The capture already carries every patch's layer. For a truthful manual or historical
-single-patch import, declare the layer explicitly. This prepares local pending
-material; it does not claim the artifact came from a remote Git snapshot:
+single-patch import, declare the layer explicitly. Direct `--patch` is an input
+shortcut for one pre-existing, verified product-source Git patch, not a bypass of
+source review or the capture route for current work. Do not relabel a patch
+newly generated from this Codex task's local product Git edits as an import.
+Before using the shortcut,
+inspect the original patch's changed paths and confirm its actual product
+repository and available Git revision in the engineering task; if any section
+belongs to an independent App or the repository remains unknown, retain the
+artifact locally. Missing remote snapshot alone does not disqualify a genuine
+manual product patch. This prepares local pending material; it does not claim
+the artifact came from a remote Git snapshot:
 
 ```bash
 python3 "scripts/akbs_patch_submit.py" --profile <member_alias> --prepare \

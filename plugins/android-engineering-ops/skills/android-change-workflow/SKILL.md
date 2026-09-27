@@ -199,8 +199,18 @@ Only for eligible product-source Patch work, use
 `--repo-layer REPO_PATH=LAYER` to create one coherent engineering capture with
 repository patches and evidence. Pass that capture directory to `akbs-patch-submit`,
 which constructs and validates the final `knowledge-incoming-package/2/android_change`
-package. The final package follows this rule: Every `files.patches` path appears exactly once
-in `components[].patches`.
+package. A pre-existing, verified product-Git patch can instead use capture's
+`manual_import` artifact route or the submit Skill's direct single-patch
+`manual_import` route; the latter is an input shortcut, not a different package
+contract. Neither route requires a remote snapshot. Do not relabel current
+Codex-authored local Git work as `manual_import` merely because it is local:
+the current capture CLI does not yet support that source with
+`current_codex_skill`, so keep its Patch material local until a truthful
+capture route exists. Check the actual repository,
+its available Git revision and changed paths before using either route; do not
+silently discard independent App sections from a mixed artifact. The final package
+follows this rule: Every `files.patches` path appears exactly once in
+`components[].patches`.
 Independent App work completes through its own project verification and delivery
 route without Patch capture or submission.
 

@@ -15,3 +15,5 @@ Extension 按项目配置优先于本地配置解析；选择 provider 后只从
 产品源码通常在远端服务器通过 SSH 定制，独立 App 通常在本地开发后推至 SysPros。先按实际 Git 仓库判断改动是否属于目标 Android 产品源码；是否连过 SSH 不单独决定 Patch 资格。七层只给合格的 Patch 分类，独立 App 源码即使生成的 APK 被产品采用，也不能改标为 `application` 后上传。
 
 Canonical layer 只有 application/platform/native/hal/kernel/device/build。合格且已验证的产品源码变更先由 `android-patch-capture` 生成逐仓 patch 与工程证据，再由 `akbs-patch-submit` 构造、检查、准备并提交唯一的 `knowledge-incoming-package/2/android_change` 最终包。产品侧 APK 集成配置改动可按其产品源码仓单独采集；来源未明确时保留本地材料。七层分类由最终包的 `components[].layer` 记录，工程 capture 不另设上传格式或生命周期。
+
+既有且经核实的产品 Git 补丁可走 capture 的 `manual_import`，单份补丁也可走 submit 的 `manual_import` 直入；两者仍是同一个最终包合同。既有手工补丁不要求远端 snapshot，但应核对真实产品仓、可取得的 Git 修订和原补丁修改路径；混入独立 App 源码的原件不得静默删段后上传。本次由 Codex 在本地产品 Git 中做的改动不能仅因源码在本地就改标 `manual_import`；现行采集器还不支持该来源的 `current_codex_skill` 路线，材料暂留本地。

@@ -12,7 +12,7 @@
 
 读取 snapshot/patch/package/identity/evidence 或写入材料前必须通过 target-only install-family gate；入口必须从 inventory 绑定的目标 cache 执行。
 
-当前 Codex 编写的变更优先使用 `capture_remote_snapshot.py --package -- <capture 参数>`：工具在远端通道独占锁内生成最新源码快照，传回后立即调用本地原子打包器，不再要求成员或智能体在 15 分钟内手工衔接两个命令。省略 `--package` 的旧两步接口继续兼容，并保留快照时效门禁。
+在已登记的远端产品源码树中，当前 Codex 编写的变更优先使用 `capture_remote_snapshot.py --package -- <capture 参数>`：工具在远端通道独占锁内生成最新源码快照，传回后立即调用本地原子打包器，不再要求成员或智能体在 15 分钟内手工衔接两个命令。省略 `--package` 的旧两步接口继续兼容，并保留快照时效门禁。真实本地产品 Git 仓库的既有补丁需核实仓库与修订后才能按 `manual_import` 处理；本次 Codex 在本地做的新改动不因此改标为导入，现行采集器尚无该来源的 `current_codex_skill` 路线。
 
 捕获前逐仓确认改动属于目标 Android 产品源码。独立开发的 App 源码不因 APK 被产品使用就成为 Patch；产品侧 APK 集成配置如在产品源码仓内修改，可按该仓单独采集。手工补丁和远端快照遵守同一来源边界。
 捕获脚本不能从 Git 地址、路径或 `application` layer 自动判定仓库的业务归属；当前由工程任务在调用前核实并记录，不能把脚本出包成功当作来源证明。

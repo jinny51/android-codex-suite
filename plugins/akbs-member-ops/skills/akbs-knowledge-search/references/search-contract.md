@@ -76,6 +76,28 @@ Default `--type all` must not return report rows, event rows, or human/archive e
 - `event`: archived records such as `framework_change`, `daily_trace`, or `weekly_trace`, including member, date, project, platform, and package status when applicable. Explicit filter only; not part of default AI reuse search.
 - `evidence`: evidence records. Default AI search includes only patch facts, patch problem explanation, project inference, risk surface, build result, device/equivalent verification, and search-before-change. Source metadata, work findings, report context, and package checks require explicit `--type evidence`.
 
+## Case-Bound Original Reads
+
+The search CLI also supports two server-only read actions:
+
+```text
+akbs_knowledge_search.py --case-patches <case_id> [--json]
+akbs_knowledge_search.py --case-patches <case_id> --download-patch <asset_id> --out <new-file> [--json]
+```
+
+They call `GET /akbs/api/member/me/knowledge/{case_id}/patches` and the same path
+with `/{asset_id}`. The listing schema is `akbs-knowledge-case-patch-originals/v1`,
+scope `active_v2_case_source_evidence`; it includes the case identity, availability,
+and exact asset IDs, filenames, byte counts and SHA-256. An active case that lacks
+a controlled original is `unavailable`. Inactive cases, cross-case assets or
+invalid source/file bindings are not downloadable.
+
+No URL in returned metadata controls the request destination. The client builds
+the case/asset path from the configured endpoint, validates response identity and
+size/hash, and creates the selected output exclusively. These reads do not use
+local fallback or write search-use/curation/feedback facts. A successful download
+means `verified_original=true`, `reuse_outcome=not_started`, not a reuse verdict.
+
 ## Judgment Boundary
 
 The search result is evidence, not a final reuse decision.

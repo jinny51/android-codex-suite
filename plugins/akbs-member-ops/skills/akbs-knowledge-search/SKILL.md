@@ -96,6 +96,29 @@ python3 "scripts/akbs_knowledge_search.py" \
   --dispute-reason "目标知识没有覆盖当前补丁的功能目标"
 ```
 
+## Read the Case's Original Patches
+
+After choosing a server search candidate, use its `case_id` to list the complete
+patch originals that the active case explicitly cites:
+
+```bash
+python3 "scripts/akbs_knowledge_search.py" --case-patches <case_id> --json
+python3 "scripts/akbs_knowledge_search.py" --case-patches <case_id> \
+  --download-patch <asset_id> --out /path/to/task-output/source.patch --json
+```
+
+These actions use the same member identity, endpoint resolver, and installation
+preflight as search. They are server-only GETs: no local JSONL fallback, merge
+write, or search-usage/reuse-success record. Pick `asset_id` from this case's list;
+the client checks downloaded size and SHA-256 and refuses an existing `--out`.
+Never apply a truncated preview as an original. Downloading a verified original
+does not prove applicability, successful adaptation, or target-device acceptance.
+
+The first supported source is an active v2 case's exact `source_evidence` assets.
+Legacy/history cases without a controlled original return `unavailable`; retain
+their knowledge as reference, state the missing original, and do not fabricate a
+download path. Do not call unrelated package assets the case's source patches.
+
 ## Source Selection
 
 In `--source auto`, the script first tries the server endpoint. Local JSONL fallback searches the first valid knowledge repository root it can find:

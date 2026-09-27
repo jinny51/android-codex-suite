@@ -20,6 +20,23 @@
 
 日报、周报、incoming 事件、原始来源和工作过程证据属于人看归档。它们保留显式查询能力，但不进入默认 AI 复用检索结果。
 
+## 取得知识实际引用的完整补丁
+
+从服务端搜索结果取得 `case_id` 后，列出该案例可取的原件，再选择其中的
+`asset_id` 下载到本任务的新文件：
+
+```bash
+python3 "scripts/akbs_knowledge_search.py" --case-patches <case_id> --json
+python3 "scripts/akbs_knowledge_search.py" --case-patches <case_id> \
+  --download-patch <asset_id> --out /path/to/task-output/source.patch --json
+```
+
+沿用现有安装前检、成员身份和端点配置。此操作只读服务端，不回退本地索引，
+不提交合并决定、不写复用成功记录；下载核对大小及 SHA-256，且不覆盖已有文件。
+当前首批仅开放 active v2 案例自身 `source_evidence` 精确引用的受控原件。
+历史或 legacy 原件尚未受控保存时明确返回不可取，不拿截断预览代替。
+取得原补丁后仍需判断目标环境、实施和验证；下载成功不是复用成功。
+
 ## 典型场景
 
 - Android 工程新需求来了，无论属于 App/GMS、平台、native、HAL、kernel、device 还是 build 层，都先查有没有类似修改或既有补丁。

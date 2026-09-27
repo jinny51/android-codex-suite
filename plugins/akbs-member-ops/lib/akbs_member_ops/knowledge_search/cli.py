@@ -30,7 +30,10 @@ from akbs_member_ops.knowledge_search.config import search_usage_root as configu
 from akbs_member_ops.knowledge_search.config import selected_member_alias
 from akbs_member_ops.knowledge_search.formatting import compact_list, format_markdown
 from akbs_member_ops.knowledge_search.local_index import load_rows, search
+from akbs_member_ops.knowledge_search.originals import download_case_patch, fetch_case_patches
 from akbs_member_ops.json_io import write_json
+from akbs_member_ops.http_client import failure_result
+from akbs_member_ops.member_config import expand_codex_path
 
 
 REUSE_DECISIONS = ("reuse", "adapt", "reference_only", "not_applicable", "not_found", "unknown")
@@ -421,6 +424,9 @@ def refresh_root(root: Path) -> str:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Search the Codex team knowledge repository.")
     parser.add_argument("query", nargs="*", help="Search terms. Use spaces to combine feature words, files, symbols, or project names.")
+    parser.add_argument("--case-patches", help="List authoritative patch originals for a server-returned case_id; server only.")
+    parser.add_argument("--download-patch", help="Download one asset_id from --case-patches, verifying its size and SHA-256.")
+    parser.add_argument("--out", help="New output file required with --download-patch; never overwrite existing work.")
     parser.add_argument(
         "--merge-confirmation",
         choices=["list", "detail", "target", "compare", "analyze", "dispute"],
@@ -503,6 +509,33 @@ def handle_merge_confirmation_command(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.case_patches:
+        if args.query or args.merge_confirmation or args.source == "local" or args.root or args.refresh:
+            parser.error("--case-patches is a separate server-only read, not a search or merge action")
+        if bool(args.download_patch) != bool(args.out):
+            parser.error("--download-patch and --out must be used together")
+        try:
+            payload = (
+                download_case_patch(args.case_patches, args.download_patch, expand_codex_path(args.out, resolve=False), timeout=args.server_timeout)
+                if args.download_patch else fetch_case_patches(args.case_patches, timeout=args.server_timeout)
+            )
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from None
+        except Exception as exc:
+            raise SystemExit(failure_result(exc).safe_summary("patch original API unavailable")) from None
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        elif args.download_patch:
+            print(f"已取得原补丁并核对 SHA-256：{payload['output']}\n尚未应用或验证，不代表复用成功。")
+        else:
+            print(f"case_id={payload['case_id']}，原补丁={payload['availability']}")
+            for patch in payload["patches"]:
+                print(f"{patch['asset_id']}  {patch['display_name']}  SHA-256={patch['sha256']}")
+            if not payload["patches"]:
+                print("当前没有可授权取得的完整原件；不使用截断预览代替。")
+        return 0
+    if args.download_patch or args.out:
+        parser.error("--download-patch/--out require --case-patches")
     if args.merge_confirmation:
         return handle_merge_confirmation_command(args)
 

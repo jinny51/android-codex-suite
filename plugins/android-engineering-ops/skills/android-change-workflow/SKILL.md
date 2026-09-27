@@ -199,8 +199,8 @@ Only for eligible product-source Patch work, use
 `--repo-layer REPO_PATH=LAYER` to create one coherent engineering capture with
 repository patches and evidence. Pass that capture directory to `akbs-patch-submit`,
 which constructs and validates the final `knowledge-incoming-package/2/android_change`
-package. In that final package, every `files.patches` path appears exactly once in
-`components[].patches`.
+package. The final package follows this rule: Every `files.patches` path appears exactly once
+in `components[].patches`.
 Independent App work completes through its own project verification and delivery
 route without Patch capture or submission.
 

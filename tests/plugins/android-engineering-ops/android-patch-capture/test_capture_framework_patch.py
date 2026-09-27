@@ -187,3 +187,59 @@ def test_historical_import_rejects_workspace_relative_paths_for_declared_repo(
     )
     with pytest.raises(SystemExit, match="相对于 Android 源码顶层"):
         capture.collect_patch_artifact_captures(args, "rk14", "feature")
+
+
+def test_manual_patch_artifact_never_silently_drops_mode_only_section(
+    tmp_path: Path,
+) -> None:
+    capture = load_capture()
+    patch = tmp_path / "original.patch"
+    original = (
+        "diff --git a/core/Mode.java b/core/Mode.java\n"
+        "old mode 100644\n"
+        "new mode 100755\n"
+        "diff --git a/core/Test.java b/core/Test.java\n"
+        "--- a/core/Test.java\n"
+        "+++ b/core/Test.java\n"
+        "@@ -1 +1 @@\n-old\n+new\n"
+    ).encode("utf-8")
+    patch.write_bytes(original)
+    args = argparse.Namespace(
+        patch_artifact=[str(patch)],
+        patch_repo_path=["frameworks/base"],
+        module=None,
+        remote_source_root="",
+    )
+    with pytest.raises(SystemExit, match="在捕获时会被改写"):
+        capture.collect_patch_artifact_captures(args, "rk14", "feature")
+    assert patch.read_bytes() == original
+
+
+def test_manual_multi_patch_never_silently_drops_mode_only_artifact(
+    tmp_path: Path,
+) -> None:
+    capture = load_capture()
+    code_patch = tmp_path / "code.patch"
+    code_patch.write_text(
+        "diff --git a/core/Test.java b/core/Test.java\n"
+        "--- a/core/Test.java\n"
+        "+++ b/core/Test.java\n"
+        "@@ -1 +1 @@\n-old\n+new\n",
+        encoding="utf-8",
+    )
+    mode_patch = tmp_path / "mode.patch"
+    original_mode = (
+        "diff --git a/core/Mode.java b/core/Mode.java\n"
+        "old mode 100644\n"
+        "new mode 100755\n"
+    ).encode("utf-8")
+    mode_patch.write_bytes(original_mode)
+    args = argparse.Namespace(
+        patch_artifact=[str(code_patch), str(mode_patch)],
+        patch_repo_path=["frameworks/base", "frameworks/base"],
+        module=None,
+        remote_source_root="",
+    )
+    with pytest.raises(SystemExit, match="仅含权限变化"):
+        capture.collect_patch_artifact_captures(args, "rk14", "feature")
+    assert mode_patch.read_bytes() == original_mode

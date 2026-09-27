@@ -13,9 +13,11 @@ import hashlib
 import json
 import os
 import re
+import select
 import stat
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -24,6 +26,8 @@ TARGET_PLUGIN = "android-engineering-ops"
 OFFICIAL_MARKETPLACE = "android-codex-suite"
 LEGACY_FAMILY = frozenset({"android-framework-ops", "android-wsl-ops", "android-mac-ops"})
 PLUGIN_VERSION_RE = re.compile(r"^[0-9]+(?:\.[0-9]+){1,3}(?:[-+][0-9A-Za-z.-]+)?$")
+INVENTORY_TIMEOUT_SECONDS = 15
+MAX_RPC_LINE_BYTES = 8 * 1024 * 1024
 
 
 class InstallFamilyError(RuntimeError):
@@ -39,36 +43,191 @@ def _strict_inventory_json(raw: bytes) -> Mapping[str, Any]:
             value[key] = item
         return value
 
+    def reject_non_finite(value: str) -> None:
+        raise InstallFamilyError(f"plugin inventory contains non-finite number: {value}")
+
     try:
-        value = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_object)
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=unique_object,
+            parse_constant=reject_non_finite,
+        )
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise InstallFamilyError("Codex plugin inventory is not strict UTF-8 JSON") from exc
-    if not isinstance(value, dict) or not isinstance(value.get("installed"), list):
-        raise InstallFamilyError("Codex plugin inventory has no installed list")
-    if any(not isinstance(item, dict) for item in value["installed"]):
-        raise InstallFamilyError("Codex plugin inventory contains a non-object entry")
+    if not isinstance(value, dict):
+        raise InstallFamilyError("Codex plugin inventory is not an object")
     return value
 
 
-def _read_active_inventory(codex_executable: str = "codex") -> Mapping[str, Any]:
+def _rpc_line(process: subprocess.Popen[bytes], deadline: float, pending: bytearray) -> Mapping[str, Any]:
+    assert process.stdout is not None
+    while True:
+        newline = pending.find(b"\n")
+        if newline >= 0:
+            raw = bytes(pending[:newline])
+            del pending[: newline + 1]
+            if len(raw) > MAX_RPC_LINE_BYTES:
+                raise InstallFamilyError("Codex plugin inventory response is too large")
+            return _strict_inventory_json(raw)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise InstallFamilyError("Codex installed plugin inventory timed out")
+        if not select.select([process.stdout], [], [], remaining)[0]:
+            raise InstallFamilyError("Codex installed plugin inventory timed out")
+        chunk = os.read(process.stdout.fileno(), 65536)
+        if not chunk:
+            raise InstallFamilyError("Codex app-server closed before answering plugin/installed")
+        pending.extend(chunk)
+        if len(pending) > MAX_RPC_LINE_BYTES:
+            raise InstallFamilyError("Codex plugin inventory response is too large")
+
+
+def _rpc_response(
+    process: subprocess.Popen[bytes],
+    request: Mapping[str, Any],
+    request_id: int,
+    deadline: float,
+    pending: bytearray,
+) -> Mapping[str, Any]:
+    assert process.stdin is not None
+    process.stdin.write(json.dumps(request, separators=(",", ":")).encode("utf-8") + b"\n")
+    process.stdin.flush()
+    while True:
+        response = _rpc_line(process, deadline, pending)
+        if "id" not in response:
+            continue  # App-server may send a notification between responses.
+        if response.get("id") != request_id or "error" in response or "result" not in response:
+            raise InstallFamilyError("Codex app-server returned an invalid plugin inventory response")
+        return response
+
+
+def _installed_inventory(response: Mapping[str, Any]) -> Mapping[str, Any]:
+    result = response.get("result")
+    if not isinstance(result, Mapping):
+        raise InstallFamilyError("Codex plugin/installed result is malformed")
+    errors = result.get("marketplaceLoadErrors")
+    marketplaces = result.get("marketplaces")
+    if not isinstance(errors, list) or errors:
+        raise InstallFamilyError("Codex plugin/installed has marketplace load errors")
+    if not isinstance(marketplaces, list):
+        raise InstallFamilyError("Codex plugin/installed has no marketplace list")
+    installed: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    seen_marketplaces: set[str] = set()
+    for marketplace in marketplaces:
+        if not isinstance(marketplace, Mapping):
+            raise InstallFamilyError("Codex plugin/installed marketplace is malformed")
+        market_name = marketplace.get("name")
+        rows = marketplace.get("plugins")
+        if (
+            not isinstance(market_name, str)
+            or not market_name
+            or market_name in seen_marketplaces
+            or not isinstance(rows, list)
+        ):
+            raise InstallFamilyError("Codex plugin/installed marketplace is malformed")
+        seen_marketplaces.add(market_name)
+        for row in rows:
+            if not isinstance(row, Mapping):
+                raise InstallFamilyError("Codex plugin/installed plugin is malformed")
+            name = row.get("name")
+            plugin_id = row.get("id")
+            if (
+                not isinstance(name, str)
+                or not name
+                or plugin_id != f"{name}@{market_name}"
+                or plugin_id in seen
+                or row.get("installed") is not True
+                or type(row.get("enabled")) is not bool
+            ):
+                raise InstallFamilyError("Codex plugin/installed has ambiguous plugin identity or state")
+            seen.add(plugin_id)
+            source = row.get("source")
+            normalized_source = (
+                {"source": source.get("type"), "path": source.get("path")}
+                if isinstance(source, Mapping)
+                else source
+            )
+            installed.append(
+                {
+                    "pluginId": plugin_id,
+                    "name": name,
+                    "marketplaceName": market_name,
+                    "version": row.get("localVersion") or row.get("version"),
+                    "installed": True,
+                    "enabled": row["enabled"],
+                    "source": normalized_source,
+                }
+            )
+    return {"installed": installed}
+
+
+def _read_active_inventory(
+    codex_executable: str = "codex", *, cwd: Path | None = None
+) -> Mapping[str, Any]:
+    """Ask Codex for its installed set once, then stop the private app-server."""
+    process: subprocess.Popen[bytes] | None = None
     try:
-        completed = subprocess.run(
-            [codex_executable, "plugin", "list", "--json"],
-            check=False,
-            stdin=subprocess.DEVNULL,
+        effective_cwd = (cwd or Path.cwd()).resolve(strict=True)
+        if not effective_cwd.is_dir():
+            raise InstallFamilyError("Codex plugin inventory cwd is not a directory")
+        process = subprocess.Popen(
+            [codex_executable, "app-server", "--stdio"],
+            cwd=effective_cwd,
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=15,
+            stderr=subprocess.DEVNULL,
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise InstallFamilyError(f"Codex active plugin inventory is unavailable: {exc}") from exc
-    if completed.returncode != 0:
-        detail = completed.stderr.decode("utf-8", errors="replace").strip()
-        raise InstallFamilyError(
-            "Codex active plugin inventory failed"
-            + (f": {detail[:500]}" if detail else "")
+        deadline = time.monotonic() + INVENTORY_TIMEOUT_SECONDS
+        pending = bytearray()
+        initialization = _rpc_response(
+            process,
+            {
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "clientInfo": {"name": "akbs-install-gate", "title": "AKBS Install Gate", "version": "1"},
+                    "capabilities": {"experimentalApi": True},
+                },
+            },
+            1,
+            deadline,
+            pending,
         )
-    return _strict_inventory_json(completed.stdout)
+        if not isinstance(initialization.get("result"), Mapping):
+            raise InstallFamilyError("Codex app-server initialize result is malformed")
+        assert process.stdin is not None
+        process.stdin.write(b'{"method":"initialized","params":{}}\n')
+        process.stdin.flush()
+        response = _rpc_response(
+            process,
+            {"id": 2, "method": "plugin/installed", "params": {"cwds": [str(effective_cwd)]}},
+            2,
+            deadline,
+            pending,
+        )
+        return _installed_inventory(response)
+    except (OSError, BrokenPipeError) as exc:
+        raise InstallFamilyError(f"Codex installed plugin inventory is unavailable: {exc}") from exc
+    finally:
+        if process is not None:
+            if process.poll() is None:
+                try:
+                    process.terminate()
+                except ProcessLookupError:
+                    pass  # The child exited after poll; wait still reaps it.
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                try:
+                    process.kill()
+                except ProcessLookupError:
+                    pass
+                process.wait(timeout=1)
+            if process.stdin is not None:
+                process.stdin.close()
+            if process.stdout is not None:
+                process.stdout.close()
 
 
 def _strict_json_file(path: Path, *, label: str) -> dict[str, Any]:

@@ -35,7 +35,8 @@ python3 "scripts/akbs_member_setup.py" doctor \
   --check-remote
 ```
 
-Doctor treats `codex plugin list --json` as active-install authority. It requires
+Doctor treats Codex's `plugin/installed` app-server response for the current working
+directory as active-install authority. It requires
 one enabled `akbs-member-ops@android-codex-suite` row and binds its
 absolute marketplace `source.path` to this process's exact versioned Codex cache.
 The two roots are expected to differ, while their direct manifest bytes,

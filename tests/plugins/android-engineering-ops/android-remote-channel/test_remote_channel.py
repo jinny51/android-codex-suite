@@ -751,28 +751,37 @@ class RemoteChannelV2Tests(unittest.TestCase):
             upgraded_bin.mkdir()
             inventory = upgraded_bin / "codex"
             payload = {
-                "installed": [
+                "marketplaces": [
                     {
-                        "pluginId": (
-                            "android-engineering-ops@android-codex-suite"
-                        ),
-                        "name": "android-engineering-ops",
-                        "marketplaceName": "android-codex-suite",
-                        "version": "2.0.1",
-                        "installed": True,
-                        "enabled": True,
-                        "source": {"source": "local", "path": str(upgraded_source)},
+                        "name": "android-codex-suite",
+                        "plugins": [
+                            {
+                                "id": "android-engineering-ops@android-codex-suite",
+                                "name": "android-engineering-ops",
+                                "localVersion": "2.0.1",
+                                "installed": True,
+                                "enabled": True,
+                                "source": {"type": "local", "path": str(upgraded_source)},
+                            }
+                        ],
                     }
                 ],
-                "available": [],
+                "marketplaceLoadErrors": [],
             }
             inventory.write_text(
                 "#!/usr/bin/env python3\n"
-                "import json, sys\n"
+                "import json, os, sys\n"
                 f"payload = {payload!r}\n"
-                "if sys.argv[1:] != ['plugin', 'list', '--json']:\n"
+                "if sys.argv[1:] != ['app-server', '--stdio']:\n"
                 "    raise SystemExit(64)\n"
-                "print(json.dumps(payload, sort_keys=True))\n",
+                "for line in sys.stdin:\n"
+                "    request = json.loads(line)\n"
+                "    if request.get('id') == 1:\n"
+                "        print(json.dumps({'id': 1, 'result': {}}), flush=True)\n"
+                "    elif request.get('id') == 2:\n"
+                "        if request.get('params', {}).get('cwds') != [os.getcwd()]:\n"
+                "            raise SystemExit(65)\n"
+                "        print(json.dumps({'id': 2, 'result': payload}), flush=True)\n",
                 encoding="utf-8",
             )
             inventory.chmod(stat.S_IMODE(inventory.stat().st_mode) | stat.S_IXUSR)

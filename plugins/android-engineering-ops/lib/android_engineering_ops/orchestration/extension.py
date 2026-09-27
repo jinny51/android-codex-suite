@@ -11,7 +11,6 @@ import json
 import os
 import re
 import stat
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -24,6 +23,7 @@ from android_engineering_ops.json_contract import (
     ContractValidationError,
     validate_document,
 )
+from android_engineering_ops.install_family import InstallFamilyError, _read_active_inventory
 
 
 PROJECT_CONFIG = Path(".codex/android-engineering.toml")
@@ -112,24 +112,11 @@ def _strict_json(raw: bytes, *, label: str) -> dict[str, Any]:
     return value
 
 
-def _inventory(codex_executable: str) -> Mapping[str, Any]:
+def _inventory(codex_executable: str, project_root: Path) -> Mapping[str, Any]:
     try:
-        completed = subprocess.run(
-            [codex_executable, "plugin", "list", "--json"],
-            check=False,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=15,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise ExtensionResolutionError(f"Codex plugin inventory is unavailable: {exc}") from exc
-    if completed.returncode != 0:
-        detail = completed.stderr.decode("utf-8", errors="replace").strip()
-        raise ExtensionResolutionError(
-            "Codex plugin inventory failed" + (f": {detail[:300]}" if detail else "")
-        )
-    return _strict_json(completed.stdout, label="Codex plugin inventory")
+        return _read_active_inventory(codex_executable, cwd=project_root.resolve(strict=True))
+    except (InstallFamilyError, OSError) as exc:
+        raise ExtensionResolutionError(str(exc)) from exc
 
 
 def _read_selection(project_root: Path, codex_home: Path) -> tuple[str, str | None, Path | None]:
@@ -282,7 +269,7 @@ def resolve_extension(
     if mode == "none":
         return ExtensionResolution(source="core", mode=mode, config_path=config_path)
     assert plugin_name is not None
-    payload = inventory if inventory is not None else _inventory(codex_executable)
+    payload = inventory if inventory is not None else _inventory(codex_executable, project_root)
     plugin_id, version, root, skill_id, skill_path = _validate_selected(
         plugin_name, mode=mode, payload=payload, codex_home=home
     )

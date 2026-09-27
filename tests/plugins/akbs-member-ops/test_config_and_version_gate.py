@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -23,13 +27,132 @@ from akbs_member_ops.knowledge_search import config as search_config  # noqa: E4
 from akbs_member_ops.member import profile as member_profile  # noqa: E402
 
 
-def completed(payload: object, returncode: int = 0) -> subprocess.CompletedProcess[str]:
-    return subprocess.CompletedProcess(
-        ["codex", "plugin", "list", "--json"],
-        returncode,
-        stdout=json.dumps(payload) if returncode == 0 else "",
-        stderr="" if returncode == 0 else "unavailable",
-    )
+def test_member_installed_rpc_rejects_incomplete_and_duplicate_marketplaces() -> None:
+    member = {
+        "id": "akbs-member-ops@android-codex-suite",
+        "name": "akbs-member-ops",
+        "localVersion": PLUGIN_VERSION,
+        "source": {"type": "local", "path": "/source"},
+        "installed": True,
+        "enabled": True,
+    }
+    legacy = {
+        "id": "android-framework-ops@legacy-market",
+        "name": "android-framework-ops",
+        "localVersion": "1.0.0",
+        "source": {"type": "local", "path": "/legacy"},
+        "installed": True,
+        "enabled": True,
+    }
+    result = {
+        "marketplaces": [
+            {"name": "android-codex-suite", "plugins": [member]},
+            {"name": "legacy-market", "plugins": [legacy]},
+        ],
+        "marketplaceLoadErrors": [],
+    }
+    payload = version_gate._installed_inventory({"result": result})
+    with mock.patch.object(version_gate, "_app_server_installed_payload", return_value=payload):
+        status = version_gate.installed_plugin_family_status()
+    assert status["status"] == "MIXED_INSTALL"
+    for invalid in (
+        {**result, "marketplaceLoadErrors": ["unavailable"]},
+        {**result, "marketplaces": result["marketplaces"] * 2},
+        {**result, "marketplaces": [{"name": "android-codex-suite", "plugins": [member]}, {"name": "android-codex-suite", "plugins": [{**legacy, "id": "android-framework-ops@android-codex-suite"}]}]},
+        {**result, "marketplaces": [{"name": "android-codex-suite", "plugins": [{**member, "enabled": None}]}]},
+    ):
+        with pytest.raises(ValueError):
+            version_gate._installed_inventory({"result": invalid})
+    for raw in (b'{"id":2,"id":2}', b'{"id":NaN}'):
+        with pytest.raises(ValueError):
+            version_gate._strict_rpc_json(raw)
+
+
+def test_member_one_shot_app_server_always_exits() -> None:
+    for mode in ("success", "timeout", "bad-json", "bad-init"):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            codex = root / "codex"
+            pid_file = root / "child.pid"
+            codex.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, os, sys, time\n"
+                f"open({str(pid_file)!r}, 'w').write(str(os.getpid()))\n"
+                f"mode = {mode!r}\n"
+                "for line in sys.stdin:\n"
+                "    request = json.loads(line)\n"
+                "    if request.get('id') == 1:\n"
+                "        print(json.dumps({'id': 1, 'result': None if mode == 'bad-init' else {}}), flush=True)\n"
+                "    elif request.get('id') == 2:\n"
+                "        if request.get('params', {}).get('cwds') != [os.getcwd()]:\n"
+                "            raise SystemExit(65)\n"
+                "        if mode == 'timeout':\n"
+                "            time.sleep(30)\n"
+                "        elif mode == 'bad-json':\n"
+                "            print('{\"id\":2,\"result\":{},\"result\":{}}', flush=True)\n"
+                "        else:\n"
+                "            print(json.dumps({'id': 2, 'result': {'marketplaces': [], 'marketplaceLoadErrors': []}}), flush=True)\n",
+                encoding="utf-8",
+            )
+            codex.chmod(0o755)
+            with mock.patch.dict(os.environ, {"PATH": f"{root}{os.pathsep}{os.environ['PATH']}"}), mock.patch.object(
+                version_gate, "INSTALLED_INVENTORY_TIMEOUT_SECONDS", 0.2 if mode == "timeout" else 15
+            ):
+                started = time.monotonic()
+                if mode == "success":
+                    assert version_gate._app_server_installed_payload() == {"installed": []}
+                else:
+                    with pytest.raises((ValueError, TimeoutError)):
+                        version_gate._app_server_installed_payload()
+                assert time.monotonic() - started < 3
+            pid = int(pid_file.read_text())
+            with pytest.raises(ProcessLookupError):
+                os.kill(pid, 0)
+
+
+def test_member_cleanup_tolerates_child_exit_after_poll() -> None:
+    process = mock.Mock()
+    process.stdin = io.BytesIO()
+    process.stdout = io.BytesIO()
+    process.poll.return_value = None
+    process.terminate.side_effect = ProcessLookupError
+    responses = iter((
+        {"result": {}},
+        {"result": {"marketplaces": [], "marketplaceLoadErrors": []}},
+    ))
+    with mock.patch.object(version_gate.subprocess, "Popen", return_value=process), mock.patch.object(
+        version_gate, "_rpc_response", side_effect=lambda *args, **kwargs: next(responses)
+    ):
+        assert version_gate._app_server_installed_payload() == {"installed": []}
+    process.wait.assert_called_once_with(timeout=1)
+
+
+def test_member_inventory_cache_is_bound_to_effective_project_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    first_inventory = {"installed": [{"name": "akbs-member-ops", "installed": True, "enabled": True}]}
+    second_inventory = {"installed": [{"name": "android-framework-ops", "installed": True, "enabled": True}]}
+    version_gate.PLUGIN_LIST_CACHE = None
+    version_gate.PLUGIN_LIST_CACHE_CWD = None
+    try:
+        with mock.patch.object(
+            version_gate,
+            "_app_server_installed_payload",
+            side_effect=[first_inventory, second_inventory],
+        ) as reader:
+            monkeypatch.chdir(first)
+            assert version_gate._plugin_list_payload()[0] == first_inventory
+            assert version_gate._plugin_list_payload()[0] == first_inventory
+            monkeypatch.chdir(second)
+            assert version_gate._plugin_list_payload()[0] == second_inventory
+        assert reader.call_args_list == [mock.call(first), mock.call(second)]
+    finally:
+        version_gate.PLUGIN_LIST_CACHE = None
+        version_gate.PLUGIN_LIST_CACHE_CWD = None
 
 
 class MemberConfigTest(unittest.TestCase):
@@ -281,12 +404,12 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
                 self.write_manifest(root, version=version)
             payload = {"installed": [self.target_row(source)]}
             with mock.patch.object(version_gate, "PLUGIN_ROOT", exact), mock.patch.object(
-                version_gate, "run", return_value=completed(payload)
+                version_gate, "_app_server_installed_payload", return_value=payload
             ):
                 result = version_gate.latest_installed_plugin_cache_metadata()
             self.assertEqual(result["installed_plugin_version"], "2.0.0")
             self.assertEqual(Path(result["installed_plugin_path"]), exact)
-            self.assertEqual(result["installed_plugin_authority"], "codex_plugin_list")
+            self.assertEqual(result["installed_plugin_authority"], "codex_plugin_installed")
             self.assertFalse(result["installed_plugin_fallback"])
 
     def test_active_target_identity_binds_marketplace_source_to_versioned_cache(self) -> None:
@@ -308,7 +431,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
             self.write_manifest(execution)
             payload = {"installed": [self.target_row(source)]}
             with mock.patch.object(version_gate, "PLUGIN_ROOT", execution), mock.patch.object(
-                version_gate, "run", return_value=completed(payload)
+                version_gate, "_app_server_installed_payload", return_value=payload
             ):
                 result = version_gate.installed_plugin_family_status()
             self.assertEqual(result["status"], "PASS")
@@ -379,7 +502,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
                 with self.subTest(label=label), mock.patch.object(
                     version_gate, "PLUGIN_ROOT", execution
                 ), mock.patch.object(
-                    version_gate, "run", return_value=completed({"installed": [row]})
+                    version_gate, "_app_server_installed_payload", return_value={"installed": [row]}
                 ):
                     result = version_gate.installed_plugin_family_status()
                 self.assertEqual(result["status"], "ACTIVE_IDENTITY_MISMATCH")
@@ -414,7 +537,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
                     self.write_manifest(root, name=name, version=manifest_version)
                 with self.subTest(label=label), mock.patch.object(
                     version_gate, "PLUGIN_ROOT", execution
-                ), mock.patch.object(version_gate, "run", return_value=completed(payload)):
+                ), mock.patch.object(version_gate, "_app_server_installed_payload", return_value=payload):
                     result = version_gate.installed_plugin_family_status()
                 self.assertEqual(result["status"], "ACTIVE_IDENTITY_MISMATCH")
                 self.assertTrue(result["blocking"])
@@ -428,7 +551,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
                     encoding="utf-8",
                 )
             with mock.patch.object(version_gate, "PLUGIN_ROOT", execution), mock.patch.object(
-                version_gate, "run", return_value=completed(payload)
+                version_gate, "_app_server_installed_payload", return_value=payload
             ):
                 malformed = version_gate.installed_plugin_family_status()
             self.assertEqual(malformed["status"], "ACTIVE_IDENTITY_MISMATCH")
@@ -460,10 +583,29 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
             )
             payload = {"installed": [self.target_row(source)]}
             with mock.patch.object(version_gate, "PLUGIN_ROOT", execution), mock.patch.object(
-                version_gate, "run", return_value=completed(payload)
+                version_gate, "_app_server_installed_payload", return_value=payload
             ):
                 accepted = version_gate.installed_plugin_family_status()
             self.assertEqual(accepted["status"], "PASS")
+
+            project_source = workspace / "project/plugins/akbs-member-ops"
+            project_source.parent.mkdir(parents=True)
+            shutil.copytree(source, project_source)
+            (project_source / "README.md").write_text(
+                "project marketplace override\n", encoding="utf-8"
+            )
+            version_gate.PLUGIN_LIST_CACHE = None
+            with mock.patch.object(version_gate, "PLUGIN_ROOT", execution), mock.patch.object(
+                version_gate,
+                "_app_server_installed_payload",
+                return_value={"installed": [self.target_row(project_source)]},
+            ):
+                project_rejected = version_gate.installed_plugin_family_status()
+            self.assertEqual(project_rejected["status"], "ACTIVE_IDENTITY_MISMATCH")
+            self.assertIn(
+                "source and execution plugin publication content hashes differ",
+                project_rejected["target_member_binding"]["issues"],
+            )
 
             source_manifest = source / ".codex-plugin" / "plugin.json"
             source_payload = json.loads(source_manifest.read_text(encoding="utf-8"))
@@ -471,7 +613,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
             source_manifest.write_text(json.dumps(source_payload), encoding="utf-8")
             version_gate.PLUGIN_LIST_CACHE = None
             with mock.patch.object(version_gate, "PLUGIN_ROOT", execution), mock.patch.object(
-                version_gate, "run", return_value=completed(payload)
+                version_gate, "_app_server_installed_payload", return_value=payload
             ):
                 manifest_rejected = version_gate.installed_plugin_family_status()
             self.assertEqual(manifest_rejected["status"], "ACTIVE_IDENTITY_MISMATCH")
@@ -485,7 +627,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
             (source / "README.md").write_text("same version, tampered bytes\n", encoding="utf-8")
             version_gate.PLUGIN_LIST_CACHE = None
             with mock.patch.object(version_gate, "PLUGIN_ROOT", execution), mock.patch.object(
-                version_gate, "run", return_value=completed(payload)
+                version_gate, "_app_server_installed_payload", return_value=payload
             ):
                 rejected = version_gate.installed_plugin_family_status()
             self.assertEqual(rejected["status"], "ACTIVE_IDENTITY_MISMATCH")
@@ -520,7 +662,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
             (source / "scripts" / "entry.py").chmod(0o755)
             payload = {"installed": [self.target_row(source)]}
             with mock.patch.object(version_gate, "PLUGIN_ROOT", execution), mock.patch.object(
-                version_gate, "run", return_value=completed(payload)
+                version_gate, "_app_server_installed_payload", return_value=payload
             ):
                 result = version_gate.installed_plugin_family_status()
             self.assertEqual(result["status"], "ACTIVE_IDENTITY_MISMATCH")
@@ -550,7 +692,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
                 self.write_manifest(root)
             payload = {"installed": [self.target_row(source)]}
             with mock.patch.object(version_gate, "PLUGIN_ROOT", checkout), mock.patch.object(
-                version_gate, "run", return_value=completed(payload)
+                version_gate, "_app_server_installed_payload", return_value=payload
             ):
                 result = version_gate.installed_plugin_family_status()
             self.assertEqual(result["status"], "ACTIVE_IDENTITY_MISMATCH")
@@ -565,22 +707,21 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
             plugin = Path(temporary) / "plugin"
             self.write_manifest(plugin)
             duplicate = self.target_row(plugin)
-            malformed_json = subprocess.CompletedProcess(
-                ["codex", "plugin", "list", "--json"],
-                0,
-                stdout='{"installed":[],"installed":[]}',
-                stderr="",
-            )
             cases = (
-                (completed({"installed": [duplicate, dict(duplicate)]}), "AMBIGUOUS_INSTALL"),
-                (malformed_json, "UNKNOWN"),
-                (completed({"installed": ["not-an-object"]}), "UNKNOWN"),
+                ({"installed": [duplicate, dict(duplicate)]}, "AMBIGUOUS_INSTALL"),
+                (ValueError("duplicate JSON key"), "UNKNOWN"),
+                ({"installed": ["not-an-object"]}, "UNKNOWN"),
             )
             for response, expected in cases:
                 version_gate.PLUGIN_LIST_CACHE = None
                 with self.subTest(expected=expected), mock.patch.object(
                     version_gate, "PLUGIN_ROOT", plugin
-                ), mock.patch.object(version_gate, "run", return_value=response):
+                ), mock.patch.object(
+                    version_gate,
+                    "_app_server_installed_payload",
+                    side_effect=response if isinstance(response, Exception) else None,
+                    return_value=None if isinstance(response, Exception) else response,
+                ):
                     result = version_gate.installed_plugin_family_status()
                 self.assertEqual(result["status"], expected)
                 self.assertTrue(result["blocking"])
@@ -597,7 +738,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
             }
             for name in ("akbs-member-ops", "android-framework-ops")
         ]
-        with mock.patch.object(version_gate, "run", return_value=completed({"installed": rows})):
+        with mock.patch.object(version_gate, "_app_server_installed_payload", return_value={"installed": rows}):
             result = version_gate.installed_plugin_family_status()
         self.assertEqual(result["status"], "MIXED_INSTALL")
         self.assertTrue(result["blocking"])
@@ -624,7 +765,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
                 },
             ]
             with mock.patch.object(
-                version_gate, "run", return_value=completed({"installed": rows})
+                version_gate, "_app_server_installed_payload", return_value={"installed": rows}
             ), mock.patch.object(version_gate, "PLUGIN_ROOT", runtime):
                 result = version_gate.installed_plugin_family_status()
             self.assertEqual(result["status"], "PASS")
@@ -641,7 +782,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
                 "source": {},
             }
         ]
-        with mock.patch.object(version_gate, "run", return_value=completed({"installed": rows})):
+        with mock.patch.object(version_gate, "_app_server_installed_payload", return_value={"installed": rows}):
             family = version_gate.installed_plugin_family_status()
             metadata = version_gate.latest_installed_plugin_cache_metadata()
         self.assertEqual(family["status"], "TARGET_NOT_ACTIVE")
@@ -650,10 +791,10 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
         self.assertNotIn("installed_plugin_version", metadata)
         self.assertEqual(metadata["execution_plugin_version"], PLUGIN_VERSION)
 
-    def test_cli_unavailable_falls_back_to_execution_root_not_history(self) -> None:
+    def test_app_server_unavailable_falls_back_to_execution_root_not_history(self) -> None:
         with tempfile.TemporaryDirectory() as temporary, mock.patch.dict(
             os.environ, {"CODEX_HOME": temporary}, clear=False
-        ), mock.patch.object(version_gate, "run", return_value=completed({}, returncode=1)):
+        ), mock.patch.object(version_gate, "_app_server_installed_payload", side_effect=OSError("unavailable")):
             result = version_gate.latest_installed_plugin_cache_metadata()
         self.assertTrue(result["installed_plugin_fallback"])
         self.assertFalse(result["installed_plugin_active"])
@@ -662,19 +803,11 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
         self.assertEqual(result["execution_plugin_version"], PLUGIN_VERSION)
 
     def test_unavailable_or_malformed_active_inventory_is_blocking(self) -> None:
-        cases = (
-            completed({}, returncode=1),
-            subprocess.CompletedProcess(
-                ["codex", "plugin", "list", "--json"],
-                0,
-                stdout="{not-json",
-                stderr="",
-            ),
-        )
+        cases = (OSError("unavailable"), ValueError("malformed JSON"))
         for response in cases:
             version_gate.PLUGIN_LIST_CACHE = None
             with self.subTest(response=response), mock.patch.object(
-                version_gate, "run", return_value=response
+                version_gate, "_app_server_installed_payload", side_effect=response
             ):
                 result = version_gate.installed_plugin_family_status()
             self.assertEqual(result["status"], "UNKNOWN")
@@ -682,7 +815,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
             self.assertTrue(result["fallback"])
 
         version_gate.PLUGIN_LIST_CACHE = None
-        with mock.patch.object(version_gate, "run", side_effect=FileNotFoundError("codex")):
+        with mock.patch.object(version_gate, "_app_server_installed_payload", side_effect=FileNotFoundError("codex")):
             missing = version_gate.installed_plugin_family_status()
         self.assertEqual(missing["status"], "UNKNOWN")
         self.assertTrue(missing["blocking"])
@@ -690,8 +823,8 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
         version_gate.PLUGIN_LIST_CACHE = None
         with mock.patch.object(
             version_gate,
-            "run",
-            side_effect=subprocess.TimeoutExpired(["codex", "plugin", "list", "--json"], 15),
+            "_app_server_installed_payload",
+            side_effect=TimeoutError("plugin/installed timed out"),
         ):
             timed_out = version_gate.installed_plugin_family_status()
         self.assertEqual(timed_out["status"], "UNKNOWN")
@@ -715,9 +848,6 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
 
                 def simulate(command: list[str], *, timeout: float | None = None) -> subprocess.CompletedProcess[str]:
                     commands.append(command)
-                    if command == ["codex", "plugin", "list", "--json"]:
-                        self.assertEqual(timeout, 15)
-                        return completed(inventory)
                     self.assertEqual(timeout, version_gate._plugin_update.UPDATE_COMMAND_TIMEOUT)
                     if command == ["codex", "plugin", "marketplace", "upgrade", "android-codex-suite", "--json"]:
                         self.write_manifest(source, version="2.0.1")
@@ -736,11 +866,13 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
                 with mock.patch.object(version_gate, "PLUGIN_ROOT", old_cache), mock.patch.object(
                     version_gate, "run", side_effect=simulate
                 ), mock.patch.object(
+                    version_gate, "_app_server_installed_payload", side_effect=lambda _cwd: inventory.copy()
+                ), mock.patch.object(
                     version_gate, "installed_plugin_family_status", wraps=original_family
                 ) as family:
                     result = version_gate.auto_update_packaged_plugin("akbs-member-ops")
                     self.assertEqual(version_gate.PLUGIN_ROOT, old_cache)
-                self.assertEqual(commands.count(["codex", "plugin", "list", "--json"]), 2)
+                self.assertEqual(len(commands), 2)
                 self.assertEqual(family.call_count, 1 if outcome == "no-active" else 2)
                 self.assertEqual(result["status"], "PASS" if outcome == "valid" else "FAIL")
                 self.assertEqual(result["restart_required"], outcome == "valid")

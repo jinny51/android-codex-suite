@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 import hashlib
 import os
+import select
 import shlex
 import stat
 import subprocess
 import sys
+import time
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -36,12 +38,15 @@ PLUGIN_REEXEC_ATTEMPT_ENV = "CODEX_REPORT_PLUGIN_REEXEC_ATTEMPTED"
 PLUGIN_REMOTE_MANIFEST_TIMEOUT = 6
 LAST_PLUGIN_VERSION_GATE: dict[str, Any] | None = None
 PLUGIN_LIST_CACHE: tuple[dict[str, Any] | None, str] | None = None
+PLUGIN_LIST_CACHE_CWD: Path | None = None
 TARGET_INSTALL_FAMILY = {"akbs-member-ops", "android-engineering-ops"}
 LEGACY_INSTALL_FAMILY = {"android-framework-ops", "android-wsl-ops", "android-mac-ops"}
 TARGET_MEMBER_PLUGIN = "akbs-member-ops"
 TARGET_MARKETPLACE = "android-codex-suite"
 PLUGIN_VERSION_RE = _plugin_update.PLUGIN_VERSION_RE
 MAX_PLUGIN_MANIFEST_BYTES = 1024 * 1024
+INSTALLED_INVENTORY_TIMEOUT_SECONDS = 15
+MAX_RPC_LINE_BYTES = 8 * 1024 * 1024
 
 
 def run(
@@ -120,20 +125,7 @@ def current_skill_cache_metadata() -> dict[str, str]:
     }
 
 
-def _plugin_list_payload() -> tuple[dict[str, Any] | None, str]:
-    """Read the Codex-installed set; cache directories are not installation authority."""
-    global PLUGIN_LIST_CACHE
-    if PLUGIN_LIST_CACHE is not None:
-        return PLUGIN_LIST_CACHE
-    try:
-        cp = run(["codex", "plugin", "list", "--json"], timeout=15)
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        PLUGIN_LIST_CACHE = (None, f"codex plugin list --json is unavailable: {exc}")
-        return PLUGIN_LIST_CACHE
-    if cp.returncode != 0:
-        detail = cp.stderr.strip() or cp.stdout.strip()
-        PLUGIN_LIST_CACHE = (None, detail or "codex plugin list --json failed")
-        return PLUGIN_LIST_CACHE
+def _strict_rpc_json(raw: bytes) -> dict[str, Any]:
     def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         value: dict[str, Any] = {}
         for key, item in pairs:
@@ -145,20 +137,198 @@ def _plugin_list_payload() -> tuple[dict[str, Any] | None, str]:
     def reject_non_finite(value: str) -> None:
         raise ValueError(f"non-finite number: {value}")
 
+    payload = json.loads(
+        raw.decode("utf-8"),
+        object_pairs_hook=reject_duplicate_keys,
+        parse_constant=reject_non_finite,
+    )
+    if not isinstance(payload, dict):
+        raise ValueError("JSON-RPC response must be an object")
+    return payload
+
+
+def _rpc_line(process: subprocess.Popen[bytes], deadline: float, pending: bytearray) -> dict[str, Any]:
+    assert process.stdout is not None
+    while True:
+        newline = pending.find(b"\n")
+        if newline >= 0:
+            raw = bytes(pending[:newline])
+            del pending[: newline + 1]
+            if len(raw) > MAX_RPC_LINE_BYTES:
+                raise ValueError("Codex plugin inventory response is too large")
+            return _strict_rpc_json(raw)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or not select.select([process.stdout], [], [], remaining)[0]:
+            raise TimeoutError("Codex installed plugin inventory timed out")
+        chunk = os.read(process.stdout.fileno(), 65536)
+        if not chunk:
+            raise ValueError("Codex app-server closed before answering plugin/installed")
+        pending.extend(chunk)
+        if len(pending) > MAX_RPC_LINE_BYTES:
+            raise ValueError("Codex plugin inventory response is too large")
+
+
+def _rpc_response(
+    process: subprocess.Popen[bytes],
+    request: dict[str, Any],
+    request_id: int,
+    deadline: float,
+    pending: bytearray,
+) -> dict[str, Any]:
+    assert process.stdin is not None
+    process.stdin.write(json.dumps(request, separators=(",", ":")).encode("utf-8") + b"\n")
+    process.stdin.flush()
+    while True:
+        response = _rpc_line(process, deadline, pending)
+        if "id" not in response:
+            continue
+        if response.get("id") != request_id or "error" in response or "result" not in response:
+            raise ValueError("Codex app-server returned an invalid plugin inventory response")
+        return response
+
+
+def _installed_inventory(response: dict[str, Any]) -> dict[str, Any]:
+    result = response.get("result")
+    if not isinstance(result, dict):
+        raise ValueError("Codex plugin/installed result is malformed")
+    errors = result.get("marketplaceLoadErrors")
+    marketplaces = result.get("marketplaces")
+    if not isinstance(errors, list) or errors:
+        raise ValueError("Codex plugin/installed has marketplace load errors")
+    if not isinstance(marketplaces, list):
+        raise ValueError("Codex plugin/installed has no marketplace list")
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    seen_marketplaces: set[str] = set()
+    for marketplace in marketplaces:
+        if not isinstance(marketplace, dict):
+            raise ValueError("Codex plugin/installed marketplace is malformed")
+        market_name = marketplace.get("name")
+        plugins = marketplace.get("plugins")
+        if (
+            not isinstance(market_name, str)
+            or not market_name
+            or market_name in seen_marketplaces
+            or not isinstance(plugins, list)
+        ):
+            raise ValueError("Codex plugin/installed marketplace is malformed")
+        seen_marketplaces.add(market_name)
+        for row in plugins:
+            if not isinstance(row, dict):
+                raise ValueError("Codex plugin/installed plugin is malformed")
+            name = row.get("name")
+            plugin_id = row.get("id")
+            if (
+                not isinstance(name, str)
+                or not name
+                or plugin_id != f"{name}@{market_name}"
+                or plugin_id in seen
+                or row.get("installed") is not True
+                or type(row.get("enabled")) is not bool
+            ):
+                raise ValueError("Codex plugin/installed has ambiguous plugin identity or state")
+            seen.add(plugin_id)
+            source = row.get("source")
+            rows.append(
+                {
+                    "pluginId": plugin_id,
+                    "name": name,
+                    "marketplaceName": market_name,
+                    "version": row.get("localVersion") or row.get("version"),
+                    "installed": True,
+                    "enabled": row["enabled"],
+                    "source": (
+                        {"source": source.get("type"), "path": source.get("path")}
+                        if isinstance(source, dict)
+                        else source
+                    ),
+                }
+            )
+    return {"installed": rows}
+
+
+def _app_server_installed_payload(cwd: Path | None = None) -> dict[str, Any]:
+    """Read Codex's complete installed set using a private one-shot app-server."""
+    process: subprocess.Popen[bytes] | None = None
     try:
-        payload = json.loads(
-            cp.stdout,
-            object_pairs_hook=reject_duplicate_keys,
-            parse_constant=reject_non_finite,
+        effective_cwd = (cwd or Path.cwd()).resolve(strict=True)
+        if not effective_cwd.is_dir():
+            raise ValueError("Codex plugin inventory cwd is not a directory")
+        process = subprocess.Popen(
+            ["codex", "app-server", "--stdio"],
+            cwd=effective_cwd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
         )
-    except (TypeError, ValueError, json.JSONDecodeError) as exc:
-        PLUGIN_LIST_CACHE = (None, f"invalid codex plugin list JSON: {exc}")
+        deadline = time.monotonic() + INSTALLED_INVENTORY_TIMEOUT_SECONDS
+        pending = bytearray()
+        initialization = _rpc_response(
+            process,
+            {
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "clientInfo": {"name": "akbs-install-gate", "title": "AKBS Install Gate", "version": "1"},
+                    "capabilities": {"experimentalApi": True},
+                },
+            },
+            1,
+            deadline,
+            pending,
+        )
+        if not isinstance(initialization.get("result"), dict):
+            raise ValueError("Codex app-server initialize result is malformed")
+        assert process.stdin is not None
+        process.stdin.write(b'{"method":"initialized","params":{}}\n')
+        process.stdin.flush()
+        response = _rpc_response(
+            process,
+            {"id": 2, "method": "plugin/installed", "params": {"cwds": [str(effective_cwd)]}},
+            2,
+            deadline,
+            pending,
+        )
+        return _installed_inventory(response)
+    finally:
+        if process is not None:
+            if process.poll() is None:
+                try:
+                    process.terminate()
+                except ProcessLookupError:
+                    pass  # The child exited after poll; wait still reaps it.
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                try:
+                    process.kill()
+                except ProcessLookupError:
+                    pass
+                process.wait(timeout=1)
+            if process.stdin is not None:
+                process.stdin.close()
+            if process.stdout is not None:
+                process.stdout.close()
+
+
+def _plugin_list_payload() -> tuple[dict[str, Any] | None, str]:
+    """Read the Codex-installed set; cache directories are not installation authority."""
+    global PLUGIN_LIST_CACHE, PLUGIN_LIST_CACHE_CWD
+    try:
+        effective_cwd = Path.cwd().resolve(strict=True)
+    except OSError as exc:
+        return None, f"Codex plugin inventory cwd is unavailable: {exc}"
+    if PLUGIN_LIST_CACHE is not None and PLUGIN_LIST_CACHE_CWD == effective_cwd:
         return PLUGIN_LIST_CACHE
-    if not isinstance(payload, dict) or not isinstance(payload.get("installed"), list):
-        PLUGIN_LIST_CACHE = (None, "codex plugin list JSON has no installed array")
-        return PLUGIN_LIST_CACHE
-    if any(not isinstance(row, dict) for row in payload["installed"]):
-        PLUGIN_LIST_CACHE = (None, "codex plugin list installed array contains a non-object entry")
+    PLUGIN_LIST_CACHE_CWD = effective_cwd
+    try:
+        payload = _app_server_installed_payload(effective_cwd)
+        if not isinstance(payload, dict) or not isinstance(payload.get("installed"), list):
+            raise ValueError("Codex plugin inventory has no installed list")
+        if any(not isinstance(row, dict) for row in payload["installed"]):
+            raise ValueError("Codex plugin inventory contains a non-object entry")
+    except (OSError, TimeoutError, ValueError, UnicodeDecodeError) as exc:
+        PLUGIN_LIST_CACHE = (None, f"Codex plugin/installed is unavailable or invalid: {exc}")
         return PLUGIN_LIST_CACHE
     PLUGIN_LIST_CACHE = (payload, "")
     return PLUGIN_LIST_CACHE
@@ -563,7 +733,7 @@ def installed_plugin_family_status() -> dict[str, Any]:
     return {
         "status": status,
         "blocking": blocking,
-        "authority": "codex_plugin_list",
+        "authority": "codex_plugin_installed",
         "fallback": False,
         "active_plugins": sorted(active_names),
         "active_target_family": active_target,
@@ -617,7 +787,7 @@ def latest_installed_plugin_cache_metadata(plugin_name: str = "akbs-member-ops")
             marketplace = str(row.get("marketplaceName") or "")
             source = row.get("source")
             result: dict[str, Any] = {
-                "installed_plugin_authority": "codex_plugin_list",
+                "installed_plugin_authority": "codex_plugin_installed",
                 "installed_plugin_fallback": False,
                 "installed_plugin_active": True,
                 "installed_plugin_id": str(row.get("pluginId") or ""),
@@ -691,7 +861,7 @@ def latest_installed_plugin_cache_metadata(plugin_name: str = "akbs-member-ops")
             return result
         if len(matches) > 1:
             return {
-                "installed_plugin_authority": "codex_plugin_list",
+                "installed_plugin_authority": "codex_plugin_installed",
                 "installed_plugin_fallback": False,
                 "installed_plugin_active": True,
                 "installed_plugin_ambiguous": True,

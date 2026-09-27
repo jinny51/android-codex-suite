@@ -4,6 +4,7 @@ import json
 import shutil
 import sys
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -90,6 +91,19 @@ def test_explicit_jinny_resolves_one_real_orchestrator_skill(tmp_path: Path) -> 
     assert result.source == "extension"
     assert result.skill_id == "jinny-android-orchestrator"
     assert result.skill_path and result.skill_path.is_file()
+
+
+def test_selected_extension_uses_same_installed_inventory_reader(tmp_path: Path) -> None:
+    home, row = install_jinny(tmp_path)
+    project = tmp_path / "project"
+    config(project, '[extension]\nmode = "jinny"\n')
+    with mock.patch(
+        "android_engineering_ops.orchestration.extension._read_active_inventory",
+        return_value={"installed": [row]},
+    ) as installed:
+        result = resolve_extension(project, codex_home=home)
+    installed.assert_called_once_with("codex", cwd=project)
+    assert result.plugin_name == "jinny-android-practices"
 
 
 def test_legacy_jinny_pins_are_accepted_but_not_part_of_resolution(tmp_path: Path) -> None:

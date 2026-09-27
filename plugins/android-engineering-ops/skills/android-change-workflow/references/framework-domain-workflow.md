@@ -238,9 +238,10 @@ After Gate 5:
    the platform/version input, project, change ID, summary, implementation origin,
    component mappings, risk/rollback, verification, search evidence, and explicit
    `related_report_run_ids` when a daily/weekly run ID is known.
-3. Capture directly emits the current incoming v2 `android_change` package. Invoke
-   `akbs-patch-submit` on that same directory for local check, prepare, or submit.
-   There is one package format and one patch upload lifecycle.
+3. Capture emits repository patches and engineering evidence. Pass that capture
+   directory to `akbs-patch-submit` to construct, check, prepare, or submit the
+   single final incoming v2 `android_change` package. There is one upload format
+   and one patch upload lifecycle.
 4. Failed, blocked, draft, or partially verified work is not an upload package. Keep
    its honest diagnostics in the engineering task or daily/weekly report.
 5. If no package can be made, state exactly why. Do not claim capture or upload.

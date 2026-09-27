@@ -29,9 +29,23 @@ an update, restart Codex before continuing.
 
 ## Layer classification
 
-Choose the layer from the actual changed source, not the feature name:
+Capture only a change made in the target Android product source. A standalone App
+repository, including one hosted in SysPros, does not become a Patch merely because
+it produces an APK used by the product. Its separate product-source integration
+change may be captured. Confirm this for every repository before choosing a layer;
+an existing `.patch` and a remote snapshot follow the same business boundary.
+If ownership is unknown, retain the work locally rather than guessing a layer.
+A SysPros URL is a reason to check the repository's role, not proof that every
+repository there is an independent App. Likewise, another URL or no remote is
+not proof of product-source ownership. Inspect the actual source authority
+before producing a Patch.
+The capture CLI checks patch structure and evidence, but cannot infer this
+business ownership from a Git URL, path, or `application` layer. The engineering
+task must make and record the decision before invoking it.
 
-- `application`: ordinary apps and SystemUI/Settings-style system apps
+For eligible Patches, choose the layer from the actual changed source, not the feature name:
+
+- `application`: apps maintained in the product source tree, including SystemUI and Settings
 - `platform`: Java Framework, system services, framework resources
 - `native`: native platform services and libraries such as SurfaceFlinger
 - `hal`: HIDL/AIDL HAL interfaces and implementations
@@ -56,10 +70,11 @@ of the seven canonical layers.
 
 ## Remote-Only Source Contract
 
-For current Codex-authored work, obtain Git status, binary diffs, branch, HEAD, repo
-paths, and changed-file facts from an immutable snapshot created through
+For current Codex-authored work, obtain Git status, binary diffs, branch, HEAD,
+repo paths, and changed-file facts from an immutable snapshot created through
 `android-remote-channel`. Mounted source is a human CRUD and artifact bridge, not
-the Codex Git authority. Do not use direct SSH for capture.
+the Codex Git authority. Do not use direct SSH for capture. This describes the
+current Codex capture method, not which product-source Patches may be submitted.
 
 Use the one-step snapshot and package flow:
 
@@ -96,6 +111,13 @@ A truthful existing-code import may use `--patch-artifact` and
 must be generated from one actual Git repository and paired with that repository's
 path. Repeat both arguments for a cross-repository change; Android source root `.`
 is not a repository path and is rejected.
+An explicit patch artifact must keep its original bytes: if capture would filter
+any section, including a mode-only section, refuse the import and retain the
+original file instead of silently changing or dropping a patch.
+
+Do not relabel a manual artifact or local Git capture as a remote snapshot. A
+capture method alone cannot prove that the changed repository belongs to the
+target Android product source.
 
 The capture is written below:
 

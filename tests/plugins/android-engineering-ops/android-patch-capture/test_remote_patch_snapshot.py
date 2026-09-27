@@ -169,25 +169,31 @@ class RemotePatchSnapshotTests(unittest.TestCase):
                 bundled.write_bytes(channel.read_bytes())
                 bundled.chmod(0o755)
         inventory = {
-            "installed": [
-                {
-                    "pluginId": "android-engineering-ops@android-codex-suite",
-                    "name": "android-engineering-ops",
-                    "marketplaceName": "android-codex-suite",
-                    "version": PLUGIN_VERSION,
-                    "installed": True,
-                    "enabled": True,
-                    "source": {"source": "local", "path": str(source)},
-                }
-            ]
+            "marketplaces": [{"name": "android-codex-suite", "plugins": [{
+                "id": "android-engineering-ops@android-codex-suite",
+                "name": "android-engineering-ops",
+                "localVersion": PLUGIN_VERSION,
+                "installed": True,
+                "enabled": True,
+                "source": {"type": "local", "path": str(source)},
+            }]}],
+            "marketplaceLoadErrors": [],
         }
         bin_dir = bin_dir or codex_home / "test-inventory-bin"
         bin_dir.mkdir(parents=True, exist_ok=True)
         codex = bin_dir / "codex"
         codex.write_text(
             "#!/usr/bin/env python3\n"
-            "import json\n"
-            f"print(json.dumps({inventory!r}, sort_keys=True))\n",
+            "import json, sys\n"
+            f"inventory = {inventory!r}\n"
+            "if sys.argv[1:] != ['app-server', '--stdio']:\n"
+            "    raise SystemExit(64)\n"
+            "for line in sys.stdin:\n"
+            "    request = json.loads(line)\n"
+            "    if request.get('id') == 1:\n"
+            "        print(json.dumps({'id': 1, 'result': {}}), flush=True)\n"
+            "    elif request.get('id') == 2:\n"
+            "        print(json.dumps({'id': 2, 'result': inventory}), flush=True)\n",
             encoding="utf-8",
         )
         codex.chmod(0o755)
@@ -481,6 +487,8 @@ class RemotePatchSnapshotTests(unittest.TestCase):
         self.assertEqual(manifest["implementation_origin"], "manual")
         self.assertEqual(manifest["components"][0]["layer"], "platform")
         self.assertTrue(manifest["patches"][0]["source_root"].startswith("manual-import:"))
+        package = Path(json.loads(result.stdout)["package"])
+        self.assertEqual((package / manifest["patches"][0]["path"]).read_bytes(), patch.read_bytes())
 
     def test_handoff_uses_channel_exclusive_then_scp_and_validates(self) -> None:
         remote_snapshot = (

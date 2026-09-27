@@ -25,7 +25,14 @@ There is one current package contract:
 }
 ```
 
-`components` is only a patch-to-layer map. Every `files.patches` path appears
+Before preparing or submitting, confirm that every patch changes the target Android
+product source. An independent App source diff must not be submitted as Patch, even
+when its APK is included in a product image or its layer would be `application`.
+Product-source App changes and product-side APK integration changes remain eligible.
+Apply this boundary to capture packages and direct/manual patch imports alike;
+unknown ownership needs source clarification, not a guessed layer.
+
+`components` is only a patch-to-layer map for eligible product-source Patches. Every `files.patches` path appears
 exactly once. Allowed layers are `application`, `platform`, `native`, `hal`,
 `kernel`, `device`, and `build`. The package keeps the stable v2 directory,
 evidence, validation, upload, queue, information-completion, and curation lifecycle.
@@ -58,7 +65,8 @@ python3 "scripts/akbs_patch_submit.py" --profile <member_alias> --prepare \
 ```
 
 The capture already carries every patch's layer. For a truthful manual or historical
-single-patch import, declare the layer explicitly:
+single-patch import, declare the layer explicitly. This prepares local pending
+material; it does not claim the artifact came from a remote Git snapshot:
 
 ```bash
 python3 "scripts/akbs_patch_submit.py" --profile <member_alias> --prepare \
@@ -80,6 +88,9 @@ python3 "scripts/akbs_patch_submit.py" --profile <member_alias> --submit-latest
 
 Submission preserves the generated package bytes. Retry the same package after an
 uncertain transport failure; do not rename it or change its identity.
+Do not relabel an independent App as product source, or a manual artifact as a
+remote snapshot. If product-source ownership is uncertain, keep the package local
+until the source can be clarified; do not infer eligibility from its layer.
 
 Information completion stays on the server-assigned `patch_package_id`:
 

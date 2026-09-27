@@ -20,7 +20,7 @@ python3 "scripts/akbs_member_setup.py" doctor \
   --check-remote
 ```
 
-Doctor 以 `codex plugin list --json` 为 active-install 权威，并要求唯一启用的
+Doctor 以 Codex app-server 对当前工作目录返回的 `plugin/installed` 清单为 active-install 权威，并要求唯一启用的
 `akbs-member-ops@android-codex-suite` 条目把绝对 marketplace
 `source.path` 绑定到当前进程的精确 versioned Codex cache。两个目录应不同，但两边
 直接 `.codex-plugin/plugin.json` 的字节、name/version 与完整发布内容及

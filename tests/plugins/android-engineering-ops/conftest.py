@@ -37,26 +37,37 @@ def installed_engineering_family(
     executable_dir.mkdir()
     executable = executable_dir / "codex"
     payload = {
-        "installed": [
+        "marketplaces": [
             {
-                "pluginId": "android-engineering-ops@android-codex-suite",
-                "name": "android-engineering-ops",
-                "marketplaceName": marketplace,
-                "version": PLUGIN_VERSION,
-                "installed": True,
-                "enabled": True,
-                "source": {"source": "local", "path": str(source)},
+                "name": marketplace,
+                "plugins": [
+                    {
+                        "id": "android-engineering-ops@android-codex-suite",
+                        "name": "android-engineering-ops",
+                        "localVersion": PLUGIN_VERSION,
+                        "installed": True,
+                        "enabled": True,
+                        "source": {"type": "local", "path": str(source)},
+                    }
+                ],
             }
         ],
-        "available": [],
+        "marketplaceLoadErrors": [],
     }
     executable.write_text(
         "#!/usr/bin/env python3\n"
-        "import json, sys\n"
+        "import json, os, sys\n"
         f"payload = {payload!r}\n"
-        "if sys.argv[1:] != ['plugin', 'list', '--json']:\n"
+        "if sys.argv[1:] != ['app-server', '--stdio']:\n"
         "    raise SystemExit(64)\n"
-        "print(json.dumps(payload, sort_keys=True))\n",
+        "for line in sys.stdin:\n"
+        "    request = json.loads(line)\n"
+        "    if request.get('id') == 1:\n"
+        "        print(json.dumps({'id': 1, 'result': {}}), flush=True)\n"
+        "    elif request.get('id') == 2:\n"
+        "        if request.get('params', {}).get('cwds') != [os.getcwd()]:\n"
+        "            raise SystemExit(65)\n"
+        "        print(json.dumps({'id': 2, 'result': payload}), flush=True)\n",
         encoding="utf-8",
     )
     executable.chmod(stat.S_IMODE(executable.stat().st_mode) | stat.S_IXUSR)
@@ -72,7 +83,7 @@ def isolated_active_engineering_inventory(
     """Run plugin tests as the target-only installed family.
 
     Production entry points never accept an inventory environment override.  The
-    fixture therefore provides the same `codex plugin list --json` executable
+    fixture therefore provides the same `codex app-server` installed-inventory
     boundary they use in a newly started target-only session.
     """
     home, _source, runtime, executable_dir = installed_engineering_family

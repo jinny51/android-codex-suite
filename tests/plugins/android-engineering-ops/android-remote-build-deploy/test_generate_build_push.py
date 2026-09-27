@@ -137,22 +137,28 @@ class RemoteBuildV2Tests(unittest.TestCase):
         inventory_bin.mkdir()
         codex = inventory_bin / "codex"
         inventory = {
-            "installed": [
-                {
-                    "pluginId": "android-engineering-ops@android-codex-suite",
-                    "name": "android-engineering-ops",
-                    "marketplaceName": "android-codex-suite",
-                    "version": PLUGIN_VERSION,
-                    "installed": True,
-                    "enabled": True,
-                    "source": {"source": "local", "path": str(self.plugin_source)},
-                }
-            ]
+            "marketplaces": [{"name": "android-codex-suite", "plugins": [{
+                "id": "android-engineering-ops@android-codex-suite",
+                "name": "android-engineering-ops",
+                "localVersion": PLUGIN_VERSION,
+                "installed": True,
+                "enabled": True,
+                "source": {"type": "local", "path": str(self.plugin_source)},
+            }]}],
+            "marketplaceLoadErrors": [],
         }
         codex.write_text(
             "#!/usr/bin/env python3\n"
-            "import json\n"
-            f"print(json.dumps({inventory!r}, sort_keys=True))\n",
+            "import json, sys\n"
+            f"inventory = {inventory!r}\n"
+            "if sys.argv[1:] != ['app-server', '--stdio']:\n"
+            "    raise SystemExit(64)\n"
+            "for line in sys.stdin:\n"
+            "    request = json.loads(line)\n"
+            "    if request.get('id') == 1:\n"
+            "        print(json.dumps({'id': 1, 'result': {}}), flush=True)\n"
+            "    elif request.get('id') == 2:\n"
+            "        print(json.dumps({'id': 2, 'result': inventory}), flush=True)\n",
             encoding="utf-8",
         )
         codex.chmod(codex.stat().st_mode | stat.S_IXUSR)

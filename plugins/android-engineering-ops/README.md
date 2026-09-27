@@ -1,6 +1,6 @@
 # Android Engineering Ops
 
-`android-engineering-ops` 3.2.0 是独立的 Android 工程核心。默认不需要任何
+`android-engineering-ops` 3.2.1 是独立的 Android 工程核心。默认不需要任何
 编排插件：没有配置扩展时，当前任务直接使用核心 Skill 完成工作。
 
 | Skill | 职责 |
@@ -104,13 +104,15 @@ active 实例，或源码与运行时 manifest 不一致。不要通过扫描缓
 Canonical component layer 只有 application/platform/native/hal/kernel/device/build。
 旧 `change_domain` 仅按冻结映射转换为 layer；`vendor` 不是 layer。
 
-任何 layer 的完整验证结果都由 `android-patch-capture` 直接生成最终
-`knowledge-incoming-package/2/android_change` 包，再交 `akbs-patch-submit` 做本地检查、
-prepare 和提交。七层分类只增加 `components[].layer`，其余字段和上传生命周期保持
-正式 incoming v2。既有 `framework_change` 历史包只读保留，不改写归档字节。
+合格产品源码变更完成验证后，`android-patch-capture` 生成逐仓 patch 和工程证据，
+`akbs-patch-submit` 据此构造、检查、准备并提交最终
+`knowledge-incoming-package/2/android_change` 包。七层分类由最终包的
+`components[].layer` 记录；工程 capture 不另设上传格式或生命周期。
+既有 `framework_change` 历史包只读保留，不改写归档字节。
 
 Codex 编写的当前源码变更使用 `capture_remote_snapshot.py --package` 一步获取远端最新
 快照并立即调用原子打包器。旧两步接口继续兼容，但不再是默认人工流程。
+独立 App 源码不按 `application` layer 混入产品补丁；产品侧 APK 集成改动可按其产品源码仓采集。手工和快照捕获适用同一来源边界。
 
 ## Source access
 

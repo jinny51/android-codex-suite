@@ -429,9 +429,25 @@ def install_plugin_family(
         "#!/usr/bin/env python3\n"
         "import json, sys\n"
         f"payload = {payload!r}\n"
-        "if sys.argv[1:] != ['plugin', 'list', '--json']:\n"
-        "    raise SystemExit(64)\n"
-        "print(json.dumps(payload, sort_keys=True))\n",
+        "if sys.argv[1:] == ['plugin', 'list', '--json']:\n"
+        "    print(json.dumps(payload, sort_keys=True))\n"
+        "elif sys.argv[1:] == ['app-server', '--stdio']:\n"
+        "    plugins = []\n"
+        "    for row in payload['installed']:\n"
+        "        plugins.append({'id': row['pluginId'], 'name': row['name'], "
+        "'localVersion': row['version'], 'installed': row['installed'], "
+        "'enabled': row['enabled'], 'source': {'type': row['source']['source'], "
+        "'path': row['source']['path']}})\n"
+        "    result = {'marketplaces': [{'name': 'android-codex-suite', "
+        "'plugins': plugins}], 'marketplaceLoadErrors': []}\n"
+        "    for line in sys.stdin:\n"
+        "        request = json.loads(line)\n"
+        "        if request.get('id') == 1:\n"
+        "            print(json.dumps({'id': 1, 'result': {}}), flush=True)\n"
+        "        elif request.get('id') == 2:\n"
+        "            print(json.dumps({'id': 2, 'result': result}), flush=True)\n"
+        "else:\n"
+        "    raise SystemExit(64)\n",
         encoding="utf-8",
     )
     codex.chmod(0o700)

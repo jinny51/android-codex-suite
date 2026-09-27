@@ -450,27 +450,33 @@ def collect_patch_artifact_captures(
             diff_text=text,
             used_names=used_names,
         )
-        if capture is not None:
-            workspace_relative = []
-            for raw_modified in capture.facts.get("modified_files", []):
-                modified = str(raw_modified).removeprefix("./")
-                modified_path = PurePosixPath(modified)
-                if (
-                    not modified
-                    or modified_path.is_absolute()
-                    or any(part in {"", ".", ".."} for part in modified_path.parts)
-                ):
-                    raise SystemExit(
-                        f"显式 patch 包含越出仓库边界的路径: {raw_modified} ({repo_path})"
-                    )
-                if modified == repo_path or modified.startswith(repo_path.rstrip("/") + "/"):
-                    workspace_relative.append(str(raw_modified))
-            if workspace_relative:
+        if capture is None:
+            raise SystemExit(f"显式 patch artifact 仅含权限变化，已拒绝归档并保留原文件: {path}")
+        if capture.diff_text != text:
+            raise SystemExit(
+                "显式 patch artifact 在捕获时会被改写（例如过滤权限变化）；"
+                f"已拒绝归档并保留原文件: {path}"
+            )
+        workspace_relative = []
+        for raw_modified in capture.facts.get("modified_files", []):
+            modified = str(raw_modified).removeprefix("./")
+            modified_path = PurePosixPath(modified)
+            if (
+                not modified
+                or modified_path.is_absolute()
+                or any(part in {"", ".", ".."} for part in modified_path.parts)
+            ):
                 raise SystemExit(
-                    "显式 patch 的文件路径相对于 Android 源码顶层，而不是声明的 Git 仓库根；"
-                    f"请在 {repo_path} 仓库内单独生成 patch: {', '.join(workspace_relative)}"
+                    f"显式 patch 包含越出仓库边界的路径: {raw_modified} ({repo_path})"
                 )
-            captures.append(capture)
+            if modified == repo_path or modified.startswith(repo_path.rstrip("/") + "/"):
+                workspace_relative.append(str(raw_modified))
+        if workspace_relative:
+            raise SystemExit(
+                "显式 patch 的文件路径相对于 Android 源码顶层，而不是声明的 Git 仓库根；"
+                f"请在 {repo_path} 仓库内单独生成 patch: {', '.join(workspace_relative)}"
+            )
+        captures.append(capture)
     if not captures:
         raise SystemExit("显式 patch artifact 没有可打包功能 diff")
     return captures

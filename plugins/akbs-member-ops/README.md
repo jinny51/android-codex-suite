@@ -1,6 +1,6 @@
 # AKBS Member Ops
 
-Standalone AKBS member plugin, version 2.2.2. It owns member setup, knowledge
+Standalone AKBS member plugin, version 2.2.3. It owns member setup, knowledge
 search and merge review, personal daily/weekly reports, and Android change
 package handling without depending on the engineering or optional practices
 plugins at runtime.
@@ -49,6 +49,9 @@ There is one incoming implementation at
 `knowledge-incoming-package/2/android_change`. Its `components[].layer` classifies
 each patch into application, platform, native, hal, kernel, device, or build; all
 other package fields and the upload lifecycle remain the current v2 contract.
+`application` is a layer for changes to product-source apps, not a route for
+independently developed App source. Manual and snapshot capture methods follow the
+same product-source boundary.
 
 Historical `knowledge-incoming-package/1/framework_change` archives remain readable
 without rewriting their bytes. Current tools do not create or submit that legacy kind.
@@ -62,8 +65,9 @@ Business triggers and member configuration/package handling remain unchanged; ne
 plugin needs the other installed to update itself. An update changes files on disk,
 not Skill instructions already loaded into a Codex session.
 
-Doctor and business gates use `codex plugin list --json` as the authority for the
-unique active install. Historical cache directories are evidence only and are
+Doctor and business gates query Codex's `plugin/installed` app-server inventory for
+the current working directory as the authority for the unique active install.
+Historical cache directories are evidence only and are
 never selected by highest version. Legacy and target Android plugin generations
 must not be active together. Optional orchestration plugins are outside the member
 plugin's install-family decision and are validated only when Android Engineering Ops

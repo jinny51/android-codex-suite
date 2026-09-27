@@ -92,12 +92,23 @@ project identity cannot be proven, stop before touching that repository.
 Write a concise requirement contract: requested behavior, current behavior, acceptance
 criteria, target product/build, constraints, out-of-scope work, and rollback.
 
-Select the canonical `component.layer` for every affected patch from `application`,
-`platform`, `native`, `hal`, `kernel`, `device`, or `build`. Layer is explicit package
-classification, not a filename guess. Legacy routes map as follows: `framework` to
-`platform`; `system_app` and `app` to `application`; `driver` to `kernel`; the other
-same-named routes remain in their layer. `vendor` is not a layer. A coherent change may
-span layers, but every patch must be assigned to exactly one layer.
+First determine for each changed Git repository whether it belongs to the target
+Android product source. An independently developed App remains an App result even
+when its APK is shipped in the product image; only a separate product-source
+integration change can become a Patch. Product customization normally uses the
+remote Android source server, while standalone App work normally uses a local
+project and is pushed to SysPros. Check the actual repository before submission:
+an active SSH connection does not prove eligibility, and an existing product-source
+`.patch` may be submitted without a current SSH connection. If ownership is
+uncertain, retain the material locally while continuing the engineering task.
+
+For eligible product-source patches, select the canonical `component.layer` from
+`application`, `platform`, `native`, `hal`, `kernel`, `device`, or `build`. Layer is
+classification, not proof of product-source ownership. Legacy routes map only after
+eligibility: `framework` to `platform`; `system_app` and `app` to `application`;
+`driver` to `kernel`; the other same-named routes remain in their layer. `vendor`
+is not a layer. A coherent product change may span layers, but every eligible
+patch must be assigned to exactly one layer. Independent App work has no Patch layer.
 
 ## Gate 2: Knowledge and Source Authority
 
@@ -106,6 +117,7 @@ implementation and record `reuse`, `adapt`, `reference_only`, `not_applicable`, 
 `not_found` with the evidence used. AKBS search is an optional integration: its absence
 must not break source access, implementation, verification, or local capture. Record the
 absence truthfully; a later submit flow may apply its own stricter server gate.
+For independent App work, do not invent a Patch layer for search.
 
 For a `registered_remote_tree`, use the host platform's `android-source-access` entry
 when mount or registry preparation is needed. It routes to the single core
@@ -144,7 +156,9 @@ support for arbitrary Gradle/Kbuild pipelines. Build success and file transfer a
 necessary evidence, not final acceptance. Deploy only through the selected component's
 safe project/device mechanism and keep an explicit rollback.
 
-Apply the selected layer's evidence and the relevant engineering risks:
+For eligible product-source Patches, apply the selected layer's evidence. For
+independent App work, use the App project's own build and verification evidence.
+In either case, address the relevant engineering risks:
 
 - Framework: Binder/system_server, locks, Handler/Looper, boot, multi-user, resources,
   FrameworkLog, service restart or reboot.
@@ -172,15 +186,27 @@ explicitly retain temporary diagnostics with a reason.
 
 ## Gate 5: Capture and Submission
 
-Use `android-patch-capture --component-layer ...` and, for a multi-repository change,
-`--repo-layer REPO_PATH=LAYER` to create one coherent package. Capture verifies
-policy/evidence and directly writes a `knowledge-incoming-package/2/android_change`
-directory. Every `files.patches` path appears exactly once in `components[].patches`.
+Recheck product-source ownership against each actual changed repository before
+preparing an AKBS Patch. `application` covers product-source apps such as Launcher,
+Settings, and SystemUI, not a standalone App repository. A feature involving both
+keeps standalone App source in its App repository and captures only the product Git
+changes, including product-side APK integration changes. Apply this boundary to
+current snapshots, existing `.patch` files, and multi-repository changes. If
+ownership is unknown, retain the material locally until source evidence is clear.
 
-Pass that same directory to `akbs-patch-submit read`, `check`, `prepare`, or `submit`.
-There is one current incoming v2 package contract and one existing patch upload
-lifecycle; there is no second Android-only package, conversion step, relabel fallback,
-or second approval path. Historical
+Only for eligible product-source Patch work, use
+`android-patch-capture --component-layer ...` and, for a multi-repository change,
+`--repo-layer REPO_PATH=LAYER` to create one coherent engineering capture with
+repository patches and evidence. Pass that capture directory to `akbs-patch-submit`,
+which constructs and validates the final `knowledge-incoming-package/2/android_change`
+package. In that final package, every `files.patches` path appears exactly once in
+`components[].patches`.
+Independent App work completes through its own project verification and delivery
+route without Patch capture or submission.
+
+There is one current incoming v2 upload contract and one patch upload lifecycle;
+the engineering capture is local input to the member package builder, not another
+upload format or approval path. Historical
 `framework_change` archives remain readable without rewriting their bytes, but current
 tools never create or submit a new `framework_change` package.
 
@@ -188,17 +214,18 @@ tools never create or submit a new `framework_change` package.
 
 Stop before claiming completion when:
 
-- the requirement, component layer, source authority, build route, owner, acceptance, or
+- the requirement, source authority, build route, owner, acceptance, or
   rollback is unresolved;
+- an eligible product-source Patch has no resolved component layer;
 - registered remote source work would bypass `android-remote-channel`;
-- mandatory policy or member identity is missing;
+- required engineering policy is missing, or a requested Patch archive lacks member identity;
 - build, boot, device behavior, safety, or nearby regression verification failed;
 - temporary diagnostics have no cleanup decision;
 - a current package would omit a patch's layer or attempt to use `framework_change`.
 
 ## Final Report
 
-Report the requirement/component, source authority per repository, root cause or design,
+Report the requirement and component when applicable, source authority per repository, root cause or design,
 changed repositories/files, policy result, selected build route, exact
 builds/tests/device evidence, risks/rollback, capture path/status, and whether submission
 was performed or capability-gated. Never claim publication, install, server activation,

@@ -8,10 +8,15 @@
 
 一个功能可以同时涉及多个 layer 和多个 Git 仓库，并继续作为一个功能包归档；但 patch 必须按实际 Git 仓库分别生成。跨仓库 patch 可以使用相同的 `@change-id`，文件名前半段按各自仓库区分。手工或历史导入也必须逐仓库提供 patch 与仓库路径，不能用 Android 源码顶层 `.` 代替仓库。
 
+手工导入必须保留原 patch 字节；如果捕获器需要过滤权限变化等内容，会拒绝导入并保留原文件。
+
 读取 snapshot/patch/package/identity/evidence 或写入材料前必须通过 target-only install-family gate；入口必须从 inventory 绑定的目标 cache 执行。
 
 当前 Codex 编写的变更优先使用 `capture_remote_snapshot.py --package -- <capture 参数>`：工具在远端通道独占锁内生成最新源码快照，传回后立即调用本地原子打包器，不再要求成员或智能体在 15 分钟内手工衔接两个命令。省略 `--package` 的旧两步接口继续兼容，并保留快照时效门禁。
 
+捕获前逐仓确认改动属于目标 Android 产品源码。独立开发的 App 源码不因 APK 被产品使用就成为 Patch；产品侧 APK 集成配置如在产品源码仓内修改，可按该仓单独采集。手工补丁和远端快照遵守同一来源边界。
+捕获脚本不能从 Git 地址、路径或 `application` layer 自动判定仓库的业务归属；当前由工程任务在调用前核实并记录，不能把脚本出包成功当作来源证明。
+
 远程构建投递工具生成的 `build_delivery/unverified` 回执可直接通过 `--build-result` 传入，原内容保存在独立辅助材料中，不会替代需求验收。
 
-旧 `android-framework-patch-capture` 和 `framework_change` 历史材料只读兼容，不复制或改写。当前 capture 只生成 `knowledge-incoming-package/2/android_change` 包，整个目录可直接交给 `akbs-patch-submit` 做检查、准备或提交。
+旧 `android-framework-patch-capture` 和 `framework_change` 历史材料只读兼容，不复制或改写。当前 capture 生成工程材料目录；将整个目录交给 `akbs-patch-submit`，由后者构造、检查、准备或提交唯一的 `knowledge-incoming-package/2/android_change` 最终包。

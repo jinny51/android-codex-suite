@@ -743,9 +743,11 @@ def fetch_case_detail(
             )
             or any(
                 not isinstance(implementation.get(field), list)
-                or any(not isinstance(item, dict) for item in implementation[field])
-                for field in ("key_decisions", "code_anchors", "applicability")
+                or any(not isinstance(item, (str, dict)) for item in implementation[field])
+                for field in ("key_decisions", "code_anchors")
             )
+            or not isinstance(implementation.get("applicability"), list)
+            or any(not isinstance(item, dict) for item in implementation["applicability"])
             or not isinstance(implementation.get("risk_and_rollback"), dict)
         ):
             raise invalid_success_response("knowledge detail implementation identity or body is invalid")

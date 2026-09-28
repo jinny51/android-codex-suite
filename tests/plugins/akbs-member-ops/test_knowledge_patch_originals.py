@@ -457,6 +457,66 @@ class KnowledgePatchOriginalsTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 api.fetch_case_detail(CASE, implementation_id="implementation-other")
 
+    def test_detail_preserves_string_object_and_mixed_solution_lists(self):
+        long_note = "完整细节" * 60 + "\n正文尾部"
+        typed_anchor = {"type": "source_file", "value": "services/Example.java"}
+        legacy_anchor = {"type": "legacy_unclassified", "value": "原检索锚点", "review_state": "pending_review", "source": "schema041.search_anchors"}
+        shapes = (
+            ("strings", [long_note, "后续决策"], [f"锚点{index:02d}\n{long_note}" for index in (2, 0, 1, *range(3, 30))]),
+            ("objects", [{"decision": "原关键选择", "reason": long_note}], [typed_anchor, legacy_anchor]),
+            ("mixed", [long_note, {"decision": "原关键选择", "reason": "原理由"}], ["原字符串锚点", typed_anchor, legacy_anchor, long_note]),
+        )
+        for shape, decisions, anchors in shapes:
+            payload = detail()
+            payload["implementations"][0].update({
+                "key_decisions": copy.deepcopy(decisions), "code_anchors": copy.deepcopy(anchors),
+                "review_state": "migration_review_required",
+                "applicability": [{"implementation_id": "implementation-example", "project": "TVI2343R", "platform": "rk", "android_version": "12", "source_lineage_ref": "", "constraints": [], "validation_state": "unresolved", "content_hash": "b" * 64}],
+            })
+            original = copy.deepcopy(payload)
+            with self.subTest(shape=shape), mock.patch.object(api, "member_api_base_url", return_value=("http://akbs.example", "test")), mock.patch.object(api, "member_request_headers", return_value={"X-AKBS-User": "member1"}), mock.patch.object(api, "request_json", return_value=payload) as request:
+                result = api.fetch_case_detail(CASE, implementation_id="implementation-example")
+            self.assertEqual(request.call_count, 1)
+            self.assertEqual(request.call_args.args[0].full_url, "http://akbs.example/akbs/api/knowledge/" + CASE)
+            self.assertEqual(result["implementations"], original["implementations"])
+            self.assertEqual(result["selected_implementation_id"], "implementation-example")
+            self.assertEqual(result["implementations"][0]["reuse_grade"], "reference_only")
+            self.assertIs(result["implementations"][0]["requires_revalidation"], True)
+            self.assertEqual(payload, original)
+
+    def test_detail_rejects_bad_solution_list_elements(self):
+        for field in ("key_decisions", "code_anchors"):
+            for item in (None, False, True, 0, 1, 1.5, [], ["nested"]):
+                payload = detail()
+                payload["implementations"][0][field] = ["合法字符串", {"value": "合法对象"}, item]
+                original = copy.deepcopy(payload)
+                with self.subTest(field=field, item=item), mock.patch.object(api, "member_api_base_url", return_value=("http://akbs.example", "test")), mock.patch.object(api, "member_request_headers", return_value={}), mock.patch.object(api, "request_json", return_value=payload) as request:
+                    with self.assertRaises(HttpClientFailure):
+                        api.fetch_case_detail(CASE)
+                self.assertEqual(request.call_count, 1)
+                self.assertEqual(payload, original)
+
+    def test_detail_rejects_non_array_solution_fields(self):
+        for field in ("key_decisions", "code_anchors"):
+            for value in (None, False, 0, "not-an-array", {}):
+                payload = detail()
+                payload["implementations"][0][field] = value
+                with self.subTest(field=field, value=value), mock.patch.object(api, "member_api_base_url", return_value=("http://akbs.example", "test")), mock.patch.object(api, "member_request_headers", return_value={}), mock.patch.object(api, "request_json", return_value=payload) as request:
+                    with self.assertRaises(HttpClientFailure):
+                        api.fetch_case_detail(CASE)
+                self.assertEqual(request.call_count, 1)
+
+    def test_detail_keeps_applicability_object_only(self):
+        bad = [None, False, 0, "not-an-array", {}]
+        bad += [[item] for item in ("not-an-object", None, False, 0, 1.5, [], ["nested"])]
+        for value in bad:
+            payload = detail()
+            payload["implementations"][0]["applicability"] = value
+            with self.subTest(value=value), mock.patch.object(api, "member_api_base_url", return_value=("http://akbs.example", "test")), mock.patch.object(api, "member_request_headers", return_value={}), mock.patch.object(api, "request_json", return_value=payload) as request:
+                with self.assertRaises(HttpClientFailure):
+                    api.fetch_case_detail(CASE)
+            self.assertEqual(request.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

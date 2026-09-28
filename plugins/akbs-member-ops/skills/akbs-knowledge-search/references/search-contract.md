@@ -87,10 +87,14 @@ akbs_knowledge_search.py --case-patches <case_id> --download-patch <asset_id> --
 
 They call `GET /akbs/api/member/me/knowledge/{case_id}/patches` and the same path
 with `/{asset_id}`. The listing schema is `akbs-knowledge-case-patch-originals/v1`,
-scope `active_v2_case_source_evidence`; it includes the case identity, availability,
-and exact asset IDs, filenames, byte counts and SHA-256. An active case that lacks
-a controlled original is `unavailable`. Inactive cases, cross-case assets or
-invalid source/file bindings are not downloadable.
+scope `active_v2_case_source_evidence` or `active_historical_case_snapshot`; it
+includes the case identity, availability, and exact opaque handles, filenames,
+byte counts and SHA-256. Historical handles reuse the case-bound membership ID;
+they do not mean a new `package_assets` row or rewritten history. Historical
+reads require the case's current revision, immutable membership and original
+source snapshot to agree. An active case that lacks closed provenance or
+controlled bytes is `unavailable`, not thereby historically invalid. Inactive
+cases, cross-case assets or invalid source/file bindings are not downloadable.
 
 No URL in returned metadata controls the request destination. The client builds
 the case/asset path from the configured endpoint, validates response identity and

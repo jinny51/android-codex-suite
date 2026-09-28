@@ -70,7 +70,7 @@ class KnowledgePatchOriginalsTest(unittest.TestCase):
         self.assertEqual(result["reuse_outcome"], "not_started")
 
     def test_wrong_case_or_contract_or_metadata_rejected(self):
-        bad = [listing(case_id="another"), listing(schema="wrong"), listing(scope="wrong"), listing(availability="unavailable"), listing(patches=[None])]
+        bad = [listing(case_id="another"), listing(schema="wrong"), listing(scope="wrong"), listing(scope={}), listing(scope=[]), listing(availability="unavailable"), listing(patches=[None])]
         for field, value in (("sha256", "bad"), ("size_bytes", True), ("size_bytes", -1), ("size_bytes", originals.MAX_PATCH_BYTES + 1), ("asset_id", "../another")):
             item = listing()
             item["patches"][0][field] = value
@@ -97,6 +97,27 @@ class KnowledgePatchOriginalsTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 originals.download_case_patch(CASE, "asset-other", self.output)
         request.assert_not_called()
+
+    def test_historical_scope_downloads_case_membership_handle_without_reuse_claim(self):
+        handle = "patch-membership-21b57476-1bef-5ef0-96ed-91bed310ca35"
+        payload = listing(scope=originals.HISTORICAL_SCOPE)
+        payload["patches"][0]["asset_id"] = handle
+        with mock.patch.object(originals, "request_json", return_value=payload), mock.patch.object(originals.urllib.request, "urlopen", return_value=Response(CONTENT)) as request:
+            result = originals.download_case_patch(CASE, handle, self.output)
+        self.assertEqual(self.output.read_bytes(), CONTENT)
+        self.assertEqual(request.call_args.args[0].full_url, "http://akbs.example/akbs/api/member/me/knowledge/case-example/patches/" + handle)
+        self.assertEqual(result["asset_id"], handle)
+        self.assertTrue(result["verified_original"])
+        self.assertEqual(result["reuse_outcome"], "not_started")
+
+    def test_historical_scope_cannot_download_unlisted_membership(self):
+        payload = listing(scope=originals.HISTORICAL_SCOPE)
+        payload["patches"][0]["asset_id"] = "patch-membership-listed"
+        with mock.patch.object(originals, "request_json", return_value=payload), mock.patch.object(originals.urllib.request, "urlopen") as request:
+            with self.assertRaises(ValueError):
+                originals.download_case_patch(CASE, "patch-membership-other", self.output)
+        request.assert_not_called()
+        self.assertFalse(self.output.exists())
 
     def test_tamper_or_size_mismatch_never_written(self):
         for content in (b"x" * len(CONTENT), CONTENT + b"x", CONTENT[:-1]):

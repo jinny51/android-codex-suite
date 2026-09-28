@@ -114,10 +114,13 @@ the client checks downloaded size and SHA-256 and refuses an existing `--out`.
 Never apply a truncated preview as an original. Downloading a verified original
 does not prove applicability, successful adaptation, or target-device acceptance.
 
-The first supported source is an active v2 case's exact `source_evidence` assets.
-Legacy/history cases without a controlled original return `unavailable`; retain
-their knowledge as reference, state the missing original, and do not fabricate a
-download path. Do not call unrelated package assets the case's source patches.
+Supported originals are an active v2 case's exact `source_evidence` assets or a
+historical case's hash-bound current revision and original source snapshot. For a
+historical original, `asset_id` is an opaque membership handle from this case's
+list, not a newly registered package asset. Legacy/history cases without that
+closed source and controlled bytes return `unavailable`; state the missing
+original without downgrading their historical validation or fabricating a path.
+Do not call unrelated package assets the case's source patches.
 
 ## Source Selection
 

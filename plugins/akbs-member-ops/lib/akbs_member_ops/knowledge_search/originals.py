@@ -20,6 +20,8 @@ from akbs_member_ops.knowledge_search.config import member_api_base_url
 
 SCHEMA = "akbs-knowledge-case-patch-originals/v1"
 SCOPE = "active_v2_case_source_evidence"
+HISTORICAL_SCOPE = "active_historical_case_snapshot"
+SCOPES = frozenset({SCOPE, HISTORICAL_SCOPE})
 MAX_PATCH_BYTES = 64 * 1024 * 1024
 IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,255}\Z")
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -38,7 +40,8 @@ def _endpoint(case_id: str, asset_id: str = "") -> str:
 def fetch_case_patches(case_id: str, *, timeout: float = 3.0) -> dict[str, Any]:
     request = urllib.request.Request(_endpoint(case_id), headers=member_request_headers(), method="GET")
     payload = request_json(request, timeout=timeout)
-    if (payload.get("schema") != SCHEMA or payload.get("scope") != SCOPE
+    scope = payload.get("scope")
+    if (payload.get("schema") != SCHEMA or not isinstance(scope, str) or scope not in SCOPES
             or payload.get("case_id") != case_id
             or payload.get("availability") not in {"available", "unavailable"}
             or not isinstance(payload.get("patches"), list)):

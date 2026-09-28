@@ -339,6 +339,24 @@ def test_server_response_must_match_request_environment_and_pagination() -> None
     )
 
 
+@pytest.mark.parametrize("empty", [False, True])
+def test_server_without_layer_filter_matches_unfiltered_request(empty: bool) -> None:
+    payload = _payload(empty=empty)
+    payload["filters"]["component"]["component_layer"] = []
+    args = SimpleNamespace(
+        type="all", project="TVE8402M", platform="rk", android_version="14",
+        component_layer=[], offset=0, limit=8,
+    )
+    validate_server_payload(payload, args=args, query="display power")
+
+
+def test_server_missing_layer_filter_array_remains_a_contract_error() -> None:
+    payload = _payload()
+    payload["filters"]["component"] = {}
+    with pytest.raises(HttpClientFailure, match="component filters are invalid"):
+        validate_server_payload(payload)
+
+
 @pytest.mark.parametrize(
     "mutate",
     [

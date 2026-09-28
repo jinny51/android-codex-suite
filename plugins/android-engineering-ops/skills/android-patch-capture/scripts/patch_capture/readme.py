@@ -109,7 +109,7 @@ def change_readme_text(
 
     return f"""# {args.feature}
 
-## 变更描述
+## 功能描述
 
 {args.summary}
 

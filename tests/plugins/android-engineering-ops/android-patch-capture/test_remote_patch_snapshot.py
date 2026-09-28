@@ -489,6 +489,13 @@ class RemotePatchSnapshotTests(unittest.TestCase):
         self.assertTrue(manifest["patches"][0]["source_root"].startswith("manual-import:"))
         package = Path(json.loads(result.stdout)["package"])
         self.assertEqual((package / manifest["patches"][0]["path"]).read_bytes(), patch.read_bytes())
+        member_root = REPO_ROOT / "plugins" / "akbs-member-ops"
+        for import_root in (member_root / "lib", member_root / "internal/incoming-v2/scripts"):
+            if str(import_root) not in sys.path:
+                sys.path.insert(0, str(import_root))
+        from akbs_intake.patch.assets import validate_patch_readme
+
+        self.assertEqual(validate_patch_readme(package / "README.md"), [])
 
     def test_handoff_uses_channel_exclusive_then_scp_and_validates(self) -> None:
         remote_snapshot = (

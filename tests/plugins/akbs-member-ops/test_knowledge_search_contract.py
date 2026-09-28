@@ -277,6 +277,72 @@ def test_server_result_layers_are_search_scope_not_qualification_binding_alias()
     validate_server_payload(patch_payload)
 
 
+def _unknown_layer_case_payload() -> dict:
+    payload = copy.deepcopy(_payload())
+    payload["filters"]["component"]["component_layer"] = ["application"]
+    payload["results"][0].update(
+        {
+            "type": "case",
+            "implementation_id": "",
+            "layers": [],
+            "reuse_grade": "reference_only",
+            "qualification_reason": "implementation_layer_unknown",
+            "requires_revalidation": True,
+            "required_bindings": [],
+            "environment_comparison": {
+                "mode": "not_qualified",
+                "alternative_tuples": [],
+                "non_dominated_matched_dimension_sets": [],
+            },
+            "evidence_gaps": [
+                {
+                    "reason": "implementation_layer_unknown",
+                    "binding_id": "",
+                    "context": {},
+                }
+            ],
+        }
+    )
+    return payload
+
+
+def test_unknown_layer_case_is_only_a_reference_not_a_layer_match() -> None:
+    payload = _unknown_layer_case_payload()
+    validate_server_payload(payload)
+    result = normalize_server_results(payload)[0]
+    assert result["kind"] == "case"
+    assert result["layers"] == []
+    assert result["reuse_grade"] == "reference_only"
+    assert result["requires_revalidation"] is True
+    assert result["required_bindings"] == []
+    assert result["qualification_reason"] == "implementation_layer_unknown"
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"type": "implementation", "implementation_id": "implementation-display-rk14"},
+        {"type": "patch"},
+        {"type": "symbol"},
+        {"layers": ["hal"]},
+        {"reuse_grade": "direct_reuse_candidate"},
+        {"reuse_grade": "adaptation_candidate"},
+        {"qualification_reason": "migration_review_required"},
+        {"requires_revalidation": False},
+        {"required_bindings": _payload()["results"][0]["required_bindings"]},
+        {"environment_comparison": _payload()["results"][0]["environment_comparison"]},
+        {"evidence_gaps": []},
+        {"evidence_gaps": [{"reason": "implementation_layer_unknown", "binding_id": "binding-display", "context": {}}]},
+        {"evidence_gaps": [{"reason": "implementation_layer_unknown", "binding_id": "", "context": {"claimed": True}}]},
+    ],
+)
+def test_unknown_layer_exception_does_not_relax_other_results(changes: dict) -> None:
+    payload = _unknown_layer_case_payload()
+    payload["results"][0].update(copy.deepcopy(changes))
+    with pytest.raises(HttpClientFailure):
+        validate_server_payload(payload)
+
+
 def test_server_response_accepts_one_closed_exact_tuple_for_direct_reuse() -> None:
     payload = copy.deepcopy(_payload())
     item = payload["results"][0]

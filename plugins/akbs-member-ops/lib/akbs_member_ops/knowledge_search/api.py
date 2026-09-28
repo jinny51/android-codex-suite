@@ -538,7 +538,28 @@ def validate_server_payload(
         ):
             raise invalid_success_response("server search layers are invalid")
         requested_layers = set(component.get("component_layer", []))
-        if requested_layers and not requested_layers.intersection(layers):
+        unknown_case_reference = (
+            item.get("type") == "case"
+            and layers == []
+            and grade == "reference_only"
+            and item.get("qualification_reason") == "implementation_layer_unknown"
+            and item["requires_revalidation"] is True
+            and bindings == []
+            and comparison["mode"] == "not_qualified"
+            and comparison["alternative_tuples"] == []
+            and comparison["non_dominated_matched_dimension_sets"] == []
+            and any(
+                gap["reason"] == "implementation_layer_unknown"
+                and gap["binding_id"] == ""
+                and gap["context"] == {}
+                for gap in evidence_gaps
+            )
+        )
+        if (
+            requested_layers
+            and not requested_layers.intersection(layers)
+            and not unknown_case_reference
+        ):
             raise invalid_success_response(
                 "server search result does not match the requested component layer"
             )

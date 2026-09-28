@@ -19,4 +19,8 @@
 
 远程构建投递工具生成的 `build_delivery/unverified` 回执可直接通过 `--build-result` 传入，原内容保存在独立辅助材料中，不会替代需求验收。
 
+当前工作流将知识搜索返回的 `usage_receipt` 与 `usage_receipt_sha256` 分别传入
+`--search-receipt`、`--search-receipt-sha256`。采集及提交保留回执原字节和结构化查询结果，
+不按同日日志合并或改写；回执不是产品源码归属证明，也不是复用成功证明。
+
 旧 `android-framework-patch-capture` 和 `framework_change` 历史材料只读兼容，不复制或改写。当前 capture 生成工程材料目录；将整个目录交给 `akbs-patch-submit`，由后者构造、检查、准备或提交唯一的 `knowledge-incoming-package/2/android_change` 最终包。

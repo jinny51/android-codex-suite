@@ -22,7 +22,8 @@
     "verification_evidence": "akbs-verification-evidence/v2",
     "knowledge_case": "akbs-knowledge-case/v2",
     "relation_registry": "akbs-relation-registry-v2",
-    "curation_decision_artifact": "akbs-curation-decision-artifact/v3",
+    "curation_decision_artifact": "akbs-curation-decision-artifact/v4",
+    "member_knowledge_search": "akbs-member-knowledge-search-v2",
     "http_error_envelope": "akbs-error-envelope/v1"
   }
 }

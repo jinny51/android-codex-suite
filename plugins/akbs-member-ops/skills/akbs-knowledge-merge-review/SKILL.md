@@ -47,3 +47,14 @@ python3 "scripts/akbs_knowledge_merge_review.py" dispute \
 The existing `android-knowledge-search --merge-confirmation ...` commands remain as
 backward-compatible entrypoints. This Skill is the user-facing owner of the merge-review
 intent; it does not decide whether AKBS creates or merges knowledge.
+
+For a typed knowledge proposal, distinguish `add_implementation` (another
+technical solution under the same Case) from `attach_evidence` (evidence or
+applicability for the exact existing Implementation). Compare the server's
+immutable proposal and decision identity with the full target Case and, when
+present, target Implementation; use their precise hashes, not title similarity.
+Stale targets are recheck-required, not an excuse to confirm a different object.
+Initial proposals still support member confirmation/dispute. After an explicit
+dispute is re-reviewed by the administrator, the server closes that review
+without asking the member to confirm the same dispute again. This Skill must
+not submit either action merely because a read or analysis was requested.

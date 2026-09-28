@@ -18,6 +18,7 @@ if PLUGIN_LIB.is_dir() and str(PLUGIN_LIB) not in sys.path:
     sys.path.insert(0, str(PLUGIN_LIB))
 
 from akbs_member_ops.knowledge_search.api import (
+    fetch_case_detail,
     fetch_merge_confirmation_payload,
     fetch_server_results,
     merge_api_error,
@@ -28,16 +29,23 @@ from akbs_member_ops.knowledge_search.api import (
 from akbs_member_ops.knowledge_search.config import ROOT_MARKERS, codex_home, config_payloads, configured_roots, expand_path
 from akbs_member_ops.knowledge_search.config import search_usage_root as configured_search_usage_root
 from akbs_member_ops.knowledge_search.config import selected_member_alias
-from akbs_member_ops.knowledge_search.formatting import compact_list, format_markdown
+from akbs_member_ops.knowledge_search.formatting import compact_list, format_case_detail, format_markdown
 from akbs_member_ops.knowledge_search.local_index import load_rows, search
 from akbs_member_ops.knowledge_search.originals import download_case_patch, fetch_case_patches
-from akbs_member_ops.json_io import write_json
+from akbs_member_ops.json_io import write_json_once
 from akbs_member_ops.http_client import failure_result
 from akbs_member_ops.member_config import expand_codex_path
 
 
 REUSE_DECISIONS = ("reuse", "adapt", "reference_only", "not_applicable", "not_found", "unknown")
 REUSE_OUTCOMES = ("not_started", "reused_success", "adapted_success", "failed", "partial", "unverified", "not_applicable")
+MAX_QUERY_COUNT = 8
+MAX_SERVER_LIMIT = 50
+LEGACY_LOCAL_TYPES = frozenset({"variant", "report", "event", "evidence"})
+DECISION_REUSE_GRADES = {
+    "reuse": frozenset({"direct_reuse_candidate"}),
+    "adapt": frozenset({"direct_reuse_candidate", "adaptation_candidate"}),
+}
 
 
 def search_usage_root() -> Path:
@@ -45,9 +53,21 @@ def search_usage_root() -> Path:
 
 
 def result_id(row: dict[str, Any]) -> str:
-    for key in ("case_id", "variant_id", "patch_id", "symbol", "evidence_id", "report_id", "event_id", "id"):
+    kind = str(row.get("kind") or row.get("type") or "")
+    keys = {
+        "case": ("case_id",),
+        "implementation": ("implementation_id",),
+        "patch": ("evidence_binding_id", "patch_asset_id", "patch_id"),
+        "symbol": ("symbol",),
+    }.get(kind, ("id", "case_id"))
+    for key in keys:
         value = row.get(key)
         if isinstance(value, str) and value:
+            if kind == "symbol":
+                return "\x1f".join(
+                    str(row.get(name) or "")
+                    for name in ("case_id", "implementation_id", "evidence_binding_id", "symbol")
+                )
             return value
     return ""
 
@@ -66,11 +86,104 @@ def usage_result(row: dict[str, Any]) -> dict[str, Any]:
     score = row.get("_score")
     if isinstance(score, (int, float)):
         payload["score"] = score
-    for key in ("source", "search_mode", "reuse_grade", "matched_channels", "matched_anchors", "case_id", "package_id"):
+    for key in (
+        "source",
+        "search_mode",
+        "reuse_grade",
+        "qualification_reason",
+        "requires_revalidation",
+        "layers",
+        "required_bindings",
+        "evidence_gaps",
+        "environment_comparison",
+        "target_environment",
+        "matched_channels",
+        "matched_anchors",
+        "case_id",
+        "implementation_id",
+        "evidence_binding_id",
+        "patch_asset_id",
+        "package_id",
+    ):
         value = row.get(key)
         if value not in (None, "", []):
             payload[key] = value
     return payload
+
+
+def validate_reuse_decision(
+    *,
+    decision: str,
+    targets: list[str],
+    results: list[dict[str, Any]],
+) -> None:
+    if decision not in {"reuse", "adapt", "reference_only"}:
+        return
+    normalized_targets = {str(value).strip() for value in targets if str(value).strip()}
+    if not normalized_targets:
+        raise SystemExit(f"{decision} requires at least one --reuse-target from this search")
+    result_by_id = {
+        result_id(item): item
+        for item in results
+        if result_id(item)
+    }
+    missing = sorted(normalized_targets - set(result_by_id))
+    if missing:
+        raise SystemExit(
+            f"reuse target is not present in this search result: {', '.join(missing)}"
+        )
+    # Referring to a matching source is not an authorization to apply it. It may
+    # be a local hint or an incomplete server candidate; preserve that judgment.
+    if decision == "reference_only":
+        return
+    if decision in {"reuse", "adapt"}:
+        non_implementations = sorted(
+            target
+            for target in normalized_targets
+            if str(
+                result_by_id[target].get("kind")
+                or result_by_id[target].get("type")
+                or ""
+            )
+            != "implementation"
+        )
+        if non_implementations:
+            raise SystemExit(
+                f"{decision} must bind an implementation result: {', '.join(non_implementations)}"
+            )
+    allowed_grades = DECISION_REUSE_GRADES[decision]
+    mismatched = sorted(
+        target
+        for target in normalized_targets
+        if result_by_id[target].get("reuse_grade") not in allowed_grades
+    )
+    if mismatched:
+        raise SystemExit(
+            f"{decision} requires server grade {' or '.join(sorted(allowed_grades))}: {', '.join(mismatched)}"
+        )
+    invalid_evidence = []
+    for target in sorted(normalized_targets):
+        item = result_by_id[target]
+        bindings = item.get("required_bindings")
+        if (
+            not isinstance(bindings, list)
+            or not bindings
+            or any(
+                not isinstance(binding, dict)
+                or binding.get("binding_role") != "implementation"
+                or binding.get("binding_state") != "accepted"
+                or not str(binding.get("acceptance_ref") or "")
+                or binding.get("closure_state") != "closed"
+                for binding in bindings
+            )
+            or (decision == "reuse" and item.get("requires_revalidation") is not False)
+        ):
+            invalid_evidence.append(target)
+    if invalid_evidence:
+        raise SystemExit(
+            f"{decision} requires closed accepted implementation evidence: "
+            f"{', '.join(invalid_evidence)}"
+        )
 
 
 def record_search_usage(
@@ -82,35 +195,68 @@ def record_search_usage(
     source: str,
     search_mode: str,
     fallback_reason: str = "",
+    queries: list[str] | None = None,
+    server_payloads: list[dict[str, Any]] | None = None,
 ) -> Path | None:
-    if args.no_record_usage or not query:
+    if not query:
+        return None
+    effective_queries = queries or [query]
+    payloads = server_payloads or []
+    decision = args.reuse_decision or "unknown"
+    if source != "server_api" and decision in {
+        "reuse",
+        "adapt",
+        "not_found",
+    }:
+        raise SystemExit(
+            "local text search cannot authorize reuse, adapt, or not_found"
+        )
+    validate_reuse_decision(
+        decision=decision,
+        targets=args.reuse_target or [],
+        results=results,
+    )
+    if decision in DECISION_REUSE_GRADES and not healthy_server_search(
+        source=source,
+        queries=effective_queries,
+        payloads=payloads,
+    ):
+        raise SystemExit(
+            f"{decision} requires complete server search responses with a ready and complete projection"
+        )
+    if decision == "not_found" and not healthy_multi_query_empty(
+        source=source,
+        queries=effective_queries,
+        payloads=payloads,
+        results=results,
+    ):
+        raise SystemExit(
+            "not_found requires at least two distinct, complete server queries with a ready and complete projection"
+        )
+    if args.no_record_usage:
         return None
     now = dt.datetime.now().astimezone()
     profile, member_alias = selected_member_alias()
-    decision = args.reuse_decision or ("not_found" if not results else "unknown")
     result_payloads = [usage_result(item) for item in results]
-    digest = hashlib.sha1(
-        json.dumps(
-            {
-                "query": query,
-                "created_at": now.isoformat(timespec="seconds"),
-                "decision": decision,
-                "results": result_payloads[:8],
-            },
-            ensure_ascii=False,
-            sort_keys=True,
-        ).encode("utf-8")
-    ).hexdigest()[:12]
     payload = {
         "schema": "android-knowledge-search-usage",
         "schema_version": "1",
-        "created_at": now.isoformat(timespec="seconds"),
+        "created_at": now.isoformat(timespec="microseconds"),
         "date": now.date().isoformat(),
         "profile": profile,
         "member_alias": member_alias,
         "root": str(root) if root else "",
         "query": query,
+        "queries": effective_queries,
         "type": args.type,
+        "target_environment": {
+            "project": str(args.project or "").strip(),
+            "platform": str(args.platform or "").strip().lower(),
+            "android_version": str(args.android_version or "").strip(),
+        },
+        "component_layers": sorted(
+            {str(value) for value in args.component_layer or [] if str(value)}
+        ),
         "limit": max(args.limit, 1),
         "source": source,
         "search_mode": search_mode,
@@ -126,10 +272,118 @@ def record_search_usage(
         "outcome": args.reuse_outcome or "not_started",
         "result_count": len(results),
         "results": result_payloads,
+        "server_search_health": [
+            {
+                "query": payload.get("query", ""),
+                "result_state": payload.get("result_state", ""),
+                "completeness": payload.get("completeness", ""),
+                "reason_code": payload.get("reason_code", ""),
+                "projection": payload.get("projection", {}),
+                "pagination": payload.get("pagination", {}),
+                "target_environment": payload.get("target_environment", {}),
+                "filters": payload.get("filters", {}),
+            }
+            for payload in payloads
+        ],
     }
-    path = search_usage_root() / now.strftime("%Y%m%d") / f"{now.strftime('%Y%m%d-%H%M%S')}-{digest}.json"
-    write_json(path, payload)
+    semantic_digest = hashlib.sha256(
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    path = (
+        search_usage_root()
+        / now.strftime("%Y%m%d")
+        / f"{now.strftime('%Y%m%d-%H%M%S-%f')}-{semantic_digest[:20]}.json"
+    )
+    write_json_once(path, payload)
     return path
+
+
+def distinct_queries(primary: str, additional: list[str]) -> list[str]:
+    values: list[str] = []
+    seen: set[str] = set()
+    for value in [primary, *additional]:
+        normalized = " ".join(str(value or "").split())
+        key = normalized.casefold()
+        if normalized and key not in seen:
+            values.append(normalized)
+            seen.add(key)
+    if len(values) > MAX_QUERY_COUNT:
+        raise SystemExit(f"at most {MAX_QUERY_COUNT} distinct search queries are allowed")
+    return values
+
+
+def healthy_multi_query_empty(
+    *,
+    source: str,
+    queries: list[str],
+    payloads: list[dict[str, Any]],
+    results: list[dict[str, Any]],
+) -> bool:
+    if source != "server_api" or len(queries) < 2 or len(payloads) != len(queries) or results:
+        return False
+    for query, payload in zip(queries, payloads):
+        projection = payload.get("projection")
+        pagination = payload.get("pagination")
+        if (
+            payload.get("query") != query
+            or payload.get("result_state") != "empty_for_this_query"
+            or payload.get("completeness") != "complete"
+            or payload.get("results") != []
+            or not isinstance(projection, dict)
+            or projection.get("ready") is not True
+            or projection.get("complete") is not True
+            or not isinstance(pagination, dict)
+            or pagination.get("total") != 0
+            or pagination.get("has_more") is not False
+        ):
+            return False
+    return True
+
+
+def healthy_server_search(
+    *,
+    source: str,
+    queries: list[str],
+    payloads: list[dict[str, Any]],
+) -> bool:
+    if source != "server_api" or not queries or len(payloads) != len(queries):
+        return False
+    for query, payload in zip(queries, payloads):
+        projection = payload.get("projection")
+        pagination = payload.get("pagination")
+        if (
+            payload.get("query") != query
+            or payload.get("result_state") == "indeterminate"
+            or payload.get("completeness") != "complete"
+            or not isinstance(projection, dict)
+            or projection.get("ready") is not True
+            or projection.get("complete") is not True
+            or not isinstance(pagination, dict)
+        ):
+            return False
+    return True
+
+
+def combine_results(result_sets: list[tuple[str, list[dict[str, Any]]]]) -> list[dict[str, Any]]:
+    combined: dict[tuple[str, str], dict[str, Any]] = {}
+    for query, rows in result_sets:
+        for row in rows:
+            key = (str(row.get("kind") or ""), result_id(row))
+            if not key[1]:
+                key = (key[0], json.dumps(row, ensure_ascii=False, sort_keys=True))
+            existing = combined.get(key)
+            if existing is None:
+                existing = dict(row)
+                existing["matched_queries"] = [query]
+                combined[key] = existing
+            elif query not in existing["matched_queries"]:
+                existing["matched_queries"].append(query)
+    return list(combined.values())
 
 
 def codex_documents_roots() -> list[Path]:
@@ -424,6 +678,8 @@ def refresh_root(root: Path) -> str:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Search the Codex team knowledge repository.")
     parser.add_argument("query", nargs="*", help="Search terms. Use spaces to combine feature words, files, symbols, or project names.")
+    parser.add_argument("--case-detail", help="Read the existing full solution for a server-returned case_id; no search or reuse receipt.")
+    parser.add_argument("--implementation-id", help="Select one server-returned Implementation under --case-detail or --case-patches.")
     parser.add_argument("--case-patches", help="List authoritative patch originals for a server-returned case_id; server only.")
     parser.add_argument("--download-patch", help="Download one asset_id from --case-patches, verifying its size and SHA-256.")
     parser.add_argument("--out", help="New output file required with --download-patch; never overwrite existing work.")
@@ -438,8 +694,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--member-assessment", default="", help="Member/Codex assessment for a merge dispute. Only sent with --send-dispute.")
     parser.add_argument("--evidence-ref", action="append", default=[], help="Evidence reference to include when explicitly sending a merge dispute. Repeatable.")
     parser.add_argument("--root", help="Knowledge repository worktree path.")
-    parser.add_argument("--type", choices=["all", "case", "variant", "patch", "report", "symbol", "event", "evidence"], default="all", help="Result type filter.")
+    parser.add_argument("--type", choices=["all", "case", "implementation", "patch", "symbol", "variant", "report", "event", "evidence"], default="all", help="Result type filter; legacy variant/archive types are local text reads only.")
     parser.add_argument("--limit", type=int, default=8, help="Maximum result count.")
+    parser.add_argument("--offset", type=int, default=0, help="Server result offset.")
+    parser.add_argument("--project", default="", help="Target project for applicability comparison.")
+    parser.add_argument("--platform", default="", help="Target chip platform for applicability comparison.")
+    parser.add_argument("--android-version", default="", help="Target Android version for applicability comparison.")
+    parser.add_argument("--component-layer", action="append", choices=["application", "platform", "native", "hal", "kernel", "device", "build"], default=[], help="Required Android layer filter. Repeatable.")
+    parser.add_argument("--additional-query", action="append", default=[], help="Additional independent query for a bounded multi-query search. Repeatable.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     parser.add_argument("--refresh", action="store_true", help="Run git pull --ff-only first when root is a clean Git worktree.")
     parser.add_argument("--include-synthetic", action="store_true", help="Include synthetic test data.")
@@ -447,7 +709,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--source", choices=["auto", "server", "local"], default="auto", help="Search source: auto prefers server API, server forbids fallback, local uses JSONL only.")
     parser.add_argument("--server-timeout", type=float, default=3.0, help="Server search timeout in seconds.")
     parser.add_argument("--reuse-decision", choices=REUSE_DECISIONS, help="Member-side use decision for this search.")
-    parser.add_argument("--reuse-target", action="append", default=[], help="Matched case, variant, patch, or evidence id considered by this search. Repeatable.")
+    parser.add_argument("--reuse-target", action="append", default=[], help="Matched case, implementation, patch, or symbol id considered by this search. Repeatable.")
     parser.add_argument("--reuse-match", action="append", default=[], help="Why the matched knowledge may apply. Repeatable.")
     parser.add_argument("--reuse-mismatch", action="append", default=[], help="Why the matched knowledge may not directly apply. Repeatable.")
     parser.add_argument("--reuse-reason", default="", help="Reason for the reuse/adapt/reference/not-applicable decision.")
@@ -509,15 +771,33 @@ def handle_merge_confirmation_command(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.case_detail:
+        if (
+            args.query or args.case_patches or args.download_patch or args.out
+            or args.merge_confirmation or args.source == "local" or args.root or args.refresh
+            or args.additional_query or args.reuse_decision or args.reuse_outcome
+        ):
+            parser.error("--case-detail is a separate server-only read, not a search, download or reuse action")
+        try:
+            payload = fetch_case_detail(
+                args.case_detail, implementation_id=args.implementation_id,
+                timeout=args.server_timeout,
+            )
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from None
+        except Exception as exc:
+            raise SystemExit(failure_result(exc).safe_summary("knowledge detail API unavailable")) from None
+        print(json.dumps(payload, ensure_ascii=False, indent=2) if args.json else format_case_detail(payload))
+        return 0
     if args.case_patches:
-        if args.query or args.merge_confirmation or args.source == "local" or args.root or args.refresh:
+        if args.query or args.merge_confirmation or args.source == "local" or args.root or args.refresh or args.additional_query or args.reuse_decision or args.reuse_outcome:
             parser.error("--case-patches is a separate server-only read, not a search or merge action")
         if bool(args.download_patch) != bool(args.out):
             parser.error("--download-patch and --out must be used together")
         try:
             payload = (
-                download_case_patch(args.case_patches, args.download_patch, expand_codex_path(args.out, resolve=False), timeout=args.server_timeout)
-                if args.download_patch else fetch_case_patches(args.case_patches, timeout=args.server_timeout)
+                download_case_patch(args.case_patches, args.download_patch, expand_codex_path(args.out, resolve=False), implementation_id=args.implementation_id, timeout=args.server_timeout)
+                if args.download_patch else fetch_case_patches(args.case_patches, implementation_id=args.implementation_id, timeout=args.server_timeout)
             )
         except ValueError as exc:
             raise SystemExit(str(exc)) from None
@@ -529,28 +809,55 @@ def main(argv: list[str] | None = None) -> int:
             print(f"已取得原补丁并核对 SHA-256：{payload['output']}\n尚未应用或验证，不代表复用成功。")
         else:
             print(f"case_id={payload['case_id']}，原补丁={payload['availability']}")
+            if payload.get("implementation_id"):
+                print(f"implementation_id={payload['implementation_id']}")
+                if payload["patches"]:
+                    first = payload["patches"][0]
+                    print(f"{first['implementation_summary']}；语义审核状态={first['review_state']}")
             for patch in payload["patches"]:
                 print(f"{patch['asset_id']}  {patch['display_name']}  SHA-256={patch['sha256']}")
+                if "authority" in patch:
+                    role = patch.get("binding_role", "历史来源原件（未声明accepted role）")
+                    print(f"  authority={patch['authority']}；role={role}；layer={patch['source']['layer']}")
+                    for environment in patch["environments"]:
+                        print("  环境=" + json.dumps(environment, ensure_ascii=False))
             if not payload["patches"]:
                 print("当前没有可授权取得的完整原件；不使用截断预览代替。")
         return 0
     if args.download_patch or args.out:
         parser.error("--download-patch/--out require --case-patches")
+    if args.implementation_id:
+        parser.error("--implementation-id requires --case-detail or --case-patches")
     if args.merge_confirmation:
         return handle_merge_confirmation_command(args)
+    if args.offset < 0:
+        raise SystemExit("--offset must be zero or greater")
+    if args.limit < 1 or args.limit > MAX_SERVER_LIMIT:
+        raise SystemExit(f"--limit must be between 1 and {MAX_SERVER_LIMIT}")
+    if args.type in LEGACY_LOCAL_TYPES and args.source == "server":
+        raise SystemExit("legacy variant and archive result types require local text search")
 
     query = " ".join(args.query).strip()
+    queries = distinct_queries(query, args.additional_query)
+    if not queries:
+        raise SystemExit("at least one non-empty search query is required")
     root: Path | None = None
     refresh_status = None
     fallback_reason = ""
     source = "server_api"
     search_mode = "unknown"
     results: list[dict[str, Any]] = []
+    server_payloads: list[dict[str, Any]] = []
 
-    if should_try_server(args):
+    if should_try_server(args) and args.type not in LEGACY_LOCAL_TYPES:
         try:
-            results, server_payload = fetch_server_results(args, query)
-            search_mode = str(server_payload.get("search_mode") or "unknown")
+            result_sets = []
+            for current_query in queries:
+                current_results, server_payload = fetch_server_results(args, current_query)
+                result_sets.append((current_query, current_results))
+                server_payloads.append(server_payload)
+            results = combine_results(result_sets)
+            search_mode = str(server_payloads[0].get("search_mode") or "unknown")
         except Exception as exc:
             if isinstance(exc, ValueError) and "member_alias" in str(exc):
                 raise SystemExit(str(exc))
@@ -562,17 +869,43 @@ def main(argv: list[str] | None = None) -> int:
     else:
         source = "local_jsonl_fallback"
         search_mode = "local_jsonl"
+        fallback_reason = "explicit local text search"
 
     if source == "local_jsonl_fallback":
+        if args.reuse_decision in {"reuse", "adapt", "not_found"}:
+            raise SystemExit(
+                "local text search cannot authorize reuse, adapt, or not_found"
+            )
         root = find_root(args.root)
         refresh_status = refresh_root(root) if args.refresh else None
         rows = load_rows(root, include_archive=args.type in {"report", "event", "evidence"})
-        results = search(rows, query, args.type, max(args.limit, 1), args.include_synthetic)
+        local_type = "implementation" if args.type == "variant" else args.type
+        local_sets = [
+            (
+                current_query,
+                search(rows, current_query, local_type, max(args.limit, 1), args.include_synthetic),
+            )
+            for current_query in queries
+        ]
+        results = combine_results(local_sets)[: max(args.limit, 1)]
         for item in results:
             item["source"] = "local_jsonl_fallback"
             item["search_mode"] = "local_jsonl"
 
-    record_search_usage(args, root, query, results, source=source, search_mode=search_mode, fallback_reason=fallback_reason)
+    usage_receipt = record_search_usage(
+        args,
+        root,
+        query,
+        results,
+        source=source,
+        search_mode=search_mode,
+        fallback_reason=fallback_reason,
+        queries=queries,
+        server_payloads=server_payloads,
+    )
+    usage_receipt_sha256 = ""
+    if usage_receipt:
+        usage_receipt_sha256 = hashlib.sha256(usage_receipt.read_bytes()).hexdigest()
 
     if args.json:
         print(
@@ -580,6 +913,7 @@ def main(argv: list[str] | None = None) -> int:
                 {
                     "root": str(root) if root else "",
                     "query": query,
+                    "queries": queries,
                     "type": args.type,
                     "source": source,
                     "search_mode": search_mode,
@@ -587,6 +921,9 @@ def main(argv: list[str] | None = None) -> int:
                     "count": len(results),
                     "refresh": refresh_status,
                     "results": results,
+                    "server_responses": server_payloads,
+                    "usage_receipt": str(usage_receipt or ""),
+                    "usage_receipt_sha256": usage_receipt_sha256,
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -602,8 +939,12 @@ def main(argv: list[str] | None = None) -> int:
                 source=source,
                 search_mode=search_mode,
                 fallback_reason=fallback_reason,
+                server_payloads=server_payloads,
             )
         )
+        if usage_receipt:
+            print(f"\n搜索证据回执: {usage_receipt}")
+            print(f"搜索证据 SHA256: {usage_receipt_sha256}")
     return 0
 
 

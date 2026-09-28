@@ -839,6 +839,117 @@ def search_before_change(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def load_search_receipt(
+    args: argparse.Namespace, *, platform: str, android_version: str
+) -> tuple[dict[str, Any], bytes]:
+    """Carry one selected receipt, not a reconstructed same-day search summary."""
+    if any(
+        getattr(args, name, None)
+        for name in (
+            "search_query", "search_result", "search_summary", "reuse_decision",
+            "reuse_target", "reuse_match", "reuse_mismatch", "reuse_reason", "reuse_outcome",
+        )
+    ):
+        raise SystemExit("--search-receipt 不能与搜索文字或 reuse 覆盖参数混用")
+    expected_hash = str(args.search_receipt_sha256 or "")
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_hash):
+        raise SystemExit("--search-receipt 必须配套本次回执的 --search-receipt-sha256")
+    raw = Path(args.search_receipt).expanduser().read_bytes()
+    if hashlib.sha256(raw).hexdigest() != expected_hash:
+        raise SystemExit("开发前搜索回执 SHA256 不一致，不能重写或替换原回执")
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SystemExit("开发前搜索回执不是 UTF-8 JSON") from exc
+    if (
+        not isinstance(payload, dict)
+        or payload.get("schema") != "android-knowledge-search-usage"
+        or payload.get("schema_version") != "1"
+        or payload.get("searched") is not True
+        or payload.get("member_alias") != args.policy_member_alias
+        or not args.policy_member_alias
+    ):
+        raise SystemExit("开发前搜索回执 schema、真实搜索标记或当前成员身份不一致")
+    queries = payload.get("queries")
+    results = payload.get("results")
+    environment = payload.get("target_environment")
+    if (
+        not isinstance(queries, list) or not queries
+        or any(not isinstance(query, str) or not query.strip() for query in queries)
+        or not isinstance(results, list) or any(not isinstance(item, dict) for item in results)
+        or not isinstance(environment, dict)
+        or any(not isinstance(environment.get(key), str) for key in ("project", "platform", "android_version"))
+    ):
+        raise SystemExit("开发前搜索回执缺少结构化查询、结果或目标环境")
+    expected_environment = {
+        "project": str(args.project or ""), "platform": platform,
+        "android_version": android_version,
+    }
+    for key, expected in expected_environment.items():
+        declared = environment[key]
+        if declared and expected and declared != expected:
+            raise SystemExit(f"开发前搜索回执 target_environment.{key} 与本次补丁不一致")
+    decision = payload.get("reuse_decision")
+    if decision not in REUSE_DECISIONS or payload.get("decision") != decision:
+        raise SystemExit("开发前搜索回执使用决定不一致")
+    if decision in {"reuse", "adapt", "not_found"}:
+        health = payload.get("server_search_health")
+        if (
+            payload.get("source") != "server_api"
+            or not isinstance(health, list) or len(health) != len(queries)
+            or any(
+                not isinstance(item, dict) or item.get("query") != query
+                or item.get("result_state") == "indeterminate"
+                or item.get("completeness") != "complete"
+                or not isinstance(item.get("projection"), dict)
+                or item["projection"].get("ready") is not True
+                or item["projection"].get("complete") is not True
+                or not isinstance(item.get("pagination"), dict)
+                for query, item in zip(queries, health)
+            )
+        ):
+            raise SystemExit("reuse/adapt/not_found 回执必须保留完整、就绪的服务端查询证据")
+        if decision == "not_found" and (
+            len({" ".join(query.split()).casefold() for query in queries}) < 2
+            or results
+            or any(
+                item.get("result_state") != "empty_for_this_query"
+                or item["pagination"].get("total") != 0
+                or item["pagination"].get("has_more") is not False
+                for item in health
+            )
+        ):
+            raise SystemExit("not_found 回执必须来自至少两次独立、完整的空查询")
+    if decision in {"reuse", "adapt", "reference_only"}:
+        targets = payload.get("targets")
+        by_id = {item.get("id"): item for item in results if isinstance(item.get("id"), str)}
+        if (
+            not isinstance(targets, list) or not targets
+            or any(not isinstance(target, str) or target not in by_id for target in targets)
+        ):
+            raise SystemExit("搜索回执使用目标必须实际出现在本次查询结果中")
+        if decision in {"reuse", "adapt"}:
+            grades = {"direct_reuse_candidate"} if decision == "reuse" else {"direct_reuse_candidate", "adaptation_candidate"}
+            for target in targets:
+                item = by_id[target]
+                bindings = item.get("required_bindings")
+                if (
+                    item.get("kind") != "implementation" or item.get("reuse_grade") not in grades
+                    or not isinstance(bindings, list) or not bindings
+                    or any(
+                        not isinstance(binding, dict)
+                        or binding.get("binding_role") != "implementation"
+                        or binding.get("binding_state") != "accepted"
+                        or not isinstance(binding.get("acceptance_ref"), str) or not binding["acceptance_ref"]
+                        or binding.get("closure_state") != "closed"
+                        for binding in bindings
+                    )
+                    or (decision == "reuse" and item.get("requires_revalidation") is not False)
+                ):
+                    raise SystemExit("reuse/adapt 回执没有具体实现及闭合证据，不能提高原有分级")
+    return payload, raw
+
+
 def validate_search_decision_for_status(args: argparse.Namespace, search_payload: dict[str, Any]) -> tuple[list[str], list[str]]:
     if args.status != "validated":
         return [], []
@@ -1336,6 +1447,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--search-query", action="append", default=[], help="Knowledge-base query performed before development. Repeatable.")
     parser.add_argument("--search-result", action="append", default=[], help="Search result or reuse decision from the pre-change search. Repeatable.")
     parser.add_argument("--search-summary", default="", help="Short summary of pre-change knowledge search.")
+    parser.add_argument("--search-receipt", default="", help="One immutable search usage JSON returned by the knowledge-search CLI.")
+    parser.add_argument("--search-receipt-sha256", default="", help="Exact SHA256 returned with --search-receipt.")
     parser.add_argument("--reuse-decision", choices=REUSE_DECISIONS, help="Pre-change knowledge use decision: reuse, adapt, reference_only, not_applicable, not_found, or unknown.")
     parser.add_argument("--reuse-target", action="append", default=[], help="Matched case, variant, patch, or evidence id considered before the change. Repeatable.")
     parser.add_argument("--reuse-match", action="append", default=[], help="Why the matched knowledge may apply. Repeatable.")
@@ -1419,7 +1532,9 @@ def parse_args() -> argparse.Namespace:
             parser.error("--patch-artifact 必须配套 --patch-repo-path")
     args.policy_profile_name = ""
     args.policy_member_alias = ""
-    if args.workflow_contract == "current_codex_skill" or args.profile:
+    if bool(args.search_receipt) != bool(args.search_receipt_sha256):
+        parser.error("--search-receipt 与 --search-receipt-sha256 必须一起使用")
+    if args.workflow_contract == "current_codex_skill" or args.profile or args.search_receipt:
         try:
             member_profile = load_member_profile(args.profile or None)
         except MemberProfileError as exc:
@@ -1477,6 +1592,13 @@ def main() -> int:
     )
     resolved_project, project_inference = infer_capture_project_for_feature(args, captures, trusted_platform=platform_name)
     args.project = resolved_project
+    search_receipt_bytes: bytes | None = None
+    if args.search_receipt:
+        search_payload, search_receipt_bytes = load_search_receipt(
+            args, platform=platform_name, android_version=android_version,
+        )
+    else:
+        search_payload = search_before_change(args)
 
     now = dt.datetime.now()
     run_id = args.run_id or f"{now:%Y%m%d-%H%M%S}-feature"
@@ -1505,7 +1627,6 @@ def main() -> int:
     warnings: list[str] = []
     auto_verification_payload = load_auto_verification_payload(args)
     verification_payload = verification_result(args, auto_verification_payload)
-    search_payload = search_before_change(args)
     feature_facts = aggregate_feature_facts(captures)
     problem_payload, risk_payload = feature_problem_and_risk_payloads(args, captures, feature_facts)
     coding_check = coding_standard_check(args, captures)
@@ -1597,6 +1718,8 @@ def main() -> int:
         },
     ]
     evidence_items.extend(collect_external_evidence(args, evidence_dir))
+    if search_receipt_bytes is not None:
+        next(item for item in evidence_items if item["kind"] == "search_before_change")["source_receipt_sha256"] = hashlib.sha256(search_receipt_bytes).hexdigest()
     if snapshot_payload is not None:
         write_json(evidence_dir / "remote-source-snapshot.json", snapshot_payload)
         evidence_items.append(
@@ -1713,7 +1836,10 @@ def main() -> int:
     write_json(evidence_dir / "risk-surface.json", risk_payload)
     write_json(evidence_dir / "coding-standard-check.json", coding_check)
     write_json(evidence_dir / "verification-result.json", verification_payload)
-    write_json(evidence_dir / "search-before-change.json", search_payload)
+    if search_receipt_bytes is not None:
+        (evidence_dir / "search-before-change.json").write_bytes(search_receipt_bytes)
+    else:
+        write_json(evidence_dir / "search-before-change.json", search_payload)
     write_json(evidence_dir / "package-check.json", package_check)
 
     result = {

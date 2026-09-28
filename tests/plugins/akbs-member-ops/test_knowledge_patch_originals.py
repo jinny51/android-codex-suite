@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import copy
 import io
 import json
 from pathlib import Path
@@ -13,7 +14,7 @@ import urllib.error
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "plugins/akbs-member-ops/lib"))
 from akbs_member_ops.http_client import HttpClientFailure  # noqa: E402
-from akbs_member_ops.knowledge_search import cli, originals  # noqa: E402
+from akbs_member_ops.knowledge_search import api, cli, originals  # noqa: E402
 
 
 CONTENT = b"diff --git a/file b/file\n"
@@ -31,6 +32,39 @@ def listing(**changes):
     }
     payload.update(changes)
     return payload
+
+
+def implementation_listing(*, historical=False):
+    payload = listing(scope=originals.HISTORICAL_SCOPE if historical else originals.IMPLEMENTATION_SCOPE)
+    payload["implementation_id"] = "implementation-example"
+    item = payload["patches"][0]
+    item.update({
+        "implementation_id": payload["implementation_id"],
+        "implementation_summary": "真实方案", "review_state": "migration_review_required" if historical else "reviewed",
+        "authority": "historical_case_snapshot" if historical else "accepted_evidence_binding",
+        "environments": [{"project": "TVI2343R", "platform": "rk", "android_version": "12", "validation_state": "review_required"}],
+        "source": {"patch_package_id": "patch-package-example", "manifest_revision": 1,
+                   "manifest_sha256": "a" * 64, "package_content_hash": "b" * 64,
+                   "layer": "unknown" if historical else "platform"},
+    })
+    if not historical:
+        item["binding_role"] = "implementation"
+    return payload
+
+
+def detail():
+    return {
+        "case_id": CASE, "title": "真实功能", "summary": "解决实际问题", "status": "active",
+        "sections": [{"label": "功能边界", "kind": "list", "items": ["仅此功能"]}],
+        "implementations": [{
+            "implementation_id": "implementation-example", "case_id": CASE,
+            "content_hash": "a" * 64, "status": "active", "review_state": "reviewed",
+            "approach": "真实实现方案", "implementation_summary": "实施说明",
+            "key_decisions": [{"decision": "关键选择"}], "code_anchors": [{"path": "services/Example.java"}],
+            "risk_and_rollback": {"rollback": "回退本补丁"}, "applicability": [],
+            "reuse_grade": "reference_only", "requires_revalidation": True,
+        }],
+    }
 
 
 class Response(io.BytesIO):
@@ -179,6 +213,249 @@ class KnowledgePatchOriginalsTest(unittest.TestCase):
                 with self.assertRaises(SystemExit) as failure:
                     cli.main(options)
                 self.assertEqual(failure.exception.code, 2)
+
+    def test_selected_implementation_and_historical_pin_keep_exact_selector(self):
+        for historical in (False, True):
+            with self.subTest(historical=historical):
+                payload = implementation_listing(historical=historical)
+                output = self.output.with_name("historical.patch" if historical else "binding.patch")
+                with mock.patch.object(originals, "request_json", return_value=payload) as listing_request, mock.patch.object(originals.urllib.request, "urlopen", return_value=Response(CONTENT)) as download:
+                    result = originals.download_case_patch(CASE, ASSET, output, implementation_id="implementation-example")
+                self.assertTrue(listing_request.call_args.args[0].full_url.endswith("?implementation_id=implementation-example"))
+                self.assertTrue(download.call_args.args[0].full_url.endswith("?implementation_id=implementation-example"))
+                self.assertEqual(result["implementation_id"], "implementation-example")
+                self.assertEqual(result["reuse_outcome"], "not_started")
+                self.assertEqual(output.read_bytes(), CONTENT)
+                self.assertEqual("binding_role" in result, not historical)
+
+    def test_bad_implementation_metadata_does_not_retry_case_or_write(self):
+        mutations = [
+            ("implementation_id", "implementation-other"), ("authority", []),
+            ("binding_role", "invalid"), ("environments", [{}]),
+            ("source", {"layer": "platform"}), ("review_state", {}),
+        ]
+        for field, value in mutations:
+            payload = implementation_listing()
+            payload["patches"][0][field] = value
+            with self.subTest(field=field), mock.patch.object(originals, "request_json", return_value=payload) as request, mock.patch.object(originals.urllib.request, "urlopen") as download:
+                with self.assertRaises(HttpClientFailure):
+                    originals.download_case_patch(CASE, ASSET, self.output, implementation_id="implementation-example")
+            self.assertEqual(request.call_count, 1)
+            download.assert_not_called()
+            self.assertFalse(self.output.exists())
+        payload = implementation_listing(historical=True)
+        payload["patches"][0]["binding_role"] = "implementation"
+        with mock.patch.object(originals, "request_json", return_value=payload):
+            with self.assertRaises(HttpClientFailure):
+                originals.fetch_case_patches(CASE, implementation_id="implementation-example")
+
+    def test_selected_listing_owner_and_scope_mismatch_never_fall_back(self):
+        bad = []
+        for changes in (
+            {"case_id": "case-other"}, {"implementation_id": "implementation-other"},
+            {"implementation_id": None}, {"scope": originals.SCOPE},
+        ):
+            payload = implementation_listing()
+            payload.update(changes)
+            bad.append(payload)
+        payload = implementation_listing()
+        del payload["implementation_id"]
+        bad.append(payload)
+        payload = implementation_listing()
+        payload["patches"][0]["implementation_id"] = "implementation-other"
+        bad.append(payload)
+        payload = implementation_listing()
+        payload["scope"] = originals.HISTORICAL_SCOPE
+        bad.append(payload)
+        for payload in bad:
+            with self.subTest(payload=payload), mock.patch.object(originals, "request_json", return_value=payload) as request, mock.patch.object(originals.urllib.request, "urlopen") as download:
+                with self.assertRaises(HttpClientFailure):
+                    originals.download_case_patch(CASE, ASSET, self.output, implementation_id="implementation-example")
+            self.assertEqual(request.call_count, 1)
+            self.assertIn("?implementation_id=implementation-example", request.call_args.args[0].full_url)
+            download.assert_not_called()
+            self.assertFalse(self.output.exists())
+
+    def test_implementation_scope_requires_explicit_selector(self):
+        for patches in (implementation_listing()["patches"], []):
+            payload = implementation_listing()
+            payload.update(patches=patches, availability="available" if patches else "unavailable")
+            with self.subTest(patches=patches), mock.patch.object(originals, "request_json", return_value=payload) as request, mock.patch.object(originals.urllib.request, "urlopen") as download:
+                with self.assertRaises(HttpClientFailure):
+                    originals.download_case_patch(CASE, ASSET, self.output)
+            self.assertEqual(request.call_count, 1)
+            download.assert_not_called()
+            self.assertFalse(self.output.exists())
+
+    def test_invalid_explicit_selector_is_rejected_before_network(self):
+        for selector in ("", "../implementation-other", "implementation?another=1", False, []):
+            with self.subTest(selector=selector), mock.patch.object(originals, "request_json") as request, mock.patch.object(originals.urllib.request, "urlopen") as download:
+                with self.assertRaises(ValueError):
+                    originals.download_case_patch(CASE, ASSET, self.output, implementation_id=selector)
+            request.assert_not_called()
+            download.assert_not_called()
+            self.assertFalse(self.output.exists())
+
+    def test_selected_unavailable_and_unlisted_handle_do_not_retry_case(self):
+        for historical in (False, True):
+            for unavailable in (False, True):
+                payload = implementation_listing(historical=historical)
+                if unavailable:
+                    payload.update(availability="unavailable", patches=[], reason_code="implementation_originals_unavailable")
+                with self.subTest(historical=historical, unavailable=unavailable), mock.patch.object(originals, "request_json", return_value=payload) as request, mock.patch.object(originals.urllib.request, "urlopen") as download:
+                    with self.assertRaises(ValueError):
+                        originals.download_case_patch(CASE, "asset-other", self.output, implementation_id="implementation-example")
+                self.assertEqual(request.call_count, 1)
+                self.assertTrue(request.call_args.args[0].full_url.endswith("?implementation_id=implementation-example"))
+                download.assert_not_called()
+                self.assertFalse(self.output.exists())
+
+    def test_mixed_pending_authorities_preserve_both_handles_and_exact_environments(self):
+        payload = implementation_listing(historical=True)
+        payload["scope"] = originals.IMPLEMENTATION_SCOPE
+        historical = payload["patches"][0]
+        historical["asset_id"] = "patch-membership-initial"
+        attached = implementation_listing()["patches"][0]
+        attached.update(asset_id="binding-attached", review_state="migration_review_required", binding_role="verification_only")
+        attached["environments"] = [
+            {"project": "OtherProject", "platform": "mtk", "android_version": "14", "validation_state": "unresolved"},
+        ]
+        payload["patches"].append(attached)
+        before = copy.deepcopy(payload)
+        with mock.patch.object(originals, "request_json", return_value=payload):
+            listed = originals.fetch_case_patches(CASE, implementation_id="implementation-example")
+        # Equal bytes are not a license to collapse distinct authorities or environments.
+        self.assertEqual([item["asset_id"] for item in listed["patches"]], ["patch-membership-initial", "binding-attached"])
+        for item in (historical, attached):
+            output = self.output.with_name(item["asset_id"] + ".patch")
+            with mock.patch.object(originals, "request_json", return_value=payload) as request, mock.patch.object(originals.urllib.request, "urlopen", return_value=Response(CONTENT)) as download:
+                receipt = originals.download_case_patch(CASE, item["asset_id"], output, implementation_id="implementation-example")
+            self.assertEqual(receipt["asset_id"], item["asset_id"])
+            self.assertEqual(receipt["authority"], item["authority"])
+            self.assertEqual(receipt["environments"], item["environments"])
+            self.assertEqual(receipt["original_source"], item["source"])
+            self.assertEqual(receipt["review_state"], "migration_review_required")
+            self.assertEqual(receipt["reuse_outcome"], "not_started")
+            self.assertNotIn("reuse_grade", receipt)
+            self.assertEqual("binding_role" in receipt, item is attached)
+            self.assertEqual(output.read_bytes(), CONTENT)
+            self.assertEqual(request.call_count, 1)
+            self.assertEqual(download.call_count, 1)
+            self.assertEqual(download.call_args.args[0].full_url, "http://akbs.example/akbs/api/member/me/knowledge/" + CASE + "/patches/" + item["asset_id"] + "?implementation_id=implementation-example")
+            self.assertEqual(dict((key.lower(), value) for key, value in download.call_args.args[0].header_items()), {"accept": "application/octet-stream", "x-akbs-user": "member1"})
+        self.assertEqual(payload, before)
+
+    def test_source_identity_malformations_never_write_or_retry(self):
+        mutations = (
+            ("patch_package_id", "../private/package"), ("manifest_revision", True),
+            ("manifest_revision", 0), ("manifest_sha256", "bad"),
+            ("package_content_hash", "bad"), ("layer", "unknown"),
+            ("layer", "not-a-layer"), ("source_path", "/private/source/path"),
+        )
+        for field, value in mutations:
+            payload = implementation_listing()
+            payload["patches"][0]["source"][field] = value
+            with self.subTest(field=field, value=value), mock.patch.object(originals, "request_json", return_value=payload) as request, mock.patch.object(originals.urllib.request, "urlopen") as download:
+                with self.assertRaises(HttpClientFailure):
+                    originals.download_case_patch(CASE, ASSET, self.output, implementation_id="implementation-example")
+            self.assertEqual(request.call_count, 1)
+            download.assert_not_called()
+            self.assertFalse(self.output.exists())
+
+    def test_environment_and_review_malformations_do_not_claim_validation(self):
+        valid = implementation_listing()["patches"][0]["environments"][0]
+        bad_environments = (
+            None, {}, [], [None], [{}], [dict(valid, validation_state="passed")],
+            [dict(valid, project=False)], [dict(valid, tuple_id="private-id")],
+            [valid, dict(valid, validation_state="validated")],
+        )
+        bad = [("environments", value) for value in bad_environments]
+        bad += [("review_state", value) for value in ("", "validated", "unknown", [], True)]
+        for field, value in bad:
+            payload = implementation_listing()
+            payload["patches"][0][field] = value
+            with self.subTest(field=field, value=value), mock.patch.object(originals, "request_json", return_value=payload) as request, mock.patch.object(originals.urllib.request, "urlopen") as download:
+                with self.assertRaises(HttpClientFailure):
+                    originals.download_case_patch(CASE, ASSET, self.output, implementation_id="implementation-example")
+            self.assertEqual(request.call_count, 1)
+            download.assert_not_called()
+            self.assertFalse(self.output.exists())
+        # A historical locator may have no proven environment; do not fabricate one.
+        payload = implementation_listing(historical=True)
+        payload["patches"][0]["environments"] = []
+        with mock.patch.object(originals, "request_json", return_value=payload):
+            result = originals.fetch_case_patches(CASE, implementation_id="implementation-example")
+        self.assertEqual(result["patches"][0]["environments"], [])
+
+    def test_selected_download_404_never_retries_case_or_writes(self):
+        error = urllib.error.HTTPError("http://akbs.example", 404, "missing", {}, io.BytesIO(b"private source path"))
+        with mock.patch.object(originals, "request_json", return_value=implementation_listing()) as listing_request, mock.patch.object(originals.urllib.request, "urlopen", side_effect=error) as download:
+            with self.assertRaises(HttpClientFailure) as failure:
+                originals.download_case_patch(CASE, ASSET, self.output, implementation_id="implementation-example")
+        self.assertEqual(listing_request.call_count, 1)
+        self.assertEqual(download.call_count, 1)
+        self.assertTrue(download.call_args.args[0].full_url.endswith("?implementation_id=implementation-example"))
+        self.assertNotIn("private source path", str(failure.exception))
+        self.assertFalse(self.output.exists())
+
+    def test_selected_download_tamper_does_not_write_or_promote_pending_original(self):
+        payload = implementation_listing()
+        payload["patches"][0]["review_state"] = "migration_review_required"
+        for raw in (CONTENT[:-1], CONTENT + b"x", b"x" * len(CONTENT)):
+            with self.subTest(raw=raw), mock.patch.object(originals, "request_json", return_value=payload) as listing_request, mock.patch.object(originals.urllib.request, "urlopen", return_value=Response(raw)) as download:
+                with self.assertRaises(HttpClientFailure):
+                    originals.download_case_patch(CASE, ASSET, self.output, implementation_id="implementation-example")
+            self.assertEqual(listing_request.call_count, 1)
+            self.assertEqual(download.call_count, 1)
+            self.assertFalse(self.output.exists())
+
+    def test_selected_colon_identifier_is_encoded_in_both_requests(self):
+        selector = "implementation:initial-history"
+        payload = implementation_listing(historical=True)
+        payload["implementation_id"] = selector
+        payload["patches"][0]["implementation_id"] = selector
+        with mock.patch.object(originals, "request_json", return_value=payload) as request, mock.patch.object(originals.urllib.request, "urlopen", return_value=Response(CONTENT)) as download:
+            result = originals.download_case_patch(CASE, ASSET, self.output, implementation_id=selector)
+        for sent in (request.call_args.args[0], download.call_args.args[0]):
+            self.assertTrue(sent.full_url.endswith("?implementation_id=implementation%3Ainitial-history"))
+        self.assertEqual(result["implementation_id"], selector)
+        self.assertEqual(result["reuse_outcome"], "not_started")
+
+    def test_detail_is_exact_existing_get_and_does_not_replace_search_grade(self):
+        payload = detail()
+        with mock.patch.object(api, "member_api_base_url", return_value=("http://akbs.example", "test")), mock.patch.object(api, "member_request_headers", return_value={"X-AKBS-User": "member1"}), mock.patch.object(api, "request_json", return_value=payload) as request:
+            result = api.fetch_case_detail(CASE, implementation_id="implementation-example")
+        self.assertEqual(request.call_args.args[0].full_url, "http://akbs.example/akbs/api/knowledge/" + CASE)
+        self.assertEqual(result["implementations"][0]["approach"], "真实实现方案")
+        self.assertEqual(result["implementations"][0]["reuse_grade"], "reference_only")
+        self.assertEqual(payload, detail())
+        with mock.patch.object(cli, "fetch_case_detail", return_value=result), mock.patch.object(cli, "record_search_usage") as usage, mock.patch.object(cli, "find_root") as fallback, mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            self.assertEqual(cli.main(["--case-detail", CASE, "--implementation-id", "implementation-example"]), 0)
+        self.assertIn("真实实现方案", stdout.getvalue())
+        self.assertIn("回退本补丁", stdout.getvalue())
+        self.assertIn("不能替代搜索时", stdout.getvalue())
+        usage.assert_not_called()
+        fallback.assert_not_called()
+
+    def test_detail_rejects_wrong_case_impl_or_incomplete_body(self):
+        bad = []
+        for field, value in (("case_id", "other"), ("sections", []), ("implementations", {})):
+            payload = detail()
+            payload[field] = value
+            if field == "sections":
+                payload[field] = [{"label": "边界", "kind": "list", "items": [False]}]
+            bad.append(payload)
+        for field, value in (("case_id", "other"), ("content_hash", False), ("key_decisions", [None]), ("risk_and_rollback", []), ("implementation_id", ["invalid"])):
+            payload = detail()
+            payload["implementations"][0][field] = value
+            bad.append(payload)
+        for payload in bad:
+            with self.subTest(payload=payload), mock.patch.object(api, "member_api_base_url", return_value=("http://akbs.example", "test")), mock.patch.object(api, "member_request_headers", return_value={}), mock.patch.object(api, "request_json", return_value=payload):
+                with self.assertRaises(HttpClientFailure):
+                    api.fetch_case_detail(CASE)
+        with mock.patch.object(api, "member_api_base_url", return_value=("http://akbs.example", "test")), mock.patch.object(api, "member_request_headers", return_value={}), mock.patch.object(api, "request_json", return_value=detail()):
+            with self.assertRaises(ValueError):
+                api.fetch_case_detail(CASE, implementation_id="implementation-other")
 
 
 if __name__ == "__main__":

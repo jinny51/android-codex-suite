@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -57,7 +59,7 @@ def capture_patch_layers(manifest: dict[str, Any], patch_paths: list[str]) -> di
     return assigned
 
 
-def copy_capture_file(source_root: Path, rel: str, target: Path) -> None:
+def copy_capture_file(source_root: Path, rel: str, target: Path, *, expected_sha256: str = "") -> None:
     source = (source_root / rel).resolve()
     root = source_root.resolve()
     if source != root and root not in source.parents:
@@ -67,7 +69,15 @@ def copy_capture_file(source_root: Path, rel: str, target: Path) -> None:
     if target.exists():
         raise SystemExit(f"目标文件已存在，避免覆盖: {target}")
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, target)
+    if expected_sha256:
+        raw = source.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != expected_sha256:
+            raise SystemExit("capture 搜索回执的原字节 SHA256 不一致")
+        with target.open("xb") as handle:
+            handle.write(raw)
+        shutil.copystat(source, target)
+    else:
+        shutil.copy2(source, target)
 
 
 def verification_payload_passes(package_root: Path, evidence_item: dict[str, Any]) -> bool:
@@ -217,12 +227,22 @@ def copy_patch_capture_packages(
             if not isinstance(item, dict):
                 continue
             rel = item.get("path")
+            has_receipt_marker = "source_receipt_sha256" in item
+            receipt_hash = item.get("source_receipt_sha256", "")
+            if has_receipt_marker and (
+                item.get("kind") != "search_before_change"
+                or not isinstance(receipt_hash, str)
+                or not re.fullmatch(r"[0-9a-f]{64}", receipt_hash)
+                or not isinstance(rel, str)
+                or not rel
+            ):
+                raise SystemExit("capture 搜索回执 SHA256 标记无效")
             if not isinstance(rel, str) or not rel:
                 continue
             base_id = safe_id(str(item.get("id") or Path(rel).stem))
             target_name = f"{capture_id}-{Path(rel).name}"
             target = evidence_dir / target_name
-            copy_capture_file(capture_dir, rel, target)
+            copy_capture_file(capture_dir, rel, target, expected_sha256=receipt_hash)
             copied = {
                 "id": f"{capture_id}-{base_id}",
                 "kind": item.get("kind", "capture_evidence"),
@@ -230,6 +250,8 @@ def copy_patch_capture_packages(
                 "result": item.get("result", "INFO"),
                 "summary": item.get("summary", "captured patch evidence"),
             }
+            if has_receipt_marker:
+                copied["source_receipt_sha256"] = receipt_hash
             evidence_entries.append(copied)
             if verification_payload_passes(capture_dir, item):
                 has_pass_verification = True

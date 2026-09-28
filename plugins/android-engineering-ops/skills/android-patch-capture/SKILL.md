@@ -137,6 +137,14 @@ $CODEX_HOME/artifacts/android-patch-capture/packages/<run-id>/
 
 Pass the whole directory to `akbs-patch-submit --patch-package`.
 
+When the task has a structured search receipt, pass its exact path and SHA256 as
+`--search-receipt <path> --search-receipt-sha256 <sha256>` (the snapshot wrapper
+forwards these after `--`). Capture preserves the same read bytes inside the
+existing search-before-change evidence wrapper; submit checks that raw text,
+hash and parsed payload agree. Do not combine this with old free-text search or
+reuse overrides, guess a same-day receipt, or retrospectively fabricate one.
+This records the actual search decision, not source ownership or reuse success.
+
 ## Hard stops
 
 Do not publish a capture when the change is not verified, a patch is empty, unrelated

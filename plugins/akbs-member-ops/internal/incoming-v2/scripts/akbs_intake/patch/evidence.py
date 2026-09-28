@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -315,14 +318,54 @@ def select_search_before_change_payload(
     capture_search_payload: dict[str, Any],
     member_search_payload: dict[str, Any],
     capture_has_member_decision: bool,
+    capture_is_exact_receipt: bool = False,
 ) -> dict[str, Any]:
-    if capture_has_member_decision:
+    if capture_is_exact_receipt or capture_has_member_decision:
         return capture_search_payload
     if member_search_payload:
         return member_search_payload
     if capture_search_payload:
         return capture_search_payload
     return default_search_before_change_payload()
+
+
+def search_receipt_from_capture(
+    package_dir: Path, evidence_entries: list[dict[str, Any]]
+) -> dict[str, Any] | None:
+    entries = [
+        item for item in evidence_entries
+        if "source_receipt_sha256" in item
+    ]
+    if not entries:
+        return None
+    for item in entries:
+        receipt_hash = item.get("source_receipt_sha256")
+        if (
+            item.get("kind") != "search_before_change"
+            or not isinstance(receipt_hash, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", receipt_hash)
+            or not isinstance(item.get("path"), str)
+            or not item["path"]
+        ):
+            raise SystemExit("capture 搜索回执 SHA256 标记无效")
+    if len(entries) != 1:
+        raise SystemExit("一个功能包只能选择一份准确的开发前搜索回执")
+    item = entries[0]
+    raw = (package_dir / item["path"]).read_bytes()
+    if hashlib.sha256(raw).hexdigest() != item["source_receipt_sha256"]:
+        raise SystemExit("复制后的开发前搜索回执 SHA256 不一致")
+    try:
+        raw_text = raw.decode("utf-8")
+        payload = json.loads(raw_text)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SystemExit("准确搜索回执必须为 UTF-8 JSON") from exc
+    if not isinstance(payload, dict) or payload.get("schema") != "android-knowledge-search-usage" or payload.get("schema_version") != "1":
+        raise SystemExit("准确搜索回执 schema 不正确")
+    return {
+        "payload": payload,
+        "source_receipt_json": raw_text,
+        "source_receipt_sha256": item["source_receipt_sha256"],
+    }
 
 
 def concrete_module_from_files(modified_files: list[str], repo_paths: list[str]) -> str:

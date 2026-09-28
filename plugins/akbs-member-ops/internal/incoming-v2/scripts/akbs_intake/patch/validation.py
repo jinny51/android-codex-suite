@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -651,6 +652,38 @@ def validate_patch_pre_change_search(
 ) -> None:
     search_evidence = evidence_by_kind.get("search_before_change", {})
     search_payload = search_evidence.get("payload", search_evidence) if isinstance(search_evidence, dict) else {}
+    if isinstance(search_evidence, dict) and (
+        "source_receipt_json" in search_evidence or "source_receipt_sha256" in search_evidence
+    ):
+        raw_text = search_evidence.get("source_receipt_json")
+        receipt_hash = search_evidence.get("source_receipt_sha256")
+        parsed: Any = None
+        if isinstance(raw_text, str) and isinstance(receipt_hash, str):
+            try:
+                raw = raw_text.encode("utf-8")
+                parsed = json.loads(raw_text)
+            except (UnicodeError, json.JSONDecodeError):
+                raw = b""
+            if hashlib.sha256(raw).hexdigest() != receipt_hash or parsed != search_payload:
+                errors.append("search_before_change 原始回执 hash 或结构化 payload 不一致")
+        else:
+            errors.append("search_before_change 必须同时保留原始回执文本和 SHA256")
+        if (
+            not isinstance(parsed, dict)
+            or parsed.get("schema") != "android-knowledge-search-usage"
+            or parsed.get("schema_version") != "1"
+            or parsed.get("searched") is not True
+            or parsed.get("member_alias") != manifest.get("member_alias")
+        ):
+            errors.append("search_before_change 回执 schema、真实搜索标记或成员身份不一致")
+        else:
+            environment = parsed.get("target_environment")
+            if not isinstance(environment, dict) or any(
+                not isinstance(environment.get(key), str)
+                or (environment[key] and environment[key] != manifest.get(key))
+                for key in ("project", "platform", "android_version")
+            ):
+                errors.append("search_before_change 回执声明的目标环境与当前包不一致")
     workflow_contract = str(manifest.get("workflow_contract") or "").strip()
     if workflow_contract not in {
         "current_codex_skill",

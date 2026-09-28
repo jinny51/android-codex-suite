@@ -29,6 +29,7 @@ from akbs_intake.patch.evidence import (
     ensure_required_patch_explanation_evidence,
     incoming_patch_item,
     select_search_before_change_payload,
+    search_receipt_from_capture,
     verification_payload_or_missing,
     write_patch_view_and_ai_facts,
 )
@@ -412,22 +413,31 @@ def build_patch_package(
     if package_status == "validated" and str(verification_payload.get("result", "")).upper() != "PASS":
         package_status = "candidate"
 
-    capture_search_payload = first_evidence_payload(package_dir, capture_evidence_entries, "search_before_change")
-    member_search_payload = search_usage_payload(config, date, feature_tokens=patch_search_feature_tokens(summary, all_patch_items, modified_files))
+    exact_search_receipt = search_receipt_from_capture(package_dir, capture_evidence_entries)
+    capture_search_payload = (
+        exact_search_receipt["payload"] if exact_search_receipt is not None
+        else first_evidence_payload(package_dir, capture_evidence_entries, "search_before_change")
+    )
+    member_search_payload = (
+        {} if exact_search_receipt is not None
+        else search_usage_payload(config, date, feature_tokens=patch_search_feature_tokens(summary, all_patch_items, modified_files))
+    )
     search_payload = select_search_before_change_payload(
         capture_search_payload=capture_search_payload,
         member_search_payload=member_search_payload,
         capture_has_member_decision=search_payload_has_member_decision(capture_search_payload),
+        capture_is_exact_receipt=exact_search_receipt is not None,
     )
+    search_evidence = {
+        "kind": "search_before_change", "case_id": case_id,
+        "variant_id": variant_id, "payload": search_payload,
+    }
+    if exact_search_receipt is not None:
+        search_evidence.update(exact_search_receipt)
     search_path = write_default_evidence(
         package_dir,
         materials_rel("evidence", "search_before_change.json"),
-        {
-            "kind": "search_before_change",
-            "case_id": case_id,
-            "variant_id": variant_id,
-            "payload": search_payload,
-        },
+        search_evidence,
     )
     optional_evidence_paths = [
         rel

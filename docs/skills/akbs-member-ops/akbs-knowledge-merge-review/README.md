@@ -16,6 +16,11 @@
 不能回退成本地搜索后伪造合并依据。只有成员明确要求发送异议，并同时提供
 `--send-dispute` 和理由/评估时，才允许 POST dispute。
 
+`add_implementation` 是同一功能下新增一种技术实现；`attach_evidence` 是为确切已有实现
+补充证据或适用环境。读取时核对 confirmation、成员、动作、决定身份和 Case/Implementation
+精确绑定；预期 hash 与当前 hash 不同时保留两者供复核，不静默换目标。
+初次提议仍有成员确认/异议流程；管理员复审异议后直接闭合，不再次索要同一异议的确认。
+
 ```bash
 python3 "scripts/akbs_knowledge_merge_review.py" analyze \
   --confirmation-id <confirmation_id>

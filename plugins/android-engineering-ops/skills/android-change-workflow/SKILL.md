@@ -113,8 +113,21 @@ patch must be assigned to exactly one layer. Independent App work has no Patch l
 ## Gate 2: Knowledge and Source Authority
 
 When `akbs-member-ops` is installed and configured, run `akbs-knowledge-search` before
-implementation and record `reuse`, `adapt`, `reference_only`, `not_applicable`, or
-`not_found` with the evidence used. AKBS search is an optional integration: its absence
+implementation with the real project, chip platform, Android version and applicable
+Patch layers. Compare the Case purpose, concrete Implementation, exact environment
+and bound original patches. Read `--case-detail <case_id>` and, when selecting a
+solution, `--implementation-id <implementation_id>`; list/download originals
+with that same selector. Do not apply only the search summary or truncated preview.
+Keep the server candidate grade unchanged; choose `reuse`,
+`adapt` or a more conservative `reference_only` with the evidence used.
+`reuse`/`adapt` select a concrete Implementation; a reference can be a Case or local hint.
+One empty query or an unavailable/incomplete search is `unknown`, not `not_found`;
+`not_found` requires a healthy complete multi-query empty result. Preserve this task's
+search receipt path/SHA256 for capture rather than selecting a same-day record by guess.
+Pass them as `--search-receipt` and `--search-receipt-sha256` so the current
+capture→submit chain preserves the exact original per-query receipt.
+Downloading originals or choosing reuse is not proof of successful target verification.
+AKBS search is an optional integration: its absence
 must not break source access, implementation, verification, or local capture. Record the
 absence truthfully; a later submit flow may apply its own stricter server gate.
 For independent App work, do not invent a Patch layer for search.

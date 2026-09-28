@@ -9,7 +9,7 @@
   "contract_set": {
     "system_path": "contracts/contract-set.json",
     "consumer_path": "plugins/akbs-member-ops/contracts/contract-set.json",
-    "sha256": "24fcf2ca5ccd1fb800f4afca28e3c3247e930cb3093cb02026d8d6d1dccd74f5"
+    "sha256": "f17b4adefbdebba5fe3ec9966cdcd1dc89a5ff51c6c36a71c772d0cda318bade"
   },
   "public_contract": {
     "system_path": "contracts/incoming/v2/public-contract.json",

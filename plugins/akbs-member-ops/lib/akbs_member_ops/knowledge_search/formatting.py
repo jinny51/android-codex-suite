@@ -17,6 +17,40 @@ def parse_json(value: Any, default: Any) -> Any:
         return default
 
 
+def format_case_detail(payload: dict[str, Any]) -> str:
+    lines = [
+        f"# {payload['title']}",
+        "",
+        f"case_id={payload['case_id']}",
+        "",
+        "以下为既有知识详情；未绑定本次目标环境，不能替代搜索时的复用分级或工程验收。",
+    ]
+    for section in payload["sections"]:
+        lines.extend(["", f"## {section['label']}", ""])
+        if section["kind"] == "text":
+            lines.append(section["value"])
+        else:
+            lines.extend(f"- {item}" for item in section["items"])
+    for implementation in payload["implementations"]:
+        lines.extend([
+            "", f"## Implementation {implementation['implementation_id']}", "",
+            implementation["implementation_summary"],
+            "", f"语义审核状态：{implementation['review_state']}",
+            "", implementation["approach"],
+        ])
+        for field, label in (
+            ("key_decisions", "关键决策"), ("code_anchors", "代码锚点"),
+            ("risk_and_rollback", "风险与回滚"), ("applicability", "声明的精确适用元组"),
+            ("evidence_bindings", "原件证据绑定"), ("evidence_gaps", "证据缺口"),
+        ):
+            if field in implementation:
+                lines.extend([
+                    "", f"### {label}", "", "```json",
+                    json.dumps(implementation[field], ensure_ascii=False, indent=2), "```",
+                ])
+    return "\n".join(lines)
+
+
 def result_date(row: dict[str, Any]) -> str:
     return str(row.get("date") or row.get("week_range") or "")
 
@@ -48,12 +82,18 @@ def format_knowledge_validity(row: dict[str, Any]) -> str:
     reuse_score = validity.get("reuse_score", row.get("reuse_score", ""))
     if not any(str(value) for value in (confidence, evidence_level, risk_level, reuse_score)):
         return ""
+    is_local = str(row.get("source") or "").startswith("local")
+    prefix = (
+        "来源原有标注（非本次服务端分级）: "
+        if is_local
+        else "知识有效度: "
+    )
     return (
-        "知识有效度: "
+        prefix +
         f"可信度（confidence）={confidence or 'unknown'} / "
         f"证据等级（evidence_level）={evidence_level or 'unknown'} / "
-        f"风险等级（risk_level）={risk_level or 'unknown'} / "
-        f"复用分（reuse_score）={reuse_score if reuse_score != '' else 'unknown'}"
+        f"风险等级（risk_level）={risk_level or 'unknown'}"
+        + ("" if is_local else f" / 复用分（reuse_score）={reuse_score if reuse_score != '' else 'unknown'}")
     )
 
 
@@ -139,8 +179,8 @@ def format_case(root: Path, row: dict[str, Any], index: int) -> str:
     validity_line = format_knowledge_validity(row)
     if validity_line:
         lines.append(f"   - {validity_line}")
-    if row.get("variant_ids"):
-        lines.append(f"   - variants: {compact_list(row.get('variant_ids'), 6)}")
+    if row.get("implementation_ids"):
+        lines.append(f"   - implementations: {compact_list(row.get('implementation_ids'), 6)}")
     if row.get("replacement_case_id"):
         lines.append(f"   - 推荐替代: {row.get('replacement_case_id')} / {row.get('replacement_title', '')}")
     if row.get("replaces_case_ids"):
@@ -152,11 +192,11 @@ def format_case(root: Path, row: dict[str, Any], index: int) -> str:
     return "\n".join(lines)
 
 
-def format_variant(root: Path, row: dict[str, Any], index: int) -> str:
-    title = row.get("implementation_scope") or row.get("variant_id") or row.get("id") or "(variant)"
+def format_implementation(root: Path, row: dict[str, Any], index: int) -> str:
+    title = row.get("implementation_scope") or row.get("implementation_id") or row.get("id") or "(implementation)"
     lines = [
-        f"{index}. [variant] {title}",
-        f"   - id: {row.get('variant_id') or row.get('id', '')}",
+        f"{index}. [implementation] {title}",
+        f"   - id: {row.get('implementation_id') or row.get('id', '')}",
         f"   - case/status: {row.get('case_id', '')} / {row.get('status', '')}",
     ]
     lines.append(
@@ -306,24 +346,25 @@ def format_evidence(root: Path, row: dict[str, Any], index: int) -> str:
 
 
 REUSE_GRADE_LABELS = {
-    "reusable": "可复用候选",
+    "direct_reuse_candidate": "可直接复用候选",
+    "adaptation_candidate": "需适配候选",
     "reference_only": "仅参考",
-    "insufficient_evidence": "证据不足",
-    "different_function": "功能不同",
-    "duplicate_source": "重复来源线索",
-    "unknown": "未知分级",
 }
 
 
 def format_server_result(row: dict[str, Any], index: int) -> str:
-    grade = str(row.get("reuse_grade") or "unknown")
-    label = REUSE_GRADE_LABELS.get(grade, grade or "未知分级")
+    grade = str(row.get("reuse_grade") or "")
+    label = REUSE_GRADE_LABELS.get(grade, grade or "服务端未分级")
     title = row.get("title") or row.get("summary") or row.get("case_title") or "未命名知识候选"
     lines = [
         f"{index}. [{label}] {title}",
     ]
     if row.get("summary") and row.get("summary") != title:
         lines.append(f"   - 摘要: {row.get('summary')}")
+    if row.get("relative_path"):
+        lines.append(f"   - 补丁路径: {row.get('relative_path')}")
+    if row.get("patch_sha256"):
+        lines.append(f"   - 补丁 SHA256: {row.get('patch_sha256')}")
     if row.get("problem_summary"):
         lines.append(f"   - 问题: {row.get('problem_summary')}")
     if row.get("solution_summary"):
@@ -332,7 +373,79 @@ def format_server_result(row: dict[str, Any], index: int) -> str:
         lines.append(f"   - 命中通道: {compact_list(row.get('matched_channels'), 6)}")
     if row.get("matched_anchors"):
         lines.append(f"   - 命中锚点: {compact_list(row.get('matched_anchors'), 6)}")
-    technical = [value for value in (row.get("case_id"), row.get("package_id"), row.get("id")) if value]
+    if row.get("layers"):
+        lines.append(f"   - Android 层级: {compact_list(row.get('layers'), 7)}")
+    revalidation = row.get("requires_revalidation")
+    lines.append(
+        "   - 需要重新验证: "
+        + ("yes" if revalidation is True else "no" if revalidation is False else "unknown")
+    )
+    comparison = row.get("environment_comparison")
+    if isinstance(comparison, dict):
+        lines.append(f"   - 环境比较: {comparison.get('mode') or 'unknown'}")
+        alternatives = comparison.get("alternative_tuples")
+        if isinstance(alternatives, list) and alternatives:
+            lines.append(f"   - 可参考环境差异: {compact_list(alternatives, 3)}")
+        matched_sets = comparison.get("non_dominated_matched_dimension_sets")
+        if isinstance(matched_sets, list) and matched_sets:
+            rendered_sets = [
+                "+".join(str(dimension) for dimension in dimensions)
+                for dimensions in matched_sets
+                if isinstance(dimensions, list) and dimensions
+            ]
+            if rendered_sets:
+                lines.append(f"   - 已匹配环境维度: {compact_list(rendered_sets, 4)}")
+    bindings = row.get("required_bindings")
+    if isinstance(bindings, list):
+        lines.append(f"   - 必需证据绑定: {len(bindings)}")
+        for binding in bindings:
+            if isinstance(binding, dict):
+                lines.append(
+                    "     - "
+                    f"binding={binding.get('binding_id') or 'unknown'} / "
+                    f"asset={binding.get('patch_asset_id') or 'unknown'} / "
+                    f"sha256={binding.get('patch_sha256') or 'unknown'} / "
+                    f"layer={binding.get('layer') or 'unknown'} / "
+                    f"repository={binding.get('repository') or 'unknown'} / "
+                    f"package={binding.get('patch_package_id') or 'unknown'} / "
+                    f"role={binding.get('binding_role') or 'unknown'} / "
+                    f"state={binding.get('binding_state') or 'unknown'} / "
+                    f"closure={binding.get('closure_state') or 'unknown'} / "
+                    f"closure_reason={binding.get('closure_reason') or '(none)'} / "
+                    f"revision={binding.get('manifest_revision') if binding.get('manifest_revision') is not None else 'unknown'} / "
+                    f"manifest_sha256={binding.get('manifest_sha256') or 'unknown'}"
+                )
+                environment_evidence = binding.get("environment_evidence")
+                if isinstance(environment_evidence, list):
+                    lines.append(
+                        "       - 环境证据: "
+                        + (compact_list(environment_evidence, len(environment_evidence)) or "none")
+                    )
+    evidence_gaps = row.get("evidence_gaps")
+    if isinstance(evidence_gaps, list):
+        lines.append(f"   - 证据缺口: {len(evidence_gaps)}")
+        for gap in evidence_gaps:
+            if isinstance(gap, dict):
+                lines.append(
+                    "     - "
+                    f"reason={gap.get('reason') or 'unknown'} / "
+                    f"binding={gap.get('binding_id') or '(global)'} / "
+                    f"context={json.dumps(gap.get('context') or {}, ensure_ascii=False, sort_keys=True)}"
+                )
+    if row.get("qualification_reason"):
+        lines.append(f"   - 分级原因: {row.get('qualification_reason')}")
+    technical = [
+        value
+        for value in (
+            row.get("case_id"),
+            row.get("implementation_id"),
+            row.get("evidence_binding_id"),
+            row.get("patch_asset_id"),
+            row.get("patch_id"),
+            row.get("id"),
+        )
+        if value
+    ]
     if technical:
         lines.append(f"   - 技术标识: {compact_list(technical, 6)}")
     return "\n".join(lines)
@@ -347,6 +460,7 @@ def format_markdown(
     source: str = "local_jsonl_fallback",
     search_mode: str = "local_jsonl",
     fallback_reason: str = "",
+    server_payloads: list[dict[str, Any]] | None = None,
 ) -> str:
     lines = [
         "# 知识库搜索结果",
@@ -357,14 +471,48 @@ def format_markdown(
         f"- query: {q or '(empty)'}",
         f"- results: {len(results)}",
     ]
-    if fallback_reason:
-        lines.append(f"- fallback_reason: {fallback_reason}")
+    if source != "server_api":
+        if fallback_reason:
+            lines.append(f"- fallback_reason: {fallback_reason}")
         lines.append("- fallback 提示: 本地文本搜索，未经过服务端复用分级；不要把本地命中直接当作可复用结论。")
+    payloads = server_payloads or []
+    for payload in payloads:
+        projection = payload.get("projection") if isinstance(payload.get("projection"), dict) else {}
+        pagination = payload.get("pagination") if isinstance(payload.get("pagination"), dict) else {}
+        target = payload.get("target_environment") if isinstance(payload.get("target_environment"), dict) else {}
+        lines.append(
+            "- 服务端状态: "
+            f"query={payload.get('query') or ''} / "
+            f"target={target.get('project') or '(empty)'}/{target.get('platform') or '(empty)'}/{target.get('android_version') or '(empty)'} / "
+            f"state={payload.get('result_state') or ''} / "
+            f"completeness={payload.get('completeness') or ''} / "
+            f"reason={payload.get('reason_code') or '(none)'} / "
+            f"projection_ready={projection.get('ready')} / "
+            f"projection_complete={projection.get('complete')} / "
+            f"projection_reason={projection.get('reason_code') or '(none)'} / "
+            f"offset={pagination.get('offset', 0)} / total={pagination.get('total', 0)} / "
+            f"has_more={pagination.get('has_more', False)}"
+        )
+    if fallback_reason and source == "server_api":
+        lines.append(f"- fallback_reason: {fallback_reason}")
     if refresh_status:
         lines.append(f"- refresh: {refresh_status}")
     lines.append("")
     if not results:
-        lines.append("未找到匹配结果。可以换用类名、文件路径、属性名、Settings key、资源 key 或项目名再搜。")
+        unhealthy = source == "server_api" and any(
+            payload.get("result_state") == "indeterminate"
+            or payload.get("completeness") != "complete"
+            or not isinstance(payload.get("projection"), dict)
+            or payload["projection"].get("ready") is not True
+            or payload["projection"].get("complete") is not True
+            for payload in payloads
+        )
+        if unhealthy:
+            lines.append("本次服务端搜索不完整，当前无法确定是否存在可复用知识；不得记为 not_found。")
+        elif source == "server_api":
+            lines.append("本次完整服务端查询没有返回匹配结果；可换用代码锚点或补充查询继续确认。")
+        else:
+            lines.append("本地文本索引未找到匹配提示；这不是服务端 not_found 结论。")
         return "\n".join(lines)
 
     for index, row in enumerate(results, start=1):
@@ -372,11 +520,12 @@ def format_markdown(
             lines.append(format_server_result(row, index))
             lines.append("")
             continue
+        row = {**row, "source": source}
         kind = row.get("kind")
         if kind == "case":
             lines.append(format_case(root, row, index))
-        elif kind == "variant":
-            lines.append(format_variant(root, row, index))
+        elif kind == "implementation":
+            lines.append(format_implementation(root, row, index))
         elif kind == "patch":
             lines.append(format_patch(root, row, index))
         elif kind == "report":

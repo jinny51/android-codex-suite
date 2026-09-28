@@ -8,16 +8,45 @@ from typing import Any
 from akbs_member_ops.knowledge_search.formatting import parse_json, result_date
 
 
-AI_DEFAULT_RESULT_KINDS = {"case", "variant", "patch", "symbol"}
-AI_EVIDENCE_KINDS = {
-    "patch_diff_facts",
-    "patch_problem_summary",
-    "project_inference",
-    "risk_surface",
-    "build_result",
-    "verification_result",
-    "search_before_change",
+AI_DEFAULT_RESULT_KINDS = {"case", "implementation", "patch", "symbol"}
+SERVER_QUALIFICATION_FIELDS = {
+    "reuse_grade",
+    "qualification_reason",
+    "requires_revalidation",
+    "required_bindings",
+    "evidence_gaps",
+    "environment_comparison",
+    "target_environment",
+    "reuse_score",
+    "reuse_hint",
 }
+AI_EVIDENCE_KINDS = {
+    "patch_diff_facts", "patch_problem_summary", "project_inference",
+    "risk_surface", "build_result", "verification_result", "search_before_change",
+}
+
+
+def strip_server_qualification(item: dict[str, Any]) -> dict[str, Any]:
+    """Local legacy indexes are text hints, never V4 reuse authority."""
+
+    public = {
+        key: value
+        for key, value in item.items()
+        if key not in SERVER_QUALIFICATION_FIELDS
+    }
+    if isinstance(public.get("knowledge_validity"), dict):
+        public["knowledge_validity"] = {
+            key: value
+            for key, value in public["knowledge_validity"].items()
+            if key not in {"reuse_score", "reuse_hint"}
+        }
+    if "variant_ids" in public:
+        public["implementation_ids"] = public.pop("variant_ids")
+    if "variant_id" in public:
+        public["implementation_id"] = public.pop("variant_id")
+    if public.get("type") == "variant":
+        public["type"] = "implementation"
+    return public
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -158,7 +187,14 @@ def load_from_jsonl(root: Path, include_archive: bool = False) -> list[dict[str,
         case_id = row_case_id(item)
         if not include_archive and (is_retracted_object(item) or not case_is_searchable(case_id, active_case_ids)):
             continue
-        rows.append({"kind": "variant", "id": item.get("variant_id", ""), **item})
+        rows.append(
+            {
+                **item,
+                "kind": "implementation",
+                "id": item.get("variant_id", ""),
+                "implementation_id": item.get("variant_id", ""),
+            }
+        )
     for item in evidence_index_rows:
         case_id = row_case_id(item)
         if not include_archive and (is_retracted_object(item) or not case_is_searchable(case_id, active_case_ids)):
@@ -208,7 +244,7 @@ def load_from_jsonl(root: Path, include_archive: bool = False) -> list[dict[str,
             item = parse_json(path.read_text(encoding="utf-8", errors="ignore"), {})
             if isinstance(item, dict):
                 rows.append({"kind": "event", "id": item.get("event_id", ""), "path": str(path.relative_to(root)), **item})
-    return rows
+    return [strip_server_qualification(row) for row in rows]
 
 
 def load_rows(root: Path, include_archive: bool = False) -> list[dict[str, Any]]:
@@ -419,6 +455,4 @@ def is_default_ai_result(row: dict[str, Any]) -> bool:
     kind = str(row.get("kind") or "")
     if kind in AI_DEFAULT_RESULT_KINDS:
         return True
-    if kind == "evidence":
-        return str(row.get("evidence_kind") or "") in AI_EVIDENCE_KINDS
-    return False
+    return kind == "evidence" and str(row.get("evidence_kind") or "") in AI_EVIDENCE_KINDS

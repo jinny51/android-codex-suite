@@ -1,0 +1,453 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "akbs-member-knowledge-search-v2",
+  "title": "AKBS member knowledge search v2",
+  "x-akbs-request-contract": {
+    "header": "X-AKBS-Member-Search-Contract",
+    "value": "akbs-member-knowledge-search-v2",
+    "missing_or_different_status": 426
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "search_mode",
+    "query",
+    "result_type",
+    "target_environment",
+    "result_state",
+    "completeness",
+    "reason_code",
+    "results",
+    "filters",
+    "pagination",
+    "projection",
+    "not_found"
+  ],
+  "properties": {
+    "schema": {"const": "akbs-member-knowledge-search-v2"},
+    "search_mode": {"const": "two_stage_structured_lexical"},
+    "query": {"type": "string", "minLength": 1},
+    "result_type": {
+      "enum": ["all", "case", "implementation", "patch", "symbol"]
+    },
+    "target_environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project", "platform", "android_version"],
+      "properties": {
+        "project": {"type": "string"},
+        "platform": {"type": "string"},
+        "android_version": {"type": "string"}
+      }
+    },
+    "result_state": {
+      "enum": ["matches", "empty_for_this_query", "indeterminate"]
+    },
+    "completeness": {"enum": ["complete", "partial", "indeterminate"]},
+    "reason_code": {"type": "string"},
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "case_id",
+          "reuse_grade",
+          "qualification_reason",
+          "requires_revalidation",
+          "layers",
+          "required_bindings",
+          "evidence_gaps",
+          "environment_comparison"
+        ],
+        "properties": {
+          "type": {"enum": ["case", "implementation", "patch", "symbol"]},
+          "case_id": {"type": "string", "minLength": 1},
+          "implementation_id": {"type": "string"},
+          "evidence_binding_id": {"type": "string"},
+          "patch_asset_id": {"type": "string"},
+          "patch_id": {"type": "string"},
+          "symbol": {"type": "string"},
+          "title": {"type": "string"},
+          "summary": {"type": "string"},
+          "patch_package_id": {"type": "string"},
+          "relative_path": {"type": "string"},
+          "display_name": {"type": "string"},
+          "patch_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "layer": {
+            "enum": [
+              "",
+              "application",
+              "platform",
+              "native",
+              "hal",
+              "kernel",
+              "device",
+              "build"
+            ]
+          },
+          "repository": {"type": "string"},
+          "size_bytes": {"type": "integer", "minimum": 0},
+          "reuse_grade": {
+            "enum": [
+              "direct_reuse_candidate",
+              "adaptation_candidate",
+              "reference_only"
+            ]
+          },
+          "qualification_reason": {"type": "string"},
+          "requires_revalidation": {"type": "boolean"},
+          "layers": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "application",
+                "platform",
+                "native",
+                "hal",
+                "kernel",
+                "device",
+                "build"
+              ]
+            }
+          },
+          "required_bindings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "binding_id",
+                "patch_package_id",
+                "patch_asset_id",
+                "patch_sha256",
+                "binding_role",
+                "binding_state",
+                "acceptance_ref",
+                "scope",
+                "verification_refs",
+                "relative_path",
+                "display_name",
+                "size_bytes",
+                "layer",
+                "repository",
+                "repository_source",
+                "closure_state",
+                "closure_reason",
+                "manifest_revision",
+                "manifest_sha256",
+                "environment_evidence"
+              ],
+              "properties": {
+                "binding_id": {"type": "string", "minLength": 1},
+                "patch_package_id": {"type": "string", "minLength": 1},
+                "patch_asset_id": {"type": "string", "minLength": 1},
+                "patch_sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "binding_role": {"const": "implementation"},
+                "binding_state": {"const": "accepted"},
+                "acceptance_ref": {"type": "string", "minLength": 1},
+                "scope": {"type": "object"},
+                "verification_refs": {"type": "array"},
+                "relative_path": {"type": "string"},
+                "display_name": {"type": "string"},
+                "size_bytes": {"type": "integer", "minimum": 0},
+                "layer": {
+                  "enum": [
+                    "",
+                    "application",
+                    "platform",
+                    "native",
+                    "hal",
+                    "kernel",
+                    "device",
+                    "build"
+                  ]
+                },
+                "repository": {"type": "string"},
+                "repository_source": {"type": "string"},
+                "closure_state": {"enum": ["closed", "invalid"]},
+                "closure_reason": {"type": "string"},
+                "manifest_revision": {"type": "integer", "minimum": 0},
+                "manifest_sha256": {
+                  "type": "string",
+                  "pattern": "^(?:|[0-9a-f]{64})$"
+                },
+                "environment_evidence": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "project",
+                      "platform",
+                      "android_version",
+                      "source_lineage_ref",
+                      "constraints",
+                      "constraints_state",
+                      "validation_state",
+                      "content_hash"
+                    ],
+                    "properties": {
+                      "project": {"type": "string", "minLength": 1},
+                      "platform": {"type": "string", "minLength": 1},
+                      "android_version": {"type": "string", "minLength": 1},
+                      "source_lineage_ref": {"type": "string", "minLength": 1},
+                      "constraints": {"type": "array"},
+                      "constraints_state": {
+                        "enum": ["known_empty", "typed", "invalid"]
+                      },
+                      "validation_state": {"type": "string", "minLength": 1},
+                      "content_hash": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "environment_comparison": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "mode",
+              "alternative_tuples",
+              "non_dominated_matched_dimension_sets"
+            ],
+            "properties": {
+              "mode": {"enum": ["exact", "adaptation", "not_qualified"]},
+              "alternative_tuples": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "environment",
+                    "matched_dimensions",
+                    "different_dimensions",
+                    "source_lineage_ref",
+                    "constraints",
+                    "constraints_evaluation"
+                  ],
+                  "properties": {
+                    "environment": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["project", "platform", "android_version"],
+                      "properties": {
+                        "project": {"type": "string", "minLength": 1},
+                        "platform": {"type": "string", "minLength": 1},
+                        "android_version": {"type": "string", "minLength": 1}
+                      }
+                    },
+                    "matched_dimensions": {
+                      "type": "array",
+                      "uniqueItems": true,
+                      "items": {"enum": ["project", "platform", "android_version"]}
+                    },
+                    "different_dimensions": {
+                      "type": "array",
+                      "uniqueItems": true,
+                      "items": {"enum": ["project", "platform", "android_version"]}
+                    },
+                    "source_lineage_ref": {"type": "string", "minLength": 1},
+                    "constraints": {"type": "array"},
+                    "constraints_evaluation": {
+                      "enum": ["not_applicable", "not_evaluated"]
+                    }
+                  }
+                }
+              },
+              "non_dominated_matched_dimension_sets": {
+                "type": "array",
+                "items": {"type": "array", "items": {"type": "string"}}
+              }
+            }
+          },
+          "matched_channels": {"type": "array", "items": {"type": "string"}},
+          "search_anchors": {"type": "array", "items": {"type": "string"}},
+          "evidence_gaps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["reason", "binding_id", "context"],
+              "properties": {
+                "reason": {"type": "string", "minLength": 1},
+                "binding_id": {"type": "string"},
+                "context": {"type": "object"}
+              }
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "reuse_grade": {
+                  "enum": ["direct_reuse_candidate", "adaptation_candidate"]
+                }
+              },
+              "required": ["reuse_grade"]
+            },
+            "then": {
+              "properties": {
+                "required_bindings": {
+                  "minItems": 1,
+                  "items": {
+                    "properties": {"closure_state": {"const": "closed"}}
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {"reuse_grade": {"const": "direct_reuse_candidate"}},
+              "required": ["reuse_grade"]
+            },
+            "then": {
+              "properties": {
+                "requires_revalidation": {"const": false},
+                "environment_comparison": {
+                  "properties": {
+                    "mode": {"const": "exact"},
+                    "alternative_tuples": {
+                      "minItems": 1,
+                      "items": {
+                        "properties": {
+                          "constraints": {"maxItems": 0},
+                          "constraints_evaluation": {"const": "not_applicable"}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {"reuse_grade": {"const": "adaptation_candidate"}},
+              "required": ["reuse_grade"]
+            },
+            "then": {
+              "properties": {
+                "requires_revalidation": {"const": true},
+                "environment_comparison": {
+                  "properties": {
+                    "mode": {"const": "adaptation"},
+                    "alternative_tuples": {"minItems": 1}
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "filters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component"],
+      "properties": {
+        "component": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["component_layer"],
+          "properties": {
+            "component_layer": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "application",
+                  "platform",
+                  "native",
+                  "hal",
+                  "kernel",
+                  "device",
+                  "build"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "pagination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["offset", "limit", "total", "has_more"],
+      "properties": {
+        "offset": {"type": "integer", "minimum": 0},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 50},
+        "total": {"type": "integer", "minimum": 0},
+        "has_more": {"type": "boolean"}
+      }
+    },
+    "projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ready",
+        "reason_code",
+        "generation",
+        "eligible_count",
+        "indexed_count",
+        "isolated_count",
+        "complete"
+      ],
+      "properties": {
+        "ready": {"type": "boolean"},
+        "reason_code": {"type": "string"},
+        "generation": {"type": "integer", "minimum": 0},
+        "eligible_count": {"type": "integer", "minimum": 0},
+        "indexed_count": {"type": "integer", "minimum": 0},
+        "isolated_count": {"type": "integer", "minimum": 0},
+        "complete": {"type": "boolean"}
+      }
+    },
+    "not_found": {"const": false}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "results": {
+            "contains": {
+              "properties": {
+                "reuse_grade": {
+                  "enum": ["direct_reuse_candidate", "adaptation_candidate"]
+                }
+              },
+              "required": ["reuse_grade"]
+            }
+          }
+        },
+        "required": ["results"]
+      },
+      "then": {
+        "properties": {
+          "target_environment": {
+            "properties": {
+              "project": {"minLength": 1},
+              "platform": {"minLength": 1},
+              "android_version": {"minLength": 1}
+            }
+          }
+        }
+      }
+    }
+  ]
+}

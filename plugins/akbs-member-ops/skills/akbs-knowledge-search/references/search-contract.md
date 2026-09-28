@@ -5,10 +5,17 @@
 Default member search first calls the AKBS member search endpoint:
 
 ```text
-GET /akbs/api/member/knowledge-search?q=<query>&limit=<limit>
+GET /akbs/api/member/knowledge-search?q=<query>&limit=<limit>&offset=<offset>
+  &type=<all|case|implementation|patch|symbol>
+  &project=<project>&platform=<platform>&android_version=<version>
+  &component_layer=<repeatable-layer>
 ```
 
-The request includes `X-AKBS-User=<member_alias>` and standard content-negotiation/type headers only. The endpoint comes from the AKBS endpoint resolver defaults or controlled admin/test overrides such as `CODEX_REPORT_AKBS_ENDPOINT_MEMBER_SEARCH_URL` and `CODEX_REPORT_AKBS_ENDPOINT_API_BASE_URL`; ordinary member profiles must not require hard-coded `test35`, server paths, submit commands, or database repository paths. The server verifies the fixed workstation source IP. Never send role, token, cookie, or client-IP claims.
+The request includes `X-AKBS-User=<member_alias>`, the fixed
+`X-AKBS-Member-Search-Contract=akbs-member-knowledge-search-v2` header and content
+negotiation. The endpoint comes from the resolver defaults or controlled admin/test
+overrides. Ordinary members need no server/database path. The server verifies the
+fixed workstation source IP. Never send role, token, cookie or client-IP claims.
 
 When the endpoint is unavailable, unauthorized, times out, or returns an incompatible response, search falls back to generated JSONL indexes from the knowledge repository worktree:
 
@@ -21,7 +28,11 @@ index/
 └── evidence-index.jsonl
 ```
 
-Current repositories are case/variant first. `case-index.jsonl` and `variant-index.jsonl` are the primary search sources. Default search loads `patches/by-id` plus generated AI indexes only. `reports/by-id`, `events/by-id`, and raw `evidence/by-id` are loaded only for explicit archive filters. It must not read residual generated SQLite or residual patch/report indexes.
+Local repositories remain Case/Implementation-first. `variant-index.jsonl` is a
+historical storage filename; its rows are exposed as `implementation`. Default local
+search loads patches and generated AI indexes, not residual SQLite or patch/report
+indexes. Reports/events/raw evidence are loaded only for explicit local archive filters.
+This is text fallback, not a second server protocol or reuse authority.
 
 Search must not automatically use the database repository or member incoming worktree. It may inspect those only when an administrator passes an explicit `--root`.
 
@@ -54,7 +65,9 @@ replaces_case_ids
 
 These fields mean the local curation skill has marked an old case as obsolete or contradicted and linked a recommended replacement case. Search should surface the relationship as guidance, not as a final reuse decision.
 
-Default `--type all` is the AI reuse view. It returns only `case`, `variant`, `patch`, `symbol`, and AI evidence kinds:
+Server `--type all` returns `case`, `implementation`, `patch` and `symbol`. Its evidence
+is available through the selected Implementation's bindings. Default local text search
+also preserves these prior AI evidence hints:
 
 - `patch_diff_facts`
 - `patch_problem_summary`
@@ -68,21 +81,28 @@ Default `--type all` must not return report rows, event rows, or human/archive e
 
 ## Result Types
 
-- `case`: primary Android engineering problem, requirement, or change scenario across App or GMS, platform, native, HAL, kernel, device, or build layers.
-- `variant`: one implementation for a platform, Android version, project, branch, source tree, repo path, patch list, reports, and verification status.
+- `case`: a stable Android engineering problem or requirement.
+- `implementation`: a concrete approach under a Case, with separately declared exact applicability tuples and bound source/verification evidence.
 - `patch`: archived patch assets, readme path, status hints, modified files, modules, search anchors, patch-derived explanation, validation notes, and rollback hint.
-- `report`: member daily or weekly report entries and report item summaries. Explicit filter only; not part of default AI reuse search.
+- `report`: explicit local archive filter only; not a server result type.
 - `symbol`: reverse index from modified files, SystemProperties, Settings keys, string/resource keys, FrameworkLog keys, modules, and patch-derived anchors to patch IDs.
-- `event`: archived records such as `framework_change`, `daily_trace`, or `weekly_trace`, including member, date, project, platform, and package status when applicable. Explicit filter only; not part of default AI reuse search.
-- `evidence`: evidence records. Default AI search includes only patch facts, patch problem explanation, project inference, risk surface, build result, device/equivalent verification, and search-before-change. Source metadata, work findings, report context, and package checks require explicit `--type evidence`.
+- `event`: explicit local archive filter only; not a server result type.
+- `evidence`: local AI hints or explicit local archive evidence, not a standalone server result type. `--type variant` is also local-only and reads the historical Implementation index.
 
-## Case-Bound Original Reads
+## Existing Solution Detail and Exact Original Reads
+
+`--case-detail <case_id> [--implementation-id <implementation_id>]` calls the
+existing `GET /akbs/api/knowledge/{case_id}`, with the same fixed-IP member
+identity. It preserves the Case's full functional boundary and concrete
+Implementation approach, decisions, anchors, risks, rollback, tuples and
+bindings. It is server-only and writes no search/reuse-success record.
 
 The search CLI also supports two server-only read actions:
 
 ```text
 akbs_knowledge_search.py --case-patches <case_id> [--json]
-akbs_knowledge_search.py --case-patches <case_id> --download-patch <asset_id> --out <new-file> [--json]
+akbs_knowledge_search.py --case-patches <case_id> --implementation-id <implementation_id> [--json]
+akbs_knowledge_search.py --case-patches <case_id> --implementation-id <implementation_id> --download-patch <asset_id> --out <new-file> [--json]
 ```
 
 They call `GET /akbs/api/member/me/knowledge/{case_id}/patches` and the same path
@@ -96,6 +116,14 @@ source snapshot to agree. An active case that lacks closed provenance or
 controlled bytes is `unavailable`, not thereby historically invalid. Inactive
 cases, cross-case assets or invalid source/file bindings are not downloadable.
 
+An explicit `implementation_id` is passed to both list and download and returns
+`active_implementation_originals`. Each opaque handle has its own authority:
+`accepted_evidence_binding` or `historical_case_snapshot`. Accepted entries
+preserve their actual role; historical entries do not invent a binding role.
+The selected Implementation identity and separately declared exact environments
+must agree in both responses. No selector-removal retry, same-package fallback,
+same-SHA substitution, or cross-environment combination is allowed.
+
 No URL in returned metadata controls the request destination. The client builds
 the case/asset path from the configured endpoint, validates response identity and
 size/hash, and creates the selected output exclusively. These reads do not use
@@ -105,6 +133,21 @@ means `verified_original=true`, `reuse_outcome=not_started`, not a reuse verdict
 ## Judgment Boundary
 
 The search result is evidence, not a final reuse decision.
+
+These reads support Android engineering across App/GMS, platform, native, HAL,
+kernel, device and build work. Seven-layer filters classify product-source
+Patch evidence; an independent App is not thereby a product-source Patch.
+
+Server results preserve exact identities, `reuse_grade`, `requires_revalidation`,
+`layers`, `required_bindings`, `environment_comparison` and evidence gaps. The response
+also preserves `result_state`, `completeness`, `reason_code`, target environment,
+filters, pagination and projection. Incomparable environment matches remain separate;
+the client does not rank Android version, platform or project with a global priority.
+
+Local rows strip derived server grades, bindings, environment comparisons and reuse
+scores. Historical confidence/evidence/risk annotations stay as original source
+annotations, explicitly not this query's server qualification. Local hints may support
+`reference_only`, but cannot authorize `reuse`, `adapt` or `not_found`.
 
 Do not treat these fields as absolute truth:
 
@@ -150,7 +193,7 @@ Use these leads for reuse analysis, not as final conclusions.
 The CLI must support:
 
 ```text
-akbs_knowledge_search.py <query> [--root PATH] [--type all|case|variant|patch|report|symbol|event|evidence] [--limit N] [--json] [--refresh]
+akbs_knowledge_search.py <query> [--additional-query QUERY] [--root PATH] [--type all|case|implementation|patch|symbol] [--limit N] [--offset N] [--project P] [--platform P] [--android-version V] [--component-layer LAYER] [--json] [--refresh]
 ```
 
 The same script also supports merge confirmation review:
@@ -166,10 +209,10 @@ akbs_knowledge_search.py --merge-confirmation dispute --merge-confirmation-id <c
 
 `analyze` output must separate human summary from Codex evidence and include target knowledge, merge basis, matched anchors, counter evidence, recommendation, and a dispute reason draft when the backend says dispute is allowed.
 
-Full type filter:
+Additional local-only filters (never sent to the server):
 
 ```text
---type all|case|variant|patch|report|symbol|event|evidence
+--type variant|report|event|evidence --source local
 ```
 
 Markdown output is for humans and Codex final reports. JSON output is for other scripts or workflows.
@@ -182,25 +225,26 @@ search_mode=<server-returned mode> | local_jsonl
 fallback_reason=<reason when fallback happened>
 ```
 
-Server results must preserve `search_mode`, `reuse_grade`, `matched_channels`, `matched_anchors`, `case_id`, `package_id`, and other service fields. Human output maps `reuse_grade` directly:
+Server results preserve `search_mode`, grade, matched channels/anchors and exact
+Case/Implementation/binding identities. Human output maps the candidate grade exactly:
 
-- `reusable`: `可复用候选`
+- `direct_reuse_candidate`: `可直接复用候选`
+- `adaptation_candidate`: `需适配候选`
 - `reference_only`: `仅参考`
-- `insufficient_evidence`: `证据不足`
-- `different_function`: `功能不同`
-- `duplicate_source`: `重复来源线索`
-- `unknown`: `未知分级`
 
-Only `reuse_grade=reusable` may be displayed as `可复用候选`. Local fallback output must say `本地文本搜索，未经过服务端复用分级` so downstream workflows do not treat a local text hit as a server reuse decision. The client must never relabel `structured_lexical` as hybrid or semantic.
+No other server grade is accepted. `reuse` requires a direct candidate; `adapt` may
+select a direct or adaptation candidate conservatively. Both require a concrete
+Implementation and closed accepted implementation evidence in healthy complete server
+responses. `reference_only` needs a target actually present in this result, not complete
+reuse proof. It may reference a Case or local hint without claiming application success.
 
-Human-facing `case` and `variant` results must surface knowledge validity directly when available:
+`not_found` is a member usage conclusion, never a server decision. One bounded run
+must contain at least two distinct queries, each `empty_for_this_query`, complete,
+projection ready/complete and total zero. Other empty/failure states remain unknown.
+Local fallback says `本地文本搜索，未经过服务端复用分级`; it never fabricates a grade.
+The two-stage structured lexical mode is not relabeled hybrid or semantic.
 
-```text
-知识有效度
-可信度（confidence）
-证据等级（evidence_level）
-风险等级（risk_level）
-复用分（reuse_score）
-```
-
-This is required because a matching case may be only static review, contested, obsolete, or otherwise risky. Search output must not make members infer those limits only from raw evidence rows.
+JSON output returns the immutable usage receipt path and SHA256. It preserves each
+query's health, target environment, returned binding evidence and the chosen use
+decision. Later capture/submission must preserve the selected receipt instead of
+flattening it to same-day text. This is pre-change evidence, not a verified reuse event.

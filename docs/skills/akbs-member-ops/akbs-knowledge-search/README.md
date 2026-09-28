@@ -10,7 +10,7 @@
 
 ## 用途
 
-该 skill 默认优先调用 AKBS 成员只读搜索接口，搜索知识库里的案例、平台实现、补丁、修改文件、检索锚点（文件/类名/属性/资源 key）和可复用验证证据。服务端不可用、未授权、超时或合同不兼容时，会回退到本地知识库 JSONL 搜索，并明确标注 `source=local_jsonl_fallback`。
+该 skill 默认优先调用 AKBS 成员只读搜索接口：Case 描述功能目标和边界，Implementation 描述具体技术实现及分别声明的环境和绑定证据。服务端不可用、未授权、超时或合同不兼容时，会回退到本地知识库 JSONL 文本搜索，并明确标注 `source=local_jsonl_fallback`；本地结果不具有服务端复用分级权威。
 
 服务端错误统一消费 `akbs-error-envelope-v1`，只显示稳定 `code`、`request_id`、类型和脱敏 message。旧版自由文本错误会明确标记为 legacy，不能据此做重试、fallback 业务判断或合并结论；错误输出不得包含 token、cookie、请求正文、session 原文、路径或底层异常文本。
 
@@ -22,12 +22,16 @@
 
 ## 取得知识实际引用的完整补丁
 
-从服务端搜索结果取得 `case_id` 后，列出该案例可取的原件，再选择其中的
-`asset_id` 下载到本任务的新文件：
+搜索摘要只是线索。先按 `case_id` 和选定的 `implementation_id` 读取完整解法，
+再列出该实现精确绑定的原件，选择返回的 `asset_id` 下载到本任务的新文件：
 
 ```bash
-python3 "scripts/akbs_knowledge_search.py" --case-patches <case_id> --json
+python3 "scripts/akbs_knowledge_search.py" --case-detail <case_id> \
+  --implementation-id <implementation_id> --json
 python3 "scripts/akbs_knowledge_search.py" --case-patches <case_id> \
+  --implementation-id <implementation_id> --json
+python3 "scripts/akbs_knowledge_search.py" --case-patches <case_id> \
+  --implementation-id <implementation_id> \
   --download-patch <asset_id> --out /path/to/task-output/source.patch --json
 ```
 
@@ -38,6 +42,9 @@ python3 "scripts/akbs_knowledge_search.py" --case-patches <case_id> \
 不透明下载标识，不会重写历史或补造资产。来源不能闭合或原件尚未受控保存时
 明确返回不可取，不拿截断预览代替，也不因此否定历史量产验证。
 取得原补丁后仍需判断目标环境、实施和验证；下载成功不是复用成功。
+选定实现的 `accepted_evidence_binding` 与 `historical_case_snapshot` 权威分别保留。
+只有 `implementation` 角色属于实现补丁集，验证、反证和回滚材料不能混作实现；
+不按同名、同包或相同 SHA 替换下载标识，也不合并不同环境的适用性。
 
 ## 典型场景
 
@@ -56,7 +63,7 @@ python3 "scripts/akbs_knowledge_search.py" \
   --limit 8
 ```
 
-默认 `--source auto` 会优先使用服务端搜索；请求只带 `X-AKBS-User=<member_alias>` 和内容协商头，服务器按固定来源 IP 验证身份。普通成员配置不需要写 `test35`、服务器路径或数据库仓库路径，endpoint 由 AKBS endpoint resolver 默认值提供；管理员/测试 override 可使用受控 `CODEX_REPORT_AKBS_ENDPOINT_*` 环境变量。
+默认 `--source auto` 会优先使用服务端搜索；请求携带 `X-AKBS-User=<member_alias>`、固定 `X-AKBS-Member-Search-Contract=akbs-member-knowledge-search-v2` 和内容协商头，服务器按固定来源 IP 验证身份。普通成员配置不需要写服务器路径，endpoint 由 AKBS endpoint resolver 提供；管理员/测试 override 可使用受控 `CODEX_REPORT_AKBS_ENDPOINT_*` 环境变量。
 
 只搜补丁：
 
@@ -75,7 +82,8 @@ python3 "scripts/akbs_knowledge_search.py" \
 
 python3 "scripts/akbs_knowledge_search.py" \
   "TVE8402M VolumeDialogImpl" \
-  --type variant
+  --type implementation --project TVE8402M --platform rk --android-version 14 \
+  --component-layer platform
 ```
 
 只搜归档记录或证据：
@@ -113,7 +121,11 @@ python3 "scripts/akbs_knowledge_search.py" \
 
 它不会自动读取数据库仓库或成员 incoming 工作区。管理员要排查数据库仓库内部数据时，必须显式传 `--root`。
 
-服务端结果原样显示返回的 `search_mode`，并按 `reuse_grade` 展示：`reusable` 显示“可复用候选”，`reference_only` 显示“仅参考”，`insufficient_evidence` 显示“证据不足”，`different_function` 显示“功能不同”，`duplicate_source` 显示“重复来源线索”。本地 fallback 会提示“本地文本搜索，未经过服务端复用分级”，不能直接当作服务端可复用结论。
+服务端结果原样保留 `reuse_grade`、证据缺口和环境比较。`direct_reuse_candidate` 才可考虑直接复用，`adaptation_candidate` 才可考虑适配；还须选择有闭合、已接受实现证据的 Implementation，并完成目标环境验证。Android 版本、芯片平台和项目按完整环境组合比较，不设全局固定优先级。本地 fallback 只能作文本参考。
+
+“未命中”要求同一次有界调用至少两个独立查询、均完整且为空、检索投影就绪且完整；
+单次空结果、部分响应、服务失败或本地 fallback 都只能记 `unknown`。
+`--additional-query` 可在一次调用中补充独立措辞或代码锚点。
 
 兼容入口：查看合并确认和依据（新任务应使用 `akbs-knowledge-merge-review`）：
 
@@ -144,7 +156,10 @@ python3 "scripts/akbs_knowledge_search.py" \
 $CODEX_HOME/artifacts/akbs-member-ops/search-usage/<YYYYMMDD>/*.json
 ```
 
-旧配置中的 `out_dir` 不再改变写入位置，只作为永久兼容读取信息。日报包（daily report package）和补丁包（patch package）会读取 target/legacy 记录，并生成 `materials/evidence/search_before_change.json`。
+旧配置中的 `out_dir` 不再改变写入位置。当前工作流将 JSON 输出的 `usage_receipt` 和
+`usage_receipt_sha256` 传给 capture 的 `--search-receipt` 和 `--search-receipt-sha256`；
+capture→submit 保留这份结构化回执的原字节、查询健康、确切实现及目标环境，不用同日文本汇总代替。
+既有手工/历史材料沿用其真实使用记录，不补造新回执。
 
 搜索使用证据会记录 `source`、`search_mode`、`reuse_grade`、`matched_channels`、`matched_anchors`，fallback 时还会记录 `fallback_reason`。
 
@@ -159,6 +174,8 @@ python3 "scripts/akbs_knowledge_search.py" \
 ```
 
 取值包括 `reuse`、`adapt`、`reference_only`、`not_applicable`、`not_found` 和 `unknown`。这些只是成员侧开发证据，不是沉淀结论（curation decision）。
+`reuse/adapt` 的目标必须是本次结果中的具体 Implementation；搜索意向和原件下载均不等于实际采用成功。
+`--no-record-usage` 只取消本地记录写入，不能跳过显式复用判断的校验。
 
 ## 和其他 skill 的关系
 

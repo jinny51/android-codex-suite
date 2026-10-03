@@ -57,6 +57,12 @@ python3 "scripts/akbs_knowledge_search.py" --case-patches <case_id> \
 
 ## 常用命令
 
+调用前由 Codex 按 runtime Skill 的 **Functional Query Construction** 规则整理完整功能，
+去掉与功能无关的询问话术；项目、平台、版本和明确分类用现有参数传递。行为条件、
+否定和联合关系不能丢，代码锚点原样保留。普通功能可忠实换一种语言表达，不补造事实。
+补充查询也必须完整，不能把必需同时成立的两个条件拆成两次查询后将并集当成完整命中。
+服务端仍是词面检索，最终需读取解法及原件判断。
+
 ```bash
 python3 "scripts/akbs_knowledge_search.py" \
   "电源键 frameworks/base" \
@@ -81,7 +87,7 @@ python3 "scripts/akbs_knowledge_search.py" \
   --type case
 
 python3 "scripts/akbs_knowledge_search.py" \
-  "TVE8402M VolumeDialogImpl" \
+  "通知音量 VolumeDialogImpl" \
   --type implementation --project TVE8402M --platform rk --android-version 14 \
   --component-layer platform
 ```
@@ -167,9 +173,10 @@ capture→submit 保留这份结构化回执的原字节、查询健康、确切
 
 ```bash
 python3 "scripts/akbs_knowledge_search.py" \
-  "电源键 rk3576" \
+  "电源键短按保持当前画面" \
+  --project TVE8402M --platform rk3576 --android-version 14 \
   --reuse-decision adapt \
-  --reuse-target case-power-key \
+  --reuse-target implementation-power-key-rk14 \
   --reuse-reason "同类策略可参考，当前项目需适配"
 ```
 

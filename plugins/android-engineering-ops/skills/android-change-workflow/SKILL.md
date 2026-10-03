@@ -112,6 +112,12 @@ patch must be assigned to exactly one layer. Independent App work has no Patch l
 
 ## Gate 2: Knowledge and Source Authority
 
+Construct queries by `akbs-knowledge-search`'s **Functional Query Construction**
+rule, with known target fields passed separately. This workflow does not duplicate
+or reinterpret that rule. Do not automatically include non-functional conversational
+instructions in the query; a request that is already a concise, complete function
+description may be used unchanged.
+
 When `akbs-member-ops` is installed and configured, run `akbs-knowledge-search` before
 implementation with the real project, chip platform, Android version and applicable
 Patch layers. Compare the Case purpose, concrete Implementation, exact environment

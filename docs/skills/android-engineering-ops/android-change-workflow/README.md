@@ -13,7 +13,9 @@ Android policy、源码权威、远端通道、构建/设备安全、capture 和
 Extension 按项目配置优先于本地配置解析；选择 provider 后只从 Codex active installed+enabled inventory 取得固定插件根，异常 fail closed，能力缺失或不适用才回 core。
 
 知识搜索 Gate 2 先按功能目标找到 Case，再选择具体 Implementation，读取完整实现、
-精确绑定原件和分别声明的环境。版本、芯片和项目不设全局固定优先级；HAL/BSP 的平台差异
+精确绑定原件和分别声明的环境。查询构造只遵守 `akbs-knowledge-search` 的唯一规则：
+保留完整行为与字面锚点，不将整段对话当查询；目标环境和明确分类单独传递。
+版本、芯片和项目不设全局固定优先级；HAL/BSP 的平台差异
 可能比 Framework 更大，最终仍需目标环境验证。服务失败或单次空结果不能宣称库里没有解法。
 将搜索回执路径/hash传给 capture，保留“开发前判断”与“实施后验证”的区别。
 

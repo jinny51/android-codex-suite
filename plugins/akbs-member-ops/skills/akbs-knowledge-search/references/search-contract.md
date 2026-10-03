@@ -163,7 +163,13 @@ They are useful hints. The consuming workflow must compare the current requireme
 
 ## Recommended Query Terms
 
-Use several searches when needed:
+The Skill's **Functional Query Construction** rule owns query semantics. The CLI
+accepts the already constructed query; it does not extract a function or translate
+natural language. Target options remain separate. Several complete queries may
+be selected before one bounded invocation; their results form a union, so splitting
+required conjuncts across queries cannot prove a complete match.
+
+Use source-grounded terms when needed:
 
 - user-facing feature words
 - subsystem: `WindowManager`, `ActivityTaskManager`, `PackageManager`, `SystemUI`, `Launcher3`

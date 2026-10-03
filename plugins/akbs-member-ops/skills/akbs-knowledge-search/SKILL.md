@@ -54,7 +54,7 @@ python3 "scripts/akbs_knowledge_search.py" \
 
 # Search platform/project implementations.
 python3 "scripts/akbs_knowledge_search.py" \
-  "TVE8402M VolumeDialogImpl" --type implementation \
+  "通知音量 VolumeDialogImpl" --type implementation \
   --project TVE8402M --platform rk --android-version 14 \
   --component-layer platform
 
@@ -72,15 +72,15 @@ python3 "scripts/akbs_knowledge_search.py" \
 
 # Record an explicit member-side use decision with the search.
 python3 "scripts/akbs_knowledge_search.py" \
-  "电源键 rk3576" \
-  --project TVE8402M --platform rk --android-version 14 \
+  "电源键短按保持当前画面" \
+  --project TVE8402M --platform rk3576 --android-version 14 \
   --reuse-decision adapt \
   --reuse-target implementation-power-key-rk14 \
   --reuse-reason "同类策略可参考，当前项目需适配"
 
 # Several independent queries in one bounded run.
 python3 "scripts/akbs_knowledge_search.py" \
-  "投屏保持亮屏" --additional-query "DisplayPowerController casting" \
+  "投屏期间保持亮屏" --additional-query "投屏期间保持亮屏 DisplayPowerController" \
   --project TVE8402M --platform rk --android-version 14 \
   --component-layer platform --json
 
@@ -172,10 +172,39 @@ Pass `--refresh` only when using a local Git clone and the latest server content
 
 ## Search Discipline
 
+### Functional Query Construction
+
+Before calling the CLI, derive a concise functional query from the user's actual
+requirement. Codex does this semantic work; the script is not a natural-language
+parser. Preserve the requested actions and objects, triggers, scope, direction,
+negation, exceptions, and required AND/OR relationships. Every query for one
+coherent requirement must retain all its necessary conditions; additional queries
+are a union of results, not an intersection of partial requirements.
+
+Omit only wording about asking, searching, reporting or formatting that does not
+change the engineering requirement. Put an explicitly known current target in the
+existing project/platform/version/layer options, not in the functional query merely
+to repeat those options. Keep a source/reference environment or a same-named word
+when it has functional meaning. Unknown values stay empty; independent App work
+does not acquire a Patch layer.
+
+Ordinary behavior may be restated or translated faithfully for retrieval; keep the
+meaning and make the actual wording visible. Do not invent an implementation or
+unobserved fact. Copy literal code identifiers, paths, properties, Settings/resource
+keys, modules and artifacts exactly, without translation or guessed aliases.
+
+Choose the primary query and any necessary alternative complete wording or
+anchor-enriched query before the first response in a bounded search pass. Do not
+keep changing words to chase a Case. A later pass needs a new relevant source fact
+or requirement clarification, recorded explicitly. If the request has no identifiable
+function, record the uncertainty rather than manufacture one. The server remains
+structured lexical search, not semantic search; ranking cannot prove that a result
+satisfies the complete behavior. Compare the solution's actual evidence afterwards.
+
 When handling a new Android engineering requirement in any supported change layer (App or GMS, platform, native, HAL, kernel, device, or build):
 
 1. Pass the real target project, chip platform, Android version and relevant Patch layers. Unknown values stay empty; independent App work has no Patch layer.
-2. Use feature/problem words, aliases and concrete code anchors (class, property, Settings/resource key, log key, module or artifact). If one wording misses, try an independent query rather than declaring the library empty.
+2. Apply Functional Query Construction above. Use an alternative faithful wording or an actually observed code anchor only in a complete, preselected query; a miss does not authorize guessing aliases or splitting required conditions.
 3. Compare the Case's purpose with the concrete Implementation and its bound patches, exact environment tuples, verification, risk and rollback. Matching a title or layer alone does not prove reuse.
 4. Preserve server grades exactly. `direct_reuse_candidate` permits considering `reuse`; `adaptation_candidate` permits considering `adapt`. Choosing a more conservative `adapt` or `reference_only` is allowed. `reuse` and `adapt` must select an Implementation with closed accepted implementation evidence; `reference_only` may select a Case or local hint present in this result.
 5. Compare complete environment tuples, not a union of projects/platforms/versions. Follow the returned matched dimensions without inventing a global version/platform/project priority. Platform differences may matter far more for HAL/BSP than Framework; target verification is still required.

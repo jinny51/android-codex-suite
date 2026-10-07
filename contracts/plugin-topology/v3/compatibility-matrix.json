@@ -18,7 +18,7 @@
       "write": "The five public core Skills retain source, build, device and capture ownership; the shared policy stays internal.",
       "default": "core-direct; no optional plugin is inspected.",
       "fallback": "No extension fallback is needed because core is complete by itself.",
-      "activation": "Version 3.2.1 becomes active only through the normal plugin release/install flow.",
+      "activation": "Version 3.3.0 becomes active only through the normal plugin release/install flow after the paired knowledge service release is ready.",
       "deprecation": "The v2 provider/controller surface is no longer active.",
       "removal": "Provider decisions, worker documents and stage state are removed together.",
       "test": ["core-direct", "install-family-ignores-optional", "package-capture-import"]

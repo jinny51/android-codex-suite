@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import hashlib
+import json
 import sys
 from pathlib import Path
 
@@ -243,3 +245,44 @@ def test_manual_multi_patch_never_silently_drops_mode_only_artifact(
     with pytest.raises(SystemExit, match="仅含权限变化"):
         capture.collect_patch_artifact_captures(args, "rk14", "feature")
     assert mode_patch.read_bytes() == original_mode
+
+
+def test_exact_unknown_receipt_retains_limitation_with_results(tmp_path: Path) -> None:
+    capture = load_capture()
+    payload = {
+        "schema": "android-knowledge-search-usage", "schema_version": "1",
+        "member_alias": "member-test", "searched": True, "queries": ["display policy"],
+        "results": [{"id": "unclassified-case", "reuse_grade": "case_reference_only"}],
+        "target_environment": {"project": "TVI2343R", "platform": "rk", "android_version": "14"},
+        "source": "local_jsonl_fallback", "decision": "unknown", "reuse_decision": "unknown",
+        "targets": [], "reason": "Applicability and search health remain unknown.",
+    }
+    raw = (json.dumps(payload) + "\r\n").encode()
+    receipt = tmp_path / "usage.json"
+    receipt.write_bytes(raw)
+    args = argparse.Namespace(
+        search_receipt=str(receipt), search_receipt_sha256=hashlib.sha256(raw).hexdigest(),
+        policy_member_alias="member-test", project="TVI2343R",
+        status="validated", workflow_contract="current_codex_skill",
+    )
+    selected, selected_raw = capture.load_search_receipt(args, platform="rk", android_version="14")
+    assert selected == payload
+    assert selected_raw == raw
+    errors, _ = capture.validate_search_decision_for_status(args, selected)
+    assert any("闭合搜索使用决策" in error for error in errors)
+    args.status = "candidate"
+    assert capture.validate_search_decision_for_status(args, selected) == ([], [])
+    assert selected["decision"] == "unknown"
+    assert selected["results"][0]["reuse_grade"] == "case_reference_only"
+    args.search_receipt_sha256 = "a" * 64
+    with pytest.raises(SystemExit, match="SHA256 不一致"):
+        capture.load_search_receipt(args, platform="rk", android_version="14")
+
+
+def test_explicit_unknown_does_not_relax_missing_pre_change_search() -> None:
+    capture = load_capture()
+    errors, _ = capture.validate_search_decision_for_status(
+        argparse.Namespace(status="validated", workflow_contract="current_codex_skill"),
+        {"searched": False, "decision": "unknown", "reuse_decision": "unknown"},
+    )
+    assert any("未发生" in error for error in errors)

@@ -106,9 +106,8 @@ python3 "scripts/capture_remote_snapshot.py" \
   --verification "相关模块构建通过" \
   --device rk3576 \
   --device-verification "目标行为及相邻功能验证通过" \
-  --search-query "显示策略 设置入口" \
-  --search-result "未发现可直接复用案例" \
-  --reuse-decision not_found \
+  --search-receipt "$SEARCH_USAGE_RECEIPT" \
+  --search-receipt-sha256 "$SEARCH_USAGE_RECEIPT_SHA256" \
   --rollback "恢复本次修改并重新构建相关模块"
 ```
 
@@ -137,13 +136,19 @@ $CODEX_HOME/artifacts/android-patch-capture/packages/<run-id>/
 
 Pass the whole directory to `akbs-patch-submit --patch-package`.
 
-When the task has a structured search receipt, pass its exact path and SHA256 as
+For the current workflow, use the `usage_receipt` and `usage_receipt_sha256`
+returned by this task's knowledge search as `SEARCH_USAGE_RECEIPT` and
+`SEARCH_USAGE_RECEIPT_SHA256`. Pass their exact path and SHA256 as
 `--search-receipt <path> --search-receipt-sha256 <sha256>` (the snapshot wrapper
 forwards these after `--`). Capture preserves the same read bytes inside the
 existing search-before-change evidence wrapper; submit checks that raw text,
 hash and parsed payload agree. Do not combine this with old free-text search or
 reuse overrides, guess a same-day receipt, or retrospectively fabricate one.
 This records the actual search decision, not source ownership or reuse success.
+Keep a truthful `unknown` decision when search health or applicability is uncertain;
+it does not earn a reuse claim. With search results, keep it as `candidate` until
+the use decision is closed; do not submit it as `validated`. Existing captures without a raw receipt retain only
+their own recorded facts; submit must not select a same-day record for them.
 
 ## Hard stops
 

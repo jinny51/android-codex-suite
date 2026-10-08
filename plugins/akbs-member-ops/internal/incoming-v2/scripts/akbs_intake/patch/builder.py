@@ -418,8 +418,10 @@ def build_patch_package(
         exact_search_receipt["payload"] if exact_search_receipt is not None
         else first_evidence_payload(package_dir, capture_evidence_entries, "search_before_change")
     )
+    # Current captures keep only their selected receipt/recorded facts. The daily
+    # reader remains available for real imports, not as a receipt selector.
     member_search_payload = (
-        {} if exact_search_receipt is not None
+        {} if exact_search_receipt is not None or workflow_contract == "current_codex_skill"
         else search_usage_payload(config, date, feature_tokens=patch_search_feature_tokens(summary, all_patch_items, modified_files))
     )
     search_payload = select_search_before_change_payload(

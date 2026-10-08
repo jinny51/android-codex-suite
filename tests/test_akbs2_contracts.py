@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import datetime as dt
 import hashlib
 import json
 import sys
@@ -25,12 +26,19 @@ from android_engineering_ops.json_contract import (  # noqa: E402
     ContractValidationError,
     validate_document,
 )
-from android_engineering_ops.knowledge_rules import VALID_FRAMEWORK_PLATFORMS  # noqa: E402
+from android_engineering_ops.knowledge_rules import VALID_FRAMEWORK_PLATFORMS, classify_pre_change_search  # noqa: E402
 from akbs_intake.patch.assets import validate_patch_readme  # noqa: E402
 from akbs_intake.patch.capture_import import copy_patch_capture_packages  # noqa: E402
 from akbs_intake.patch.evidence import (  # noqa: E402
     search_receipt_from_capture,
     select_search_before_change_payload,
+)
+from akbs_intake.patch import builder  # noqa: E402
+from akbs_intake.patch.validation import validate_patch_pre_change_search  # noqa: E402
+from akbs_intake.search_usage import (  # noqa: E402
+    search_payload_missing_required_pre_change_search,
+    search_payload_needs_closed_decision,
+    workflow_contract_requires_pre_change_search,
 )
 
 
@@ -190,3 +198,126 @@ def test_absent_search_receipt_marker_retains_legacy_selection(tmp_path: Path) -
         capture_search_payload={}, member_search_payload=member_payload,
         capture_has_member_decision=False,
     ) == member_payload
+
+
+def _unknown_search_payload() -> dict:
+    return {
+        "schema": "android-knowledge-search-usage", "schema_version": "1",
+        "member_alias": "member-test", "searched": True,
+        "queries": ["display policy"], "results": [{"id": "unclassified-case"}],
+        "target_environment": {"project": "TVI2343R", "platform": "rk", "android_version": "14"},
+        "source": "local_jsonl_fallback", "decision": "unknown", "reuse_decision": "unknown",
+        "targets": [], "reason": "Search health and applicability are not established.",
+    }
+
+
+@pytest.mark.parametrize("receipt_mode", ["exact", "legacy", "missing"])
+def test_current_builder_never_borrows_another_same_day_search(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt_mode: str,
+) -> None:
+    item = {"kind": "search_before_change", "path": "evidence/search.json"}
+    capture, _ = _capture_with_search_receipt(tmp_path, item)
+    payload = _unknown_search_payload()
+    if receipt_mode == "legacy":
+        payload.pop("schema")
+        payload.pop("schema_version")
+    raw = (json.dumps(payload) + "\r\n").encode("utf-8")
+    (capture / item["path"]).write_bytes(raw)
+    manifest = load(capture / "manifest.json")
+    manifest["workflow_contract"] = "current_codex_skill"
+    if receipt_mode == "exact":
+        manifest["evidence"][0]["source_receipt_sha256"] = hashlib.sha256(raw).hexdigest()
+    elif receipt_mode == "missing":
+        manifest["evidence"] = []
+    (capture / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    def wrong_same_day_search(*args, **kwargs):
+        pytest.fail("current capture must not consult same-day search from TVE9999U/unisoc13")
+
+    monkeypatch.setattr(builder, "search_usage_payload", wrong_same_day_search)
+    package = _build_search_package(tmp_path, capture, monkeypatch)
+    evidence = load(package / "materials/evidence/search_before_change.json")
+    if receipt_mode == "missing":
+        assert evidence["payload"]["searched"] is False
+        assert evidence["payload"]["results"] == []
+        assert load(package / "manifest.json")["package_status"] == "candidate"
+    else:
+        assert evidence["payload"] == payload
+        assert evidence["payload"]["reuse_decision"] == "unknown"
+    if receipt_mode == "exact":
+        assert evidence["source_receipt_json"].encode("utf-8") == raw
+        assert evidence["source_receipt_sha256"] == hashlib.sha256(raw).hexdigest()
+    else:
+        assert "source_receipt_json" not in evidence
+        assert "source_receipt_sha256" not in evidence
+
+
+def _build_search_package(tmp_path: Path, capture: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setattr(builder, "same_day_daily_report_run_ids", lambda *args: [])
+    monkeypatch.setattr(builder, "related_report_project_clues", lambda *args, **kwargs: [])
+    return builder.build_patch_package(
+        dt.date(2026, 10, 8),
+        {"member_alias": "member-test", "member_name": "Member Test", "out_dir": str(tmp_path / "incoming")},
+        run_id="display-policy", patch_package_paths=[str(capture)],
+        project="TVI2343R", summary="Display policy", status="candidate",
+        platform_override="rk", android_version_override="14",
+        incoming_schema_version="2", framework_optional_evidence_kinds=set(),
+        validate_package_fn=lambda package: {"ok": True},
+        write_package_source_fn=lambda *args: {}, plugin_install_metadata_fn=lambda: {},
+    )
+
+
+@pytest.mark.parametrize("workflow", ["manual_import", "historical_import"])
+def test_import_builder_retains_existing_search_reader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, workflow: str,
+) -> None:
+    capture, _ = _capture_with_search_receipt(
+        tmp_path, {"kind": "search_before_change", "path": "evidence/search.json"},
+    )
+    manifest = load(capture / "manifest.json")
+    manifest["workflow_contract"] = workflow
+    (capture / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    recorded = {"searched": True, "decision": "reference_only", "reuse_decision": "reference_only"}
+    calls = []
+    monkeypatch.setattr(builder, "search_usage_payload", lambda *args, **kwargs: calls.append(args) or recorded)
+    package = _build_search_package(tmp_path, capture, monkeypatch)
+    assert len(calls) == 1
+    assert load(package / "materials/evidence/search_before_change.json")["payload"] == recorded
+
+
+@pytest.mark.parametrize("package_status,mutation", [
+    ("validated", "none"), ("candidate", "none"), ("candidate", "hash"),
+    ("candidate", "environment"), ("validated", "not_searched"),
+])
+def test_unknown_preserves_candidate_facts_and_validated_gate(package_status: str, mutation: str) -> None:
+    payload = _unknown_search_payload()
+    if mutation == "environment":
+        payload["target_environment"]["project"] = "TVE9999U"
+    elif mutation == "not_searched":
+        payload["searched"] = False
+    raw = json.dumps(payload)
+    evidence = {
+        "payload": payload, "source_receipt_json": raw,
+        "source_receipt_sha256": "a" * 64 if mutation == "hash" else hashlib.sha256(raw.encode()).hexdigest(),
+    }
+    errors, warnings = [], []
+    validate_patch_pre_change_search(
+        manifest={"workflow_contract": "current_codex_skill", "member_alias": "member-test",
+                  "project": "TVI2343R", "platform": "rk", "android_version": "14"},
+        evidence_by_kind={"search_before_change": evidence}, package_status=package_status,
+        workflow_contract_requires_pre_change_search=workflow_contract_requires_pre_change_search,
+        search_payload_missing_required_pre_change_search=search_payload_missing_required_pre_change_search,
+        search_payload_needs_closed_decision=search_payload_needs_closed_decision,
+        errors=errors, warnings=warnings,
+    )
+    assert bool(errors) is (package_status == "validated" or mutation != "none")
+    expected_error = {"hash": "hash", "environment": "目标环境", "not_searched": "未发生"}.get(mutation)
+    if package_status == "validated" and mutation == "none":
+        expected_error = "闭合搜索使用决策"
+    if expected_error:
+        assert any(expected_error in error for error in errors)
+    assert payload["decision"] == payload["reuse_decision"] == "unknown"
+    assert payload["targets"] == []
+    assert classify_pre_change_search(
+        payload, workflow_contract="current_codex_skill", package_status=package_status,
+    )["validity_score_effect"] == "no_search_loop_score"

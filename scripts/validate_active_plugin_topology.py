@@ -22,7 +22,7 @@ PACKAGE_SCHEMA = ROOT / "contracts/incoming/v2/knowledge-incoming-package.schema
 PACKAGE_FIXTURE = ROOT / "contracts/incoming/v2/fixtures/patch.manifest.json"
 EXPECTED = {
     "akbs-member-ops": {
-        "version": "2.3.1",
+        "version": "2.3.2",
         "skills": {
             "akbs-member-setup", "akbs-knowledge-search",
             "akbs-knowledge-merge-review", "akbs-daily-report",

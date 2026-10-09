@@ -8,6 +8,7 @@ import re
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -85,14 +86,142 @@ def manifest_skills(path: Path) -> set[str]:
     return set(re.findall(r'^name = "([a-z0-9][a-z0-9-]*)"$', text, re.MULTILINE))
 
 
+def text(value: Any, label: str, limit: int | None = None) -> str:
+    if not isinstance(value, str) or not value.strip() or (limit is not None and len(value) > limit):
+        raise TopologyError(f"invalid text: {label}")
+    return value
+
+
+def strings(value: Any, label: str) -> None:
+    if not isinstance(value, list):
+        raise TopologyError(f"expected array: {label}")
+    for item in value:
+        text(item, label)
+
+
+def https_url(value: Any, label: str) -> None:
+    text(value, label, 2048)
+    try:
+        parsed = urlsplit(value)
+        parsed.port  # Accessing the property rejects malformed ports.
+        valid = (parsed.scheme == "https" and parsed.hostname
+                 and parsed.username is None and parsed.password is None
+                 and not any(character.isspace() for character in value))
+    except ValueError as exc:
+        raise TopologyError(f"invalid HTTPS URL: {label}") from exc
+    if not valid:
+        raise TopologyError(f"invalid HTTPS URL: {label}")
+
+
+def local_path(root: Path, value: Any, label: str, *, directory: bool) -> Path:
+    text(value, label)
+    if not value.startswith("./") or "\\" in value or ".." in Path(value).parts:
+        raise TopologyError(f"path must be ./-relative and stay inside its root: {label}")
+    target = (root / value).resolve()
+    if not target.is_relative_to(root.resolve()):
+        raise TopologyError(f"path escapes its root: {label}")
+    if not (target.is_dir() if directory else target.is_file()):
+        raise TopologyError(f"declared path does not exist with the expected type: {label}")
+    return target
+
+
+def validate_plugin_metadata(plugin: dict[str, Any], root: Path) -> None:
+    """Validate this private suite's Codex compatibility shape, not portal submission."""
+    text(plugin.get("name"), "name", 64)
+    version = text(plugin.get("version"), "version")
+    if re.fullmatch(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?", version) is None:
+        raise TopologyError("invalid semantic version")
+    if "-" in version.split("+", 1)[0]:
+        prerelease = version.split("+", 1)[0].split("-", 1)[1]
+        if any(item.isdigit() and len(item) > 1 and item.startswith("0") for item in prerelease.split(".")):
+            raise TopologyError("invalid semantic version")
+    text(plugin.get("description"), "description", 4000)
+    author = plugin.get("author")
+    if not isinstance(author, dict):
+        raise TopologyError("author must be an object")
+    text(author.get("name"), "author.name", 120)
+    if "email" in author:
+        text(author["email"], "author.email", 320)
+    if "url" in author:
+        https_url(author["url"], "author.url")
+    if "homepage" in plugin:
+        https_url(plugin["homepage"], "homepage")
+    for field in ("repository", "license", "id"):
+        if field in plugin:
+            text(plugin[field], field)
+    if "keywords" in plugin:
+        strings(plugin["keywords"], "keywords")
+    local_path(root, plugin.get("skills"), "skills", directory=True)
+    interface = plugin.get("interface")
+    if not isinstance(interface, dict):
+        raise TopologyError("interface must be an object")
+    # Check declared local metadata. Public listing lengths, review material and
+    # absent icons are outside this private suite gate; this is not portal parity.
+    for field in ("displayName", "shortDescription", "longDescription", "developerName", "category"):
+        if field in interface:
+            text(interface[field], f"interface.{field}")
+    if "capabilities" in interface:
+        strings(interface["capabilities"], "interface.capabilities")
+    if "defaultPrompt" in interface:
+        prompts = interface["defaultPrompt"]
+        if isinstance(prompts, str):
+            text(prompts, "interface.defaultPrompt")
+        else:
+            strings(prompts, "interface.defaultPrompt")
+    for field in ("websiteURL", "supportURL", "privacyPolicyURL", "termsOfServiceURL"):
+        if field in interface:
+            https_url(interface[field], f"interface.{field}")
+    for field in ("brandColor", "brandColorDark"):
+        if field in interface and (not isinstance(interface[field], str) or re.fullmatch(r"#[0-9A-Fa-f]{6}", interface[field]) is None):
+            raise TopologyError(f"invalid color: interface.{field}")
+    for field in ("composerIcon", "composerIconDark", "logo", "logoDark"):
+        if field in interface:
+            local_path(root, interface[field], f"interface.{field}", directory=False)
+    if "screenshots" in interface:
+        strings(interface["screenshots"], "interface.screenshots")
+        for path in interface["screenshots"]:
+            local_path(root, path, "interface.screenshots", directory=False)
+
+
 def validate_plugins() -> None:
     marketplace = load(ROOT / ".agents/plugins/marketplace.json")
-    listed = {row.get("name") for row in marketplace.get("plugins", [])}
+    text(marketplace.get("name"), "marketplace.name")
+    entries = marketplace.get("plugins")
+    if not isinstance(entries, list):
+        raise TopologyError("marketplace.plugins must be an array")
+    listed: set[str] = set()
+    for row in entries:
+        if not isinstance(row, dict):
+            raise TopologyError("marketplace plugin entry must be an object")
+        plugin_id = text(row.get("name"), "marketplace plugin name")
+        if plugin_id in listed:
+            raise TopologyError(f"duplicate marketplace plugin: {plugin_id}")
+        listed.add(plugin_id)
+        if plugin_id not in EXPECTED:
+            raise TopologyError(f"unexpected marketplace plugin: {plugin_id}")
+        source = row.get("source")
+        if isinstance(source, str):
+            path = source
+        elif isinstance(source, dict) and source.get("source") == "local":
+            path = source.get("path")
+        else:
+            raise TopologyError(f"marketplace source must be local: {plugin_id}")
+        target = local_path(ROOT, path, f"marketplace source: {plugin_id}", directory=True)
+        if target != (ROOT / "plugins" / plugin_id).resolve():
+            raise TopologyError(f"marketplace source points to a different plugin: {plugin_id}")
+        policy = row.get("policy")
+        if not isinstance(policy, dict):
+            raise TopologyError(f"marketplace policy must be an object: {plugin_id}")
+        if policy.get("installation") not in ("AVAILABLE", "INSTALLED_BY_DEFAULT", "NOT_AVAILABLE"):
+            raise TopologyError(f"invalid marketplace installation policy: {plugin_id}")
+        text(policy.get("authentication"), f"marketplace authentication: {plugin_id}")
+        text(row.get("category"), f"marketplace category: {plugin_id}")
     if listed != set(EXPECTED):
         raise TopologyError(f"marketplace plugin set differs: {sorted(listed)}")
     for plugin_id, expected in EXPECTED.items():
         root = ROOT / "plugins" / plugin_id
         plugin = load(root / ".codex-plugin/plugin.json")
+        validate_plugin_metadata(plugin, root)
         if plugin.get("name") != plugin_id or plugin.get("version") != expected["version"]:
             raise TopologyError(f"plugin identity/version differs: {plugin_id}")
         if plugin.get("skills") != "./skills/":

@@ -2,7 +2,6 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-validator="${CODEX_HOME:-$HOME/.codex}/skills/.system/plugin-creator/scripts/validate_plugin.py"
 source "$repo_root/scripts/validator_cleanup.sh"
 validator_cleanup_install "$repo_root"
 
@@ -12,17 +11,10 @@ if [[ "$(uname -s)" == "Linux" ]]; then
   export TMPDIR="$test_tmp" TMP="$test_tmp" TEMP="$test_tmp"
 fi
 
-if [[ ! -f "$validator" ]]; then
-  echo "Plugin validator not found: $validator" >&2
-  exit 1
-fi
-
-for plugin in akbs-member-ops android-engineering-ops jinny-android-practices; do
-  python3 "$validator" "$repo_root/plugins/$plugin"
-done
-
-"$repo_root/scripts/validate_skill_layout.sh"
+# Check the suite's declared metadata and topology with versioned repository code.
+# This is local/private suite validation, not the public dashboard submission gate.
 python3 "$repo_root/scripts/validate_active_plugin_topology.py"
+"$repo_root/scripts/validate_skill_layout.sh"
 
 # Validate repository contracts together, then run each plugin test tree in a
 # fresh interpreter to avoid cross-plugin Python import state.

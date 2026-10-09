@@ -82,15 +82,36 @@ def test_validator_cleanup_supports_macos_system_bash() -> None:
     assert syntax.returncode == 0, syntax.stderr
 
 
-def test_aggregate_declares_the_installed_plugin_creator_validator_after_cleanup_setup() -> None:
+def test_aggregate_uses_versioned_suite_validator_after_cleanup_setup() -> None:
     aggregate = (REPO_ROOT / "scripts/validate_plugins.sh").read_text(encoding="utf-8")
-    installed_validator = 'skills/.system/plugin-creator/scripts/validate_plugin.py'
-    assert installed_validator in aggregate
-    assert aggregate.index("validator_cleanup_install") < aggregate.index('for plugin in')
-    assert aggregate.index("validator_cleanup_install") < aggregate.index('python3 "$validator"')
+    controlled = 'python3 "$repo_root/scripts/validate_active_plugin_topology.py"'
+    assert 'skills/.system/plugin-creator/scripts/validate_plugin.py' not in aggregate
+    assert aggregate.count(controlled) == 1
+    assert aggregate.index("validator_cleanup_install") < aggregate.index(controlled)
+    assert aggregate.index(controlled) < aggregate.index('"$repo_root/scripts/validate_skill_layout.sh"')
+    assert "set -euo pipefail" in aggregate
     assert "--import-mode=importlib" in aggregate
     assert 'tests/test_*.py' in aggregate
     assert 'tests/plugins/*' in aggregate
+
+
+def test_aggregate_stops_before_business_nodes_when_metadata_is_invalid(tmp_path: Path) -> None:
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    for name in ("validate_plugins.sh", "validate_active_plugin_topology.py"):
+        (scripts / name).write_bytes((REPO_ROOT / "scripts" / name).read_bytes())
+    (scripts / "validator_cleanup.sh").write_text("validator_cleanup_install() { :; }\n", encoding="utf-8")
+    (scripts / "validate_skill_layout.sh").write_text("#!/bin/bash\necho SHOULD_NOT_RUN_LAYOUT\n", encoding="utf-8")
+    (scripts / "validate_skill_layout.sh").chmod(0o755)
+    catalog = tmp_path / ".agents/plugins/marketplace.json"
+    catalog.parent.mkdir(parents=True)
+    catalog.write_text('{"name":"private-test","plugins":[]}', encoding="utf-8")
+    result = subprocess.run(["bash", str(scripts / "validate_plugins.sh")], text=True,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    assert result.returncode != 0
+    assert "PLUGIN_TOPOLOGY_INVALID" in result.stderr
+    assert "SHOULD_NOT_RUN_LAYOUT" not in result.stdout
+    assert "Plugin validation passed" not in result.stdout
 
 
 def test_python_validator_components_use_parent_or_finally_cleanup() -> None:

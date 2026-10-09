@@ -124,6 +124,11 @@ The selected Implementation identity and separately declared exact environments
 must agree in both responses. No selector-removal retry, same-package fallback,
 same-SHA substitution, or cross-environment combination is allowed.
 
+The source `package_content_hash` preserves the original package identity: a
+historical snapshot may carry its original SHA-1 or SHA-256, while an accepted
+binding uses SHA-256. Manifest and downloaded patch digests always use SHA-256;
+the historical identity is never rewritten or used instead of the byte digest.
+
 No URL in returned metadata controls the request destination. The client builds
 the case/asset path from the configured endpoint, validates response identity and
 size/hash, and creates the selected output exclusively. These reads do not use

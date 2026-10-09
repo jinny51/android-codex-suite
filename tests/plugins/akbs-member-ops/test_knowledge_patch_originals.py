@@ -249,6 +249,52 @@ class KnowledgePatchOriginalsTest(unittest.TestCase):
             with self.assertRaises(HttpClientFailure):
                 originals.fetch_case_patches(CASE, implementation_id="implementation-example")
 
+    def test_historical_source_sha1_identity_preserved_with_sha256_download(self):
+        for scope in (originals.HISTORICAL_SCOPE, originals.IMPLEMENTATION_SCOPE):
+            payload = implementation_listing(historical=True)
+            payload["scope"] = scope
+            source = payload["patches"][0]["source"]
+            source["package_content_hash"] = "04c2b8321ab990983fc26ad8bd9970b6a5e5fc42"
+            before = copy.deepcopy(payload)
+            output = self.output.with_name(scope + ".patch")
+            with self.subTest(scope=scope), mock.patch.object(originals, "request_json", return_value=payload) as request, mock.patch.object(originals.urllib.request, "urlopen", return_value=Response(CONTENT)) as download:
+                result = originals.download_case_patch(CASE, ASSET, output, implementation_id="implementation-example")
+            self.assertEqual(result["original_source"], source)
+            self.assertEqual(result["sha256"], hashlib.sha256(CONTENT).hexdigest())
+            self.assertEqual(result["reuse_outcome"], "not_started")
+            self.assertEqual(result["authority"], "historical_case_snapshot")
+            self.assertEqual(result["review_state"], "migration_review_required")
+            self.assertEqual(output.read_bytes(), CONTENT)
+            self.assertEqual(payload, before)
+            self.assertEqual(request.call_count, 1)
+            self.assertEqual(download.call_count, 1)
+            for sent in (request.call_args.args[0], download.call_args.args[0]):
+                self.assertTrue(sent.full_url.endswith("?implementation_id=implementation-example"))
+
+    def test_sha1_only_allowed_for_historical_package_identity(self):
+        bad = []
+        accepted = implementation_listing()
+        accepted["patches"][0]["source"]["package_content_hash"] = "a" * 40
+        bad.append(accepted)
+        for value in ("a" * 39, "a" * 41, "A" * 40, "g" * 40, None, 40):
+            payload = implementation_listing(historical=True)
+            payload["patches"][0]["source"]["package_content_hash"] = value
+            bad.append(payload)
+        for historical in (False, True):
+            payload = implementation_listing(historical=historical)
+            payload["patches"][0]["source"]["manifest_sha256"] = "a" * 40
+            bad.append(payload)
+            payload = implementation_listing(historical=historical)
+            payload["patches"][0]["sha256"] = hashlib.sha1(CONTENT).hexdigest()
+            bad.append(payload)
+        for payload in bad:
+            with self.subTest(payload=payload), mock.patch.object(originals, "request_json", return_value=payload) as request, mock.patch.object(originals.urllib.request, "urlopen") as download:
+                with self.assertRaises(HttpClientFailure):
+                    originals.download_case_patch(CASE, ASSET, self.output, implementation_id="implementation-example")
+            self.assertEqual(request.call_count, 1)
+            download.assert_not_called()
+            self.assertFalse(self.output.exists())
+
     def test_selected_listing_owner_and_scope_mismatch_never_fall_back(self):
         bad = []
         for changes in (

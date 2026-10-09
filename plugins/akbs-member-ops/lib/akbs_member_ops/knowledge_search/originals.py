@@ -27,6 +27,7 @@ MAX_PATCH_BYTES = 64 * 1024 * 1024
 IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,255}\Z")
 IMPLEMENTATION_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+HISTORICAL_PACKAGE_HASH = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
 
 
 def _endpoint(case_id: str, asset_id: str = "", *, implementation_id: str | None = None) -> str:
@@ -106,12 +107,14 @@ def _validate_implementation_original(patch: dict[str, Any], implementation_id: 
         "patch_package_id", "manifest_revision", "manifest_sha256", "package_content_hash", "layer",
     }:
         raise invalid_success_response("patch originals source metadata invalid")
+    # Preserve the original package identity; downloaded bytes still use SHA-256.
+    package_hash = HISTORICAL_PACKAGE_HASH if authority == "historical_case_snapshot" else SHA256
     if (
         not isinstance(source["patch_package_id"], str)
         or not IDENTIFIER.fullmatch(source["patch_package_id"])
         or type(source["manifest_revision"]) is not int or source["manifest_revision"] < 1
-        or any(not isinstance(source[field], str) or not SHA256.fullmatch(source[field])
-               for field in ("manifest_sha256", "package_content_hash"))
+        or not isinstance(source["manifest_sha256"], str) or not SHA256.fullmatch(source["manifest_sha256"])
+        or not isinstance(source["package_content_hash"], str) or not package_hash.fullmatch(source["package_content_hash"])
         or not isinstance(source["layer"], str)
         or source["layer"] not in {"application", "platform", "native", "hal", "kernel", "device", "build", "unknown"}
         or (source["layer"] == "unknown" and authority != "historical_case_snapshot")

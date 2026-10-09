@@ -538,8 +538,8 @@ def validate_server_payload(
         ):
             raise invalid_success_response("server search layers are invalid")
         requested_layers = set(component.get("component_layer", []))
-        unknown_case_reference = (
-            item.get("type") == "case"
+        unknown_layer_reference = (
+            item.get("type") in {"case", "implementation"}
             and layers == []
             and grade == "reference_only"
             and item.get("qualification_reason") == "implementation_layer_unknown"
@@ -558,7 +558,7 @@ def validate_server_payload(
         if (
             requested_layers
             and not requested_layers.intersection(layers)
-            and not unknown_case_reference
+            and not unknown_layer_reference
         ):
             raise invalid_success_response(
                 "server search result does not match the requested component layer"

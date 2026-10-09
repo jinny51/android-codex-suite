@@ -277,13 +277,13 @@ def test_server_result_layers_are_search_scope_not_qualification_binding_alias()
     validate_server_payload(patch_payload)
 
 
-def _unknown_layer_case_payload() -> dict:
+def _unknown_layer_reference_payload(result_kind: str = "case") -> dict:
     payload = copy.deepcopy(_payload())
     payload["filters"]["component"]["component_layer"] = ["application"]
     payload["results"][0].update(
         {
-            "type": "case",
-            "implementation_id": "",
+            "type": result_kind,
+            "implementation_id": "implementation-display-rk14" if result_kind == "implementation" else "",
             "layers": [],
             "reuse_grade": "reference_only",
             "qualification_reason": "implementation_layer_unknown",
@@ -307,7 +307,7 @@ def _unknown_layer_case_payload() -> dict:
 
 
 def test_unknown_layer_case_is_only_a_reference_not_a_layer_match() -> None:
-    payload = _unknown_layer_case_payload()
+    payload = _unknown_layer_reference_payload()
     validate_server_payload(payload)
     result = normalize_server_results(payload)[0]
     assert result["kind"] == "case"
@@ -318,10 +318,33 @@ def test_unknown_layer_case_is_only_a_reference_not_a_layer_match() -> None:
     assert result["qualification_reason"] == "implementation_layer_unknown"
 
 
+@pytest.mark.parametrize("result_type", ["all", "implementation"])
+def test_unknown_layer_implementation_is_only_a_reference_not_a_layer_match(result_type: str) -> None:
+    payload = _unknown_layer_reference_payload("implementation")
+    payload["result_type"] = result_type
+    args = SimpleNamespace(
+        type=result_type, project="TVE8402M", platform="rk", android_version="14",
+        component_layer=["application"], offset=0, limit=8,
+    )
+    validate_server_payload(payload, args=args, query="display power")
+    result = normalize_server_results(payload)[0]
+    assert result["kind"] == "implementation"
+    assert result["implementation_id"] == "implementation-display-rk14"
+    assert result["layers"] == []
+    assert result["reuse_grade"] == "reference_only"
+    assert result["requires_revalidation"] is True
+    assert result["required_bindings"] == []
+    assert result["qualification_reason"] == "implementation_layer_unknown"
+    assert result["environment_comparison"] == {
+        "mode": "not_qualified", "alternative_tuples": [],
+        "non_dominated_matched_dimension_sets": [],
+    }
+
+
+@pytest.mark.parametrize("result_kind", ["case", "implementation"])
 @pytest.mark.parametrize(
     "changes",
     [
-        {"type": "implementation", "implementation_id": "implementation-display-rk14"},
         {"type": "patch"},
         {"type": "symbol"},
         {"layers": ["hal"]},
@@ -331,13 +354,14 @@ def test_unknown_layer_case_is_only_a_reference_not_a_layer_match() -> None:
         {"requires_revalidation": False},
         {"required_bindings": _payload()["results"][0]["required_bindings"]},
         {"environment_comparison": _payload()["results"][0]["environment_comparison"]},
+        {"environment_comparison": {"mode": "exact", "alternative_tuples": [], "non_dominated_matched_dimension_sets": []}},
         {"evidence_gaps": []},
         {"evidence_gaps": [{"reason": "implementation_layer_unknown", "binding_id": "binding-display", "context": {}}]},
         {"evidence_gaps": [{"reason": "implementation_layer_unknown", "binding_id": "", "context": {"claimed": True}}]},
     ],
 )
-def test_unknown_layer_exception_does_not_relax_other_results(changes: dict) -> None:
-    payload = _unknown_layer_case_payload()
+def test_unknown_layer_exception_does_not_relax_other_results(changes: dict, result_kind: str) -> None:
+    payload = _unknown_layer_reference_payload(result_kind)
     payload["results"][0].update(copy.deepcopy(changes))
     with pytest.raises(HttpClientFailure):
         validate_server_payload(payload)

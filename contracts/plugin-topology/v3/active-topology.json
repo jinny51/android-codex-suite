@@ -5,7 +5,7 @@
   "plugins": [
     {
       "id": "akbs-member-ops",
-      "version": "2.3.3",
+      "version": "2.3.4",
       "role": "standalone_member_workflows",
       "skills": [
         "akbs-member-setup",

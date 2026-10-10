@@ -404,6 +404,171 @@ def test_server_response_accepts_one_closed_exact_tuple_for_direct_reuse() -> No
         validate_server_payload(invalid_constraints)
 
 
+SAME_ENVIRONMENT_ADAPTATION_REASONS = (
+    "exact_environment_conditions_require_review",
+    "validated_source_requires_semantic_review",
+)
+
+
+def _same_environment_adaptation_payload(reason: str) -> dict:
+    payload = copy.deepcopy(_payload())
+    item = payload["results"][0]
+    item["qualification_reason"] = reason
+    alternative = item["environment_comparison"]["alternative_tuples"][0]
+    alternative.update(
+        {
+            "environment": dict(payload["target_environment"]),
+            "matched_dimensions": ["android_version", "platform", "project"],
+            "different_dimensions": [],
+        }
+    )
+    item["environment_comparison"]["non_dominated_matched_dimension_sets"] = [
+        ["android_version", "platform", "project"]
+    ]
+    evidence = item["required_bindings"][0]["environment_evidence"][0]
+    evidence.update(payload["target_environment"])
+    if reason == "exact_environment_conditions_require_review":
+        constraints = [{"kind": "product", "value": "tv"}]
+        alternative["constraints"] = copy.deepcopy(constraints)
+        alternative["constraints_evaluation"] = "not_evaluated"
+        evidence["constraints"] = copy.deepcopy(constraints)
+        evidence["constraints_state"] = "typed"
+    item["evidence_gaps"] = [{"reason": reason, "binding_id": "", "context": {}}]
+    return payload
+
+
+@pytest.mark.parametrize("reason", SAME_ENVIRONMENT_ADAPTATION_REASONS)
+def test_server_response_accepts_closed_same_environment_adaptation(reason: str) -> None:
+    payload = _same_environment_adaptation_payload(reason)
+    before = copy.deepcopy(payload)
+    validate_server_payload(payload)
+    assert payload == before
+    result = normalize_server_results(payload)[0]
+    assert result["reuse_grade"] == "adaptation_candidate"
+    assert result["qualification_reason"] == reason
+    assert result["requires_revalidation"] is True
+    for field in ("required_bindings", "environment_comparison", "evidence_gaps"):
+        assert result[field] == before["results"][0][field]
+
+
+@pytest.mark.parametrize("reason", SAME_ENVIRONMENT_ADAPTATION_REASONS)
+def test_same_environment_adaptation_compares_environment_case_insensitively(reason: str) -> None:
+    payload = _same_environment_adaptation_payload(reason)
+    alternative = payload["results"][0]["environment_comparison"]["alternative_tuples"][0]
+    evidence = payload["results"][0]["required_bindings"][0]["environment_evidence"][0]
+    alternative["environment"]["project"] = "tve8402m"
+    alternative["environment"]["platform"] = "RK"
+    evidence["project"] = "TvE8402m"
+    evidence["platform"] = "Rk"
+    validate_server_payload(payload)
+
+
+def test_same_environment_fix_preserves_cross_environment_free_reason() -> None:
+    payload = _payload()
+    payload["results"][0]["qualification_reason"] = "existing free-text cross-environment reason"
+    before = copy.deepcopy(payload)
+    validate_server_payload(payload)
+    assert payload == before
+
+
+@pytest.mark.parametrize("reason", SAME_ENVIRONMENT_ADAPTATION_REASONS)
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "unknown_reason", "swapped_reason", "constraints_evaluation", "comparison_mode",
+        "no_alternative", "no_revalidation", "incomplete_target", "no_bindings",
+        "open_binding", "unknown_layer", "wrong_role", "wrong_state", "no_acceptance_ref",
+        "bad_patch_hash", "bad_manifest_hash", "bad_manifest_revision", "no_environment_evidence",
+        "evidence_environment", "evidence_lineage", "evidence_constraints", "evidence_constraints_state",
+        "evidence_validation_state", "evidence_content_hash",
+    ],
+)
+def test_same_environment_adaptation_rejects_unclosed_or_unexplained_evidence(
+    reason: str, failure: str,
+) -> None:
+    payload = _same_environment_adaptation_payload(reason)
+    item = payload["results"][0]
+    comparison = item["environment_comparison"]
+    alternative = comparison["alternative_tuples"][0]
+    binding = item["required_bindings"][0]
+    evidence = binding["environment_evidence"][0]
+    if failure == "unknown_reason":
+        item["qualification_reason"] = "unknown_same_environment_reason"
+    elif failure == "swapped_reason":
+        item["qualification_reason"] = next(value for value in SAME_ENVIRONMENT_ADAPTATION_REASONS if value != reason)
+    elif failure == "constraints_evaluation":
+        alternative["constraints_evaluation"] = (
+            "not_applicable" if alternative["constraints"] else "not_evaluated"
+        )
+    elif failure == "comparison_mode":
+        comparison["mode"] = "not_qualified"
+    elif failure == "no_alternative":
+        comparison["alternative_tuples"] = []
+        comparison["non_dominated_matched_dimension_sets"] = []
+    elif failure == "no_revalidation":
+        item["requires_revalidation"] = False
+    elif failure == "incomplete_target":
+        payload["target_environment"]["project"] = ""
+    elif failure == "no_bindings":
+        item["required_bindings"] = []
+    elif failure.startswith("evidence_"):
+        evidence_changes = {
+            "evidence_environment": {"project": "OTHER"},
+            "evidence_lineage": {"source_lineage_ref": "fixture:other"},
+            "evidence_constraints": {"constraints": [{"kind": "product", "value": "other"}]},
+            "evidence_constraints_state": {"constraints_state": "invalid"},
+            "evidence_validation_state": {"validation_state": "unverified"},
+            "evidence_content_hash": {"content_hash": "not-a-sha256"},
+        }
+        evidence.update(evidence_changes[failure])
+    else:
+        binding_changes = {
+            "open_binding": {"closure_state": "invalid"},
+            "unknown_layer": {"layer": ""},
+            "wrong_role": {"binding_role": "verification_only"},
+            "wrong_state": {"binding_state": "revoked"},
+            "no_acceptance_ref": {"acceptance_ref": ""},
+            "bad_patch_hash": {"patch_sha256": "bad"},
+            "bad_manifest_hash": {"manifest_sha256": "bad"},
+            "bad_manifest_revision": {"manifest_revision": 0},
+            "no_environment_evidence": {"environment_evidence": []},
+        }
+        binding.update(binding_changes[failure])
+    with pytest.raises(HttpClientFailure):
+        validate_server_payload(payload)
+
+
+@pytest.mark.parametrize("reason", SAME_ENVIRONMENT_ADAPTATION_REASONS)
+@pytest.mark.parametrize("split_alternatives", [False, True])
+def test_same_environment_adaptation_requires_one_tuple_covering_every_binding(
+    reason: str, split_alternatives: bool,
+) -> None:
+    payload = _same_environment_adaptation_payload(reason)
+    item = payload["results"][0]
+    second_binding = copy.deepcopy(item["required_bindings"][0])
+    second_binding.update({"binding_id": "binding-second", "patch_asset_id": "asset-second"})
+    second_binding["environment_evidence"][0]["source_lineage_ref"] = "fixture:second-source"
+    item["required_bindings"].append(second_binding)
+    if split_alternatives:
+        second_alternative = copy.deepcopy(item["environment_comparison"]["alternative_tuples"][0])
+        second_alternative["source_lineage_ref"] = "fixture:second-source"
+        item["environment_comparison"]["alternative_tuples"].append(second_alternative)
+    with pytest.raises(HttpClientFailure, match="lacks one closed alternative tuple"):
+        validate_server_payload(payload)
+
+
+@pytest.mark.parametrize("reason", SAME_ENVIRONMENT_ADAPTATION_REASONS)
+def test_same_environment_adaptation_allows_adapt_but_not_direct_reuse(reason: str) -> None:
+    payload = _same_environment_adaptation_payload(reason)
+    validate_server_payload(payload)
+    result = normalize_server_results(payload)[0]
+    before = copy.deepcopy(result)
+    validate_reuse_decision(decision="adapt", targets=[result["id"]], results=[result])
+    with pytest.raises(SystemExit, match="direct_reuse_candidate"):
+        validate_reuse_decision(decision="reuse", targets=[result["id"]], results=[result])
+    assert result == before
+
+
 def test_server_response_must_match_request_environment_and_pagination() -> None:
     args = SimpleNamespace(
         type="all",

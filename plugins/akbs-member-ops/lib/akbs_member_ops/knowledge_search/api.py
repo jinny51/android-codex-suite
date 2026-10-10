@@ -510,8 +510,24 @@ def validate_server_payload(
                 comparison["mode"] != "adaptation"
                 or not alternatives
                 or not any(
-                    not _same_environment(
-                        alternative["environment"], payload["target_environment"]
+                    (
+                        not _same_environment(
+                            alternative["environment"], payload["target_environment"]
+                        )
+                        # A validated exact environment can still need condition
+                        # or semantic review; it is not direct-reuse permission.
+                        or (
+                            item["qualification_reason"]
+                            == "exact_environment_conditions_require_review"
+                            and bool(alternative["constraints"])
+                            and alternative["constraints_evaluation"] == "not_evaluated"
+                        )
+                        or (
+                            item["qualification_reason"]
+                            == "validated_source_requires_semantic_review"
+                            and not alternative["constraints"]
+                            and alternative["constraints_evaluation"] == "not_applicable"
+                        )
                     )
                     and _alternative_covers_bindings(alternative, bindings)
                     for alternative in alternatives

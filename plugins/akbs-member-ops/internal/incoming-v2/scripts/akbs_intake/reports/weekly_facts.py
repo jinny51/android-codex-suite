@@ -30,7 +30,7 @@ from .document_work import (
     validate_weekly_standalone_work,
 )
 from .gms import GMS_CURRENT_FIELDS, normalize_gms_fields, validate_gms_fields
-from .scope import PROJECT_WORK_TYPES, report_scope_key
+from .scope import PROJECT_WORK_TYPES, report_scope_key, report_scope_customer_context
 from .weekly_ledger import (
     BUSINESS_COUNT_KEYS,
     LEDGER_CHANGE_KEYS,
@@ -542,17 +542,13 @@ def project_customer_identity_conflicts(
     projects: list[dict[str, Any]],
     expected_project_customers: dict[str, Any],
 ) -> list[dict[str, str]]:
-    expected: dict[str, dict[str, str]] = {}
-    for raw_project, raw_context in expected_project_customers.items():
-        project = find_company_project(str(raw_project or ""))
-        context = normalize_report_customer_context(raw_context)
-        if project and context.get("customer_name"):
-            expected[project] = context
-
     conflicts: list[dict[str, str]] = []
     for row in projects:
         project = find_company_project(clean_text(row.get("project")))
-        context = expected.get(project or "")
+        raw_context = report_scope_customer_context(row, expected_project_customers, projects)
+        context = normalize_report_customer_context(
+            raw_context
+        )
         if not project or not context:
             continue
         actual_customer = clean_text(row.get("customer") or row.get("customer_name"))
@@ -560,7 +556,11 @@ def project_customer_identity_conflicts(
         expected_customer = clean_text(context.get("customer_name"))
         expected_downstream = clean_text(context.get("downstream_customer"))
         direct_conflict = actual_customer != expected_customer
-        downstream_conflict = bool(expected_downstream) and actual_downstream != expected_downstream
+        downstream_is_explicit = (
+            report_scope_key(row) in expected_project_customers
+            or isinstance(raw_context, dict) and "downstream_customer" in raw_context
+        )
+        downstream_conflict = (downstream_is_explicit or bool(expected_downstream)) and actual_downstream != expected_downstream
         if direct_conflict or downstream_conflict:
             conflicts.append(
                 {
@@ -623,7 +623,6 @@ def load_explicit_facts(
         raise SystemExit("weekly facts projects、documents 和 standalone_work 至少提供一项")
     normalized: list[dict[str, Any]] = []
     errors: list[str] = []
-    seen_project_chains: dict[str, tuple[int, str, str]] = {}
     seen_scopes: dict[tuple[str, ...], int] = {}
     for index, item in enumerate(projects):
         if not isinstance(item, dict):
@@ -674,16 +673,6 @@ def load_explicit_facts(
         if item.get("display_name") or item.get("model"):
             errors.append(f"{project}.display_name/model 不属于项目身份；项目标题只使用项目和客户")
         if not project.startswith("projects["):
-            identity = (customer, downstream_customer)
-            previous_identity = seen_project_chains.get(project)
-            if previous_identity and identity != previous_identity[1:]:
-                previous_index, _, _ = previous_identity
-                errors.append(
-                    f"{project} 在 projects[{previous_index}] 和 projects[{index}] 的客户链冲突；"
-                    "同一项目必须保留唯一客户链"
-                )
-            elif not previous_identity:
-                seen_project_chains[project] = (index, customer, downstream_customer)
             scope = report_scope_key(item)
             previous_scope_index = seen_scopes.get(scope)
             if previous_scope_index is not None:
@@ -856,24 +845,31 @@ def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[
             if not project:
                 continue
             project_meta = metadata.setdefault(project, {})
-            project_meta["customer"] = clean_text(
-                raw_project.get("customer") or raw_project.get("customer_name"),
-                metadata.get(project, {}).get("customer", ""),
+            work_type = clean_text(raw_project.get("work_type"))
+            app_name = clean_text(raw_project.get("app_name"))
+            gms_fields = normalize_gms_fields(raw_project)
+            scope = attention_scope_key(
+                work_type, app_name, gms_fields.get("gms_release_type"), gms_fields.get("gms_target")
             )
             downstream_customer = clean_text(
                 raw_project.get("downstream_customer")
                 or raw_project.get("customer_of_customer")
                 or raw_project.get("end_customer")
             )
-            if downstream_customer:
-                project_meta["downstream_customer"] = downstream_customer
+            identity_by_scope = project_meta.setdefault("identity_by_scope", {})
+            identity_by_scope[scope] = {
+                "customer": clean_text(raw_project.get("customer") or raw_project.get("customer_name")),
+                "downstream_customer": downstream_customer,
+            }
+            if len(identity_by_scope) == 1:
+                project_meta.update(identity_by_scope[scope])
+            else:
+                project_meta.pop("customer", None)
+                project_meta.pop("downstream_customer", None)
             focuses = clean_list(raw_project.get("tomorrow_focus"))
             if focuses:
                 project_meta["latest_focus"] = focuses
             work_items = raw_project.get("work_items") if isinstance(raw_project.get("work_items"), list) else []
-            work_type = clean_text(raw_project.get("work_type"))
-            app_name = clean_text(raw_project.get("app_name"))
-            gms_fields = normalize_gms_fields(raw_project)
             attention_by_scope = project_meta.setdefault("attention_by_scope", {})
             scope_attention = attention_by_scope.setdefault(
                 attention_scope_key(
@@ -933,12 +929,15 @@ def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[
             if not project:
                 continue
             project_meta = metadata.setdefault(project, {})
-            customer = clean_text(raw_plan.get("customer") or raw_plan.get("customer_name"))
-            if customer:
-                project_meta["customer"] = customer
-            downstream_customer = clean_text(raw_plan.get("downstream_customer"))
-            if downstream_customer:
-                project_meta["downstream_customer"] = downstream_customer
+            scope = attention_scope_key(
+                raw_plan.get("work_type"), raw_plan.get("app_name"),
+                raw_plan.get("gms_release_type"), raw_plan.get("gms_target"),
+            )
+            planned_identities = project_meta.setdefault("planned_identity_by_scope", {})
+            planned_identities[scope] = {
+                "customer": clean_text(raw_plan.get("customer") or raw_plan.get("customer_name")),
+                "downstream_customer": clean_text(raw_plan.get("downstream_customer")),
+            }
             plans = clean_list(raw_plan.get("plan_items"))
             if plans:
                 project_meta.setdefault("plan_by_scope", {})[
@@ -1247,9 +1246,20 @@ def _history_project_row(
     for item in current_unfinished:
         add_unique(current_remaining, item)
 
-    customer = clean_text(prior.get("customer") or daily_meta.get("customer"), "需成员补充客户名")
+    identity_by_scope = daily_meta.get("identity_by_scope", {})
+    planned_identities = daily_meta.get("planned_identity_by_scope", {})
+    identity_scope = attention_scope_key(
+        work_type, prior.get("app_name"),
+        latest_gms_fields.get("gms_release_type") or prior.get("gms_release_type"),
+        latest_gms_fields.get("gms_target") or prior.get("gms_target"),
+    )
+    daily_identity = identity_by_scope.get(identity_scope, planned_identities.get(identity_scope, {}))
+    if not identity_by_scope and not planned_identities:
+        daily_identity = daily_meta
+    customer = clean_text(prior.get("customer") or daily_identity.get("customer"), "需成员补充客户名")
     downstream_customer = clean_text(
-        prior.get("downstream_customer") or daily_meta.get("downstream_customer")
+        prior.get("downstream_customer")
+        if "downstream_customer" in prior else daily_identity.get("downstream_customer")
     )
     summary = weekly_summary("", completed_items, current_remaining)
     blocked = [record["text"] for record in daily_records if re.search(r"阻塞|失败|等待|依赖", record.get("progress", ""))]
@@ -1480,8 +1490,6 @@ def assign_daily_records_to_scopes(
     prior_rows: list[dict[str, Any]],
     records: list[dict[str, str]],
 ) -> tuple[list[list[dict[str, str]]], bool]:
-    if len(prior_rows) <= 1:
-        return [records], False
     assigned: list[list[dict[str, str]]] = [[] for _ in prior_rows]
     ambiguous = False
     for record in records:
@@ -1509,6 +1517,12 @@ def assign_daily_records_to_scopes(
         ]
         if len(exact_candidates) == 1:
             assigned[exact_candidates[0]].append(record)
+            continue
+        if record_work_type:
+            ambiguous = True
+            continue
+        if len(prior_rows) == 1:
+            assigned[0].append(record)
             continue
         candidates: list[int] = []
         for index, row in enumerate(prior_rows):
@@ -1652,6 +1666,23 @@ def build_weekly_facts(
                     else ([records], False)
                 )
             else:
+                existing_scopes = {
+                    attention_scope_key(
+                        row.get("work_type"), row.get("app_name"),
+                        row.get("gms_release_type"), row.get("gms_target"),
+                    )
+                    for row in prior_rows
+                }
+                prior_rows = [
+                    *prior_rows,
+                    *[
+                        row for row in daily_scope_seed_rows(records)
+                        if attention_scope_key(
+                            row.get("work_type"), row.get("app_name"),
+                            row.get("gms_release_type"), row.get("gms_target"),
+                        ) not in existing_scopes
+                    ],
+                ]
                 records_by_scope, ambiguous_scope = assign_daily_records_to_scopes(prior_rows, records)
             for prior, scope_records in zip(prior_rows, records_by_scope):
                 row, project_missing = _history_project_row(

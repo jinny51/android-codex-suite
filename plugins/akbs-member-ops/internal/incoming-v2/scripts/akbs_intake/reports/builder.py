@@ -22,6 +22,7 @@ from akbs_intake.reports.session_summary import (
     work_findings_payload,
 )
 from akbs_intake.reports.weekly_facts import build_weekly_facts, project_rows_to_items
+from akbs_intake.reports.scope import report_customer_contexts_from_rows
 from akbs_intake.search_usage import search_usage_payload
 from akbs_intake.patch.assets import PatchInfo
 from akbs_intake.patch.package_quality import write_default_evidence
@@ -30,6 +31,20 @@ ValidatePackage = Callable[[Path], dict[str, Any]]
 WritePackageSource = Callable[[Path, dict[str, str], str], dict[str, Any]]
 ParseSessions = Callable[[dict[str, str], set[dt.date]], list[SessionWork]]
 DiscoverPatches = Callable[[dict[str, str], list[SessionWork], dt.date, dt.date], list[PatchInfo]]
+
+
+def report_customer_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    customers: list[dict[str, Any]] = []
+    for row in rows:
+        customer = str(row.get("customer") or row.get("customer_name") or "")
+        if not row.get("project") or not customer:
+            continue
+        value = {"project": str(row["project"]), "customer_name": customer}
+        for field in ("work_type", "app_name", "gms_release_type", "gms_target", "downstream_customer"):
+            if field in row:
+                value[field] = row[field]
+        customers.append(value)
+    return customers
 
 
 def incoming_report_manifest(
@@ -131,7 +146,7 @@ def build_report_package(
     session_items = items_by_project(sessions, patches)
     preliminary_summary = overview_text(report_type, session_items, patches)
     report_project, project_payload = infer_report_project(report_type, preliminary_summary, session_items, sessions, patches)
-    project_customers: dict[str, dict[str, str]] = {}
+    project_customers: dict[Any, Any] = {}
     for item in project_payload.get("project_customers", []):
         if not isinstance(item, dict) or not item.get("project") or not item.get("customer_name"):
             continue
@@ -169,15 +184,7 @@ def build_report_package(
         daily_tomorrow_plan = daily_facts.tomorrow_plan
         if daily_projects:
             items = daily_project_rows_to_items(daily_projects)
-            for row in daily_projects:
-                project = str(row.get("project") or "")
-                customer = str(row.get("customer") or row.get("customer_name") or "")
-                if not project or not customer:
-                    continue
-                context = {"customer_name": customer}
-                if row.get("downstream_customer"):
-                    context["downstream_customer"] = str(row["downstream_customer"])
-                project_customers[project] = context
+            project_customers = report_customer_contexts_from_rows(daily_projects)
         daily_fact_evidence_path = materials_rel("evidence", "daily_fact_sources.json")
         package_dir.mkdir(parents=True)
         write_json(
@@ -200,14 +207,7 @@ def build_report_package(
         weekly_standalone_work = weekly_facts.standalone_work
         if weekly_projects:
             items = project_rows_to_items(weekly_projects)
-            for row in weekly_projects:
-                project = str(row.get("project") or "")
-                customer = str(row.get("customer") or row.get("customer_name") or "")
-                if project and customer:
-                    context = {"customer_name": customer}
-                    if row.get("downstream_customer"):
-                        context["downstream_customer"] = str(row["downstream_customer"])
-                    project_customers[project] = context
+            project_customers = report_customer_contexts_from_rows(weekly_projects)
         weekly_fact_evidence_path = materials_rel("evidence", "weekly_fact_sources.json")
         package_dir.mkdir(parents=True)
         write_json(
@@ -217,16 +217,9 @@ def build_report_package(
     summary = overview_text(report_type, items, patches)
     report_project, project_payload = infer_report_project(report_type, summary, items, sessions, patches)
     if daily_projects:
-        fact_customers = []
-        for row in daily_projects:
-            customer_row = {
-                "project": str(row.get("project") or ""),
-                "customer_name": str(row.get("customer") or row.get("customer_name") or ""),
-            }
-            if row.get("downstream_customer"):
-                customer_row["downstream_customer"] = str(row["downstream_customer"])
-            if customer_row["project"] and customer_row["customer_name"] and customer_row not in fact_customers:
-                fact_customers.append(customer_row)
+        fact_customers = report_customer_rows(daily_projects)
+        project_payload.pop("customer_name", None)
+        project_payload.pop("downstream_customer", None)
         project_payload["project_customers"] = fact_customers
         project_payload["projects"] = sorted({row["project"] for row in fact_customers})
         project_payload["customer_basis"] = {
@@ -236,25 +229,18 @@ def build_report_package(
         if len(project_payload["projects"]) == 1:
             report_project = project_payload["projects"][0]
             project_payload["project"] = report_project
-            context = next(row for row in fact_customers if row["project"] == report_project)
-            project_payload["customer_name"] = context["customer_name"]
-            if context.get("downstream_customer"):
-                project_payload["downstream_customer"] = context["downstream_customer"]
+            if len(fact_customers) == 1:
+                context = fact_customers[0]
+                project_payload["customer_name"] = context["customer_name"]
+                if context.get("downstream_customer"):
+                    project_payload["downstream_customer"] = context["downstream_customer"]
         else:
             report_project = ""
             project_payload["project"] = ""
     if weekly_projects:
-        fact_customers = []
-        for row in weekly_projects:
-            if not row.get("project") or not (row.get("customer") or row.get("customer_name")):
-                continue
-            customer_row = {
-                "project": str(row.get("project") or ""),
-                "customer_name": str(row.get("customer") or row.get("customer_name") or ""),
-            }
-            if row.get("downstream_customer"):
-                customer_row["downstream_customer"] = str(row["downstream_customer"])
-            fact_customers.append(customer_row)
+        fact_customers = report_customer_rows(weekly_projects)
+        project_payload.pop("customer_name", None)
+        project_payload.pop("downstream_customer", None)
         project_payload["project_customers"] = fact_customers
         project_payload["customer_basis"] = {
             row["project"]: ["weekly_fact_sources"]

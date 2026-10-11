@@ -41,6 +41,7 @@ from .weekly_facts import (
     WEEKLY_FACT_SOURCES_SCHEMA,
 )
 from .weekly_ledger import WEEKLY_LEDGER_SCHEMA
+from .scope import report_scope_key
 
 
 RequireFile = Callable[[Any, str], Path | None]
@@ -97,7 +98,7 @@ def report_project_customer_errors(
         row_errors.append(f"{rel} payload.{label} 必须包含项目和客户信息")
         return row_errors
     seen_projects: dict[str, tuple[int, str, str]] = {}
-    seen_scopes: dict[tuple[str, str, str], int] = {}
+    seen_scopes: dict[tuple[str, ...], int] = {}
     for index, row in enumerate(rows):
         if not isinstance(row, dict):
             row_errors.append(f"{rel} payload.{label}[{index}] 必须是对象")
@@ -133,24 +134,22 @@ def report_project_customer_errors(
         if canonical_project:
             identity = (customer, downstream_customer)
             previous = seen_projects.get(canonical_project)
-            if previous:
+            if previous and not allow_work_scopes:
                 previous_index, previous_customer, previous_downstream = previous
                 if identity != (previous_customer, previous_downstream):
                     row_errors.append(
                         f"{rel} payload.{label}[{index}] 与 [{previous_index}] 的 {canonical_project} 客户链冲突；"
                         "同一项目必须保留唯一客户链"
                     )
-                elif not allow_work_scopes:
+                else:
                     row_errors.append(
                         f"{rel} payload.{label}[{index}].project 与 [{previous_index}] 重复；"
                         "同一项目只能有一行，具体工作内容应合并到事项数组"
                     )
-            else:
+            elif not previous:
                 seen_projects[canonical_project] = (index, customer, downstream_customer)
             if allow_work_scopes:
-                work_type = str(row.get("work_type") or "").strip()
-                app_name = str(row.get("app_name") or "").strip().casefold() if work_type == "App" else ""
-                scope = (canonical_project, work_type, app_name)
+                scope = report_scope_key({**row, "project": canonical_project})
                 previous_scope = seen_scopes.get(scope)
                 if previous_scope is not None:
                     row_errors.append(
@@ -373,8 +372,10 @@ def weekly_project_identity_consistency_errors(
     if not isinstance(rows, list) or not isinstance(expected_rows, list) or not expected_rows:
         return []
 
-    def identities(values: list[Any]) -> dict[str, tuple[str, str]]:
-        result: dict[str, tuple[str, str]] = {}
+    identity_errors: list[str] = []
+
+    def identities(values: list[Any]) -> dict[tuple[str, ...], tuple[str, str]]:
+        result: dict[tuple[str, ...], tuple[str, str]] = {}
         for value in values:
             if not isinstance(value, dict):
                 continue
@@ -382,11 +383,28 @@ def weekly_project_identity_consistency_errors(
             customer = str(value.get("customer") or value.get("customer_name") or "").strip()
             downstream = str(value.get("downstream_customer") or "").strip()
             if project and customer:
-                result[project] = (customer, downstream)
+                scope = report_scope_key({**value, "project": project})
+                chain = (customer, downstream)
+                if scope in result and (scope[1] or result[scope] != chain):
+                    identity_errors.append(f"{rel} 工作范围客户来源重复或矛盾，不得覆盖")
+                result[scope] = chain
         return result
 
     actual = identities(rows)
     expected = identities(expected_rows)
+    if identity_errors:
+        return identity_errors
+    if all(not str(value.get("work_type") or "").strip() for value in expected_rows if isinstance(value, dict)):
+        # A flat source still describes several scopes when their chains agree.
+        by_project: dict[str, set[tuple[str, str]]] = {}
+        for scope, chain in actual.items():
+            by_project.setdefault(scope[0], set()).add(chain)
+        if any(len(chains) != 1 for chains in by_project.values()):
+            return [f"{rel} project_inference.project_customers 必须明确各工作范围的客户身份"]
+        actual = {
+            (project, "", "", "", ""): next(iter(chains))
+            for project, chains in by_project.items()
+        }
     if actual == expected:
         return []
     return [

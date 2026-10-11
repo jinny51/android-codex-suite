@@ -1123,7 +1123,17 @@ def report_view_payload(
         items = {}
     if not items and not non_project_rows:
         items = {MISSING_REPORT_PROJECT: [("未形成有效工作记录", "需补充真实工作记录")]}
-    project_material_name = report_project_customer_title(items, project_customers) if items else ""
+    fact_rows = (daily_projects or []) if report_type == "daily" else (weekly_projects or [])
+    if fact_rows:
+        project_material_name = "、".join(dict.fromkeys(
+            project_customer_title_label(
+                row.get("project"), row_customer_context(row)["customer_name"],
+                row_customer_context(row)["downstream_customer"],
+            )
+            for row in fact_rows
+        ))
+    else:
+        project_material_name = report_project_customer_title(items, project_customers) if items else ""
     non_project_name = document_material_name(non_project_rows)
     material_name = "、".join(value for value in (project_material_name, non_project_name) if value)
     project_summary = (

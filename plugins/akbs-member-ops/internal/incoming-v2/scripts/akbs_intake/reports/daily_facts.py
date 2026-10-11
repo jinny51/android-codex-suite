@@ -27,7 +27,10 @@ from .document_work import (
     validate_daily_standalone_work,
 )
 from .gms import GMS_CURRENT_FIELDS, GMS_PLAN_FIELDS, normalize_gms_fields, validate_gms_fields
-from .scope import ALLOWED_WORK_TYPES, PROJECT_WORK_TYPES, clean_scope_text, report_scope_key
+from .scope import (
+    ALLOWED_WORK_TYPES, PROJECT_WORK_TYPES, clean_scope_text, report_scope_key,
+    report_scope_customer_context,
+)
 
 
 DAILY_FACTS_SCHEMA = "akbs-daily-work-facts-v4"
@@ -399,12 +402,7 @@ def validate_daily_projects(
     require_current_gms: bool = True,
 ) -> list[str]:
     errors: list[str] = []
-    seen_customers: dict[str, tuple[str, str]] = {}
     seen_scopes: dict[tuple[str, ...], int] = {}
-    expected = {
-        str(project).upper(): normalize_report_customer_context(context)
-        for project, context in (expected_project_customers or {}).items()
-    }
     for index, row in enumerate(projects):
         prefix = f"projects[{index}]"
         project = clean_scope_text(row.get("project"))
@@ -423,12 +421,9 @@ def validate_daily_projects(
         if downstream and not clean_report_customer_name(downstream):
             errors.append(f"{prefix}.downstream_customer 不是有效客户名称")
         identity = (customer, downstream)
-        previous = seen_customers.get(canonical)
-        if previous and previous != identity:
-            errors.append(f"{prefix} 与同项目其他范围的客户链不一致")
-        else:
-            seen_customers[canonical] = identity
-        expected_context = expected.get(canonical.upper(), {})
+        expected_context = normalize_report_customer_context(
+            report_scope_customer_context(row, expected_project_customers or {}, projects)
+        )
         if expected_context and identity != (
             clean_scope_text(expected_context.get("customer_name")),
             clean_scope_text(expected_context.get("downstream_customer")),
@@ -513,7 +508,6 @@ def validate_tomorrow_plan(
         return [f"{prefix} 必须是对象"]
     errors: list[str] = []
     normalized = normalize_tomorrow_plan(value)
-    project_chains: dict[str, tuple[str, str]] = {}
     project_scopes: dict[tuple[str, ...], int] = {}
     for collection in TOMORROW_PLAN_COLLECTIONS:
         raw_rows = value.get(collection)
@@ -552,12 +546,6 @@ def validate_tomorrow_plan(
                 if work_type == "GMS" and require_current_gms:
                     errors.extend(validate_gms_fields(row, prefix=row_prefix, plan=True))
                 if canonical:
-                    chain = (customer, downstream)
-                    previous_chain = project_chains.get(canonical)
-                    if previous_chain and previous_chain != chain:
-                        errors.append(f"{row_prefix} 与同项目其他明日计划的客户链不一致")
-                    else:
-                        project_chains[canonical] = chain
                     scope = report_scope_key(row)
                     if scope in project_scopes:
                         errors.append(
@@ -739,9 +727,17 @@ def fallback_projects(
     )
     project_names = sorted(item_projects | set(scopes_by_project))
     for project in project_names:
-        context = report_customer_context_for_project(project, project_customers)
         scope_rows = scopes_by_project.get(project) or [{}]
         for scope in scope_rows:
+            context = normalize_report_customer_context(scope)
+            if not context.get("customer_name"):
+                context = normalize_report_customer_context(
+                    report_scope_customer_context(
+                        {**scope, "project": project}, project_customers,
+                        [{**value, "project": project} for value in scope_rows],
+                    )
+                )
+            context.setdefault("customer_name", "需成员补充客户名")
             raw_scope_items = scope.get("work_items")
             work_items = (
                 [normalize_work_item(item) for item in raw_scope_items if isinstance(item, dict)]

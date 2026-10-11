@@ -281,6 +281,48 @@ def report_scope_key(row: dict[str, Any]) -> tuple[str, ...]:
     return clean_scope_text(row.get("project")).upper(), work_type, app_name, release_type, target
 
 
+def report_scope_customer_context(
+    row: dict[str, Any],
+    contexts: dict[Any, Any],
+    rows: list[dict[str, Any]],
+) -> Any:
+    """Use flat project hints only when they identify one unambiguous scope."""
+    scope = report_scope_key(row)
+    if scope in contexts:
+        return contexts[scope]
+    project_scopes = {
+        report_scope_key(value)
+        for value in rows
+        if report_scope_key(value)[0] == scope[0]
+    }
+    if project_scopes == {scope}:
+        return contexts.get(scope[0], {})
+    return {}
+
+
+def report_customer_contexts_from_rows(rows: list[dict[str, Any]]) -> dict[Any, Any]:
+    """Retain each confirmed scope; never choose one scope as a project default."""
+    contexts: dict[Any, Any] = {}
+    scopes_by_project: dict[str, set[tuple[str, ...]]] = {}
+    for row in rows:
+        scope = report_scope_key(row)
+        customer = clean_scope_text(row.get("customer") or row.get("customer_name"))
+        if not scope[0] or not customer:
+            continue
+        context = {
+            "customer_name": customer,
+            "downstream_customer": clean_scope_text(row.get("downstream_customer")),
+        }
+        if scope in contexts and contexts[scope] != context:
+            raise ValueError("同一报告工作范围的客户身份矛盾")
+        contexts[scope] = context
+        scopes_by_project.setdefault(scope[0], set()).add(scope)
+    for project, scopes in scopes_by_project.items():
+        if len(scopes) == 1:
+            contexts[project] = contexts[next(iter(scopes))]
+    return contexts
+
+
 def report_scope_suffix(row: dict[str, Any]) -> str:
     work_type = clean_scope_text(row.get("work_type"))
     if work_type == "App":

@@ -14,6 +14,7 @@ import urllib.error
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "plugins/akbs-member-ops/lib"))
 from akbs_member_ops.http_client import HttpClientFailure  # noqa: E402
+from akbs_member_ops import http_client  # noqa: E402
 from akbs_member_ops.knowledge_search import api, cli, originals  # noqa: E402
 
 
@@ -95,6 +96,13 @@ class KnowledgePatchOriginalsTest(unittest.TestCase):
         self.assertEqual(dict((k.lower(), v) for k, v in sent.header_items()), {"accept": "application/json", "x-akbs-user": "member1"})
         self.assertEqual(result["source"], "server_api")
 
+    def test_json_listing_limit_still_two_mebibytes(self):
+        self.assertEqual(http_client.MAX_RESPONSE_BYTES, 2 * 1024 * 1024)
+        with mock.patch.object(originals.urllib.request, "urlopen", return_value=Response(b" " * (http_client.MAX_RESPONSE_BYTES + 1))):
+            with self.assertRaises(HttpClientFailure):
+                originals.fetch_case_patches(CASE)
+        self.assertFalse(self.output.exists())
+
     def test_download_verifies_bytes_ignores_remote_url_and_does_not_claim_reuse(self):
         with mock.patch.object(originals, "request_json", return_value=listing()), mock.patch.object(originals.urllib.request, "urlopen", return_value=Response(CONTENT)) as request:
             result = originals.download_case_patch(CASE, ASSET, self.output)
@@ -105,7 +113,7 @@ class KnowledgePatchOriginalsTest(unittest.TestCase):
 
     def test_wrong_case_or_contract_or_metadata_rejected(self):
         bad = [listing(case_id="another"), listing(schema="wrong"), listing(scope="wrong"), listing(scope={}), listing(scope=[]), listing(availability="unavailable"), listing(patches=[None])]
-        for field, value in (("sha256", "bad"), ("size_bytes", True), ("size_bytes", -1), ("size_bytes", originals.MAX_PATCH_BYTES + 1), ("asset_id", "../another")):
+        for field, value in (("sha256", "bad"), ("size_bytes", True), ("size_bytes", -1), ("asset_id", "../another")):
             item = listing()
             item["patches"][0][field] = value
             bad.append(item)
@@ -159,6 +167,113 @@ class KnowledgePatchOriginalsTest(unittest.TestCase):
                 with self.assertRaises(HttpClientFailure):
                     originals.download_case_patch(CASE, ASSET, self.output)
             self.assertFalse(self.output.exists())
+
+    def test_large_original_streamed_with_exact_metadata_and_bounded_memory(self):
+        size = 185104323
+        block = b"a" * originals.DOWNLOAD_CHUNK_BYTES
+        digest = hashlib.sha256()
+        for _ in range(size // len(block)):
+            digest.update(block)
+        digest.update(block[:size % len(block)])
+        payload = listing()
+        payload["patches"][0].update(size_bytes=size, sha256=digest.hexdigest())
+
+        class GeneratedResponse:
+            remaining = size
+            reads = []
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                pass
+
+            def read(self, count):
+                self.reads.append(count)
+                amount = min(self.remaining, count)
+                self.remaining -= amount
+                return block[:amount]
+
+        response = GeneratedResponse()
+        with mock.patch.object(originals, "request_json", return_value=payload), mock.patch.object(originals.urllib.request, "urlopen", return_value=response):
+            result = originals.download_case_patch(CASE, ASSET, self.output)
+        self.assertTrue(all(0 < count <= originals.DOWNLOAD_CHUNK_BYTES for count in response.reads))
+        self.assertGreater(len(response.reads), 1)
+        self.assertEqual(self.output.stat().st_size, size)
+        actual = hashlib.sha256()
+        with self.output.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(originals.DOWNLOAD_CHUNK_BYTES), b""):
+                actual.update(chunk)
+        self.assertEqual(actual.hexdigest(), digest.hexdigest())
+        self.assertEqual(result["size_bytes"], size)
+        self.assertEqual(result["reuse_outcome"], "not_started")
+        self.assertEqual(list(self.output.parent.iterdir()), [self.output])
+
+    def test_chunk_boundaries_zero_and_short_reads(self):
+        class ShortResponse(Response):
+            def read(self, count):
+                return super().read(min(count, 17))
+        for size in (0, originals.DOWNLOAD_CHUNK_BYTES - 1, originals.DOWNLOAD_CHUNK_BYTES, originals.DOWNLOAD_CHUNK_BYTES + 1):
+            content = b"z" * size
+            payload = listing()
+            payload["patches"][0].update(size_bytes=size, sha256=hashlib.sha256(content).hexdigest())
+            output = self.output.with_name(str(size) + ".patch")
+            with self.subTest(size=size), mock.patch.object(originals, "request_json", return_value=payload), mock.patch.object(originals.urllib.request, "urlopen", return_value=ShortResponse(content)):
+                result = originals.download_case_patch(CASE, ASSET, output)
+            self.assertEqual(output.read_bytes(), content)
+            self.assertEqual(result["size_bytes"], size)
+
+    def test_interrupted_download_cleans_staging_and_has_no_final_file(self):
+        class InterruptedResponse(Response):
+            def read(self, count):
+                if self.tell():
+                    raise TimeoutError("private detail")
+                return super().read(min(count, 3))
+        with mock.patch.object(originals, "request_json", return_value=listing()), mock.patch.object(originals.urllib.request, "urlopen", return_value=InterruptedResponse(CONTENT)):
+            with self.assertRaises(HttpClientFailure) as failure:
+                originals.download_case_patch(CASE, ASSET, self.output)
+        self.assertNotIn("private detail", str(failure.exception))
+        self.assertEqual(list(self.output.parent.iterdir()), [])
+
+    def test_competing_output_creation_is_not_overwritten_or_removed(self):
+        output = self.output
+        class RacingResponse(Response):
+            def __enter__(self):
+                output.write_bytes(b"competing work")
+                return self
+        with mock.patch.object(originals, "request_json", return_value=listing()), mock.patch.object(originals.urllib.request, "urlopen", return_value=RacingResponse(CONTENT)):
+            with self.assertRaises(FileExistsError):
+                originals.download_case_patch(CASE, ASSET, self.output)
+        self.assertEqual(self.output.read_bytes(), b"competing work")
+        self.assertEqual(list(self.output.parent.iterdir()), [self.output])
+
+    def test_failed_final_copy_removes_only_own_partial_output(self):
+        def fail_copy(_source, output, **_kwargs):
+            output.write(b"partial")
+            raise OSError("disk full")
+        with mock.patch.object(originals, "request_json", return_value=listing()), mock.patch.object(originals.urllib.request, "urlopen", return_value=Response(CONTENT)), mock.patch.object(originals.shutil, "copyfileobj", side_effect=fail_copy):
+            with self.assertRaises(OSError):
+                originals.download_case_patch(CASE, ASSET, self.output)
+        self.assertEqual(list(self.output.parent.iterdir()), [])
+
+    def test_final_close_failure_also_removes_own_output(self):
+        path_open = Path.open
+        output = self.output
+        class FailedClose:
+            def __init__(self, stream):
+                self.stream = stream
+            def __enter__(self):
+                return self.stream
+            def __exit__(self, *_args):
+                self.stream.close()
+                raise OSError("close failed")
+        def open_with_failed_close(path, *args, **kwargs):
+            stream = path_open(path, *args, **kwargs)
+            return FailedClose(stream) if path == output and args == ("xb",) else stream
+        with mock.patch.object(originals, "request_json", return_value=listing()), mock.patch.object(originals.urllib.request, "urlopen", return_value=Response(CONTENT)), mock.patch.object(Path, "open", new=open_with_failed_close):
+            with self.assertRaises(OSError):
+                originals.download_case_patch(CASE, ASSET, self.output)
+        self.assertEqual(list(self.output.parent.iterdir()), [])
 
     def test_existing_output_preserved_without_network(self):
         self.output.write_bytes(b"existing work")

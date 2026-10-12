@@ -4,6 +4,8 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Any
 import urllib.error
@@ -23,7 +25,7 @@ SCOPE = "active_v2_case_source_evidence"
 HISTORICAL_SCOPE = "active_historical_case_snapshot"
 IMPLEMENTATION_SCOPE = "active_implementation_originals"
 SCOPES = frozenset({SCOPE, HISTORICAL_SCOPE, IMPLEMENTATION_SCOPE})
-MAX_PATCH_BYTES = 64 * 1024 * 1024
+DOWNLOAD_CHUNK_BYTES = 64 * 1024
 IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,255}\Z")
 IMPLEMENTATION_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -71,7 +73,7 @@ def fetch_case_patches(
         size = patch.get("size_bytes")
         if (not isinstance(asset_id, str) or not IDENTIFIER.fullmatch(asset_id) or asset_id in seen
                 or not isinstance(patch.get("sha256"), str) or not SHA256.fullmatch(patch["sha256"])
-                or type(size) is not int or size < 0 or size > MAX_PATCH_BYTES
+                or type(size) is not int or size < 0
                 or not isinstance(patch.get("display_name"), str)):
             raise invalid_success_response("case patch metadata invalid")
         seen.add(asset_id)
@@ -152,23 +154,55 @@ def download_case_patch(
     headers = member_request_headers()
     headers["Accept"] = "application/octet-stream"
     request = urllib.request.Request(_endpoint(case_id, asset_id, implementation_id=implementation_id), headers=headers, method="GET")
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            raw = response.read(patch["size_bytes"] + 1)
-    except urllib.error.HTTPError as error:
-        raise HttpClientFailure(parse_http_error(error)) from None
-    except Exception as error:
-        raise HttpClientFailure(failure_result(error)) from None
-    if (not isinstance(raw, bytes) or len(raw) != patch["size_bytes"]
-            or hashlib.sha256(raw).hexdigest() != patch["sha256"]):
-        raise invalid_success_response("patch original bytes do not match the case metadata")
     target.parent.mkdir(parents=True, exist_ok=True)
-    # Exclusive creation preserves existing work, including on a concurrent call.
-    with target.open("xb") as stream:
-        stream.write(raw)
+    # Stage within the existing safe output directory. Memory stays bounded even
+    # for large historical originals; metadata still pins exact bytes and hash.
+    size = 0
+    digest = hashlib.sha256()
+    with tempfile.TemporaryFile(mode="w+b", dir=target.parent) as staged:
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                while True:
+                    requested = min(DOWNLOAD_CHUNK_BYTES, patch["size_bytes"] - size + 1)
+                    chunk = response.read(requested)
+                    if not isinstance(chunk, bytes) or len(chunk) > requested:
+                        raise invalid_success_response("patch original bytes do not match the case metadata")
+                    if not chunk:
+                        break
+                    size += len(chunk)
+                    if size > patch["size_bytes"]:
+                        raise invalid_success_response("patch original bytes do not match the case metadata")
+                    digest.update(chunk)
+                    staged.write(chunk)
+        except urllib.error.HTTPError as error:
+            raise HttpClientFailure(parse_http_error(error)) from None
+        except HttpClientFailure:
+            raise
+        except Exception as error:
+            raise HttpClientFailure(failure_result(error)) from None
+        if size != patch["size_bytes"] or digest.hexdigest() != patch["sha256"]:
+            raise invalid_success_response("patch original bytes do not match the case metadata")
+        staged.seek(0)
+        # Exclusive creation works on WSL/macOS output filesystems without
+        # requiring hard links, and preserves a concurrent caller's output.
+        created = None
+        try:
+            with target.open("xb") as stream:
+                created = os.fstat(stream.fileno())
+                shutil.copyfileobj(staged, stream, length=DOWNLOAD_CHUNK_BYTES)
+                stream.flush()
+        except BaseException:
+            if created is not None:
+                try:
+                    current = target.lstat()
+                except FileNotFoundError:
+                    current = None
+                if current is not None and (current.st_dev, current.st_ino) == (created.st_dev, created.st_ino):
+                    target.unlink()
+            raise
     receipt = {
         "schema": SCHEMA, "source": "server_api", "case_id": case_id, "asset_id": asset_id,
-        "output": str(target), "sha256": patch["sha256"], "size_bytes": len(raw),
+        "output": str(target), "sha256": patch["sha256"], "size_bytes": size,
         "verified_original": True,
         "reuse_outcome": "not_started",
     }

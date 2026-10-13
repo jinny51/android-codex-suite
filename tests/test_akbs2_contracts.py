@@ -40,6 +40,8 @@ from akbs_intake.search_usage import (  # noqa: E402
     search_payload_has_unresolved_usage,
     workflow_contract_requires_pre_change_search,
 )
+from akbs_member_ops.verification_acceptance import knowledge_evidence_level as member_evidence_level  # noqa: E402
+from android_engineering_ops.verification_acceptance import knowledge_evidence_level as engineering_evidence_level  # noqa: E402
 
 
 PACKAGE_SCHEMA = ROOT / "contracts/incoming/v2/knowledge-incoming-package.schema.json"
@@ -48,6 +50,37 @@ PACKAGE_FIXTURE = ROOT / "contracts/incoming/v2/fixtures/patch.manifest.json"
 
 def load(path: Path):
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("evaluator", [member_evidence_level, engineering_evidence_level], ids=["member", "engineering"])
+@pytest.mark.parametrize("equivalent_type", ["artifact_static_check", "patch_static_review", "static_diff_review"])
+def test_static_equivalent_type_same_value_never_promotes_evidence(evaluator, equivalent_type: str) -> None:
+    contract = load(ROOT / "contracts/incoming/v2/verification-acceptance-v2.json")
+    payload = {"contract_version": contract["evidence_contract_version"], "scope": "feature",
+               "requirement_acceptance": "accepted", "result": "PASS", "method": "equivalent",
+               "reason": "Review only", "coverage": ["changed paths"], "remaining_risk": "No device run"}
+    for variant in (equivalent_type, f" \t{equivalent_type}\n", equivalent_type.upper(), f" {equivalent_type.upper()} "):
+        assert evaluator({**payload, "equivalent_type": variant}, contract) == "static_review"
+    assert evaluator({**payload, "equivalent_type": equivalent_type.upper(), "coverage": []}, contract) == "review_required"
+    assert evaluator({**payload, "equivalent_type": equivalent_type.upper(), "result": "FAIL"}, contract) == "review_required"
+
+
+@pytest.mark.parametrize("evaluator", [member_evidence_level, engineering_evidence_level], ids=["member", "engineering"])
+def test_custom_equivalent_type_keeps_existing_evidence_policy(evaluator) -> None:
+    contract = load(ROOT / "contracts/incoming/v2/verification-acceptance-v2.json")
+    payload = {"contract_version": contract["evidence_contract_version"], "scope": "feature",
+               "requirement_acceptance": "accepted", "result": "PASS", "method": "equivalent",
+               "reason": "Project verification", "coverage": ["target behavior"], "remaining_risk": "Recorded"}
+    for equivalent_type in ("project_specific_check", " PROJECT_SPECIFIC_CHECK "):
+        assert evaluator({**payload, "equivalent_type": equivalent_type}, contract) == "validated"
+
+
+def test_verification_evaluator_copies_and_existing_pin_match() -> None:
+    member = MEMBER_LIB / "akbs_member_ops/verification_acceptance.py"
+    engineering = LIB / "android_engineering_ops/verification_acceptance.py"
+    assert member.read_bytes() == engineering.read_bytes()
+    pin = load(ROOT / "contracts/incoming/v2/contract-pin.json")
+    assert hashlib.sha256(member.read_bytes()).hexdigest() == pin["verification_reference_evaluator"]["sha256"]
 
 
 def test_android_change_uses_one_current_incoming_v2_schema() -> None:

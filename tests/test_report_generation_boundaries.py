@@ -16,16 +16,18 @@ for path in (MEMBER / "lib", MEMBER / "internal/incoming-v2/scripts"):
         sys.path.insert(0, str(path))
 
 import akbs_member_intake as intake  # noqa: E402
+from akbs_intake import submit as submit_module  # noqa: E402
 from akbs_intake.io_utils import write_json  # noqa: E402
 from akbs_intake.report_sessions import (  # noqa: E402
     SessionWork, project_customer_contexts_from_text, report_project_customers_from_clues,
 )
 from akbs_intake.reports import builder, daily_facts, weekly_facts  # noqa: E402
 from akbs_intake.reports.common import (  # noqa: E402
-    ensure_report_submit_allowed, report_dates, report_session_privacy_errors,
+    ensure_report_not_duplicate, ensure_report_submit_allowed, report_dates, report_session_privacy_errors,
 )
 from akbs_intake.reports.identity import infer_report_project  # noqa: E402
 from akbs_intake.session_privacy import configure_report_session_consent, sanitize_work_summary  # noqa: E402
+from akbs_member_ops.http_client import HttpClientFailure, failure_result  # noqa: E402
 
 
 GIT_STATUS = "On branch TVI2343R_CRB2\nYour branch is up to date with origin/TVI2343R_CRB2."
@@ -83,7 +85,7 @@ def weekly_facts_file(tmp_path: Path, date: dt.date) -> Path:
 
 def build(report_type: str, date: dt.date, config: dict[str, str], **kwargs) -> Path:
     return builder.build_report_package(
-        report_type, date, config, run_id=f"{date:%Y%m%d}-091500-{report_type}",
+        report_type, date, config, run_id=kwargs.pop("run_id", f"{date:%Y%m%d}-091500-{report_type}"),
         incoming_schema_version="2", validate_package_fn=intake.validate_package,
         write_package_source_fn=intake.write_package_source,
         parse_sessions_fn=Mock(side_effect=AssertionError("session reader must not run")),
@@ -115,6 +117,151 @@ def test_complete_facts_generate_without_session_read_or_fabricated_consent(
     facts = daily_facts_file(tmp_path, date) if report_type == "daily" else weekly_facts_file(tmp_path, date)
     package = build(report_type, date, config, **{f"{report_type}_facts_path": str(facts)})
     assert_fact_package(package, config, f"explicit_{report_type}_facts")
+
+
+@pytest.mark.parametrize("report_type", ["daily", "weekly"])
+def test_failed_draft_can_be_completed_without_report_revision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, provenance: None, report_type: str,
+) -> None:
+    date = dt.date.today() - dt.timedelta(days=2)
+    config = report_config(tmp_path)
+    if report_type == "daily":
+        configure_report_session_consent(config, {date}, granted=True, fields=["work_summary", "command_summary"])
+        failed = builder.build_report_package(
+            report_type, date, config, run_id=f"{date:%Y%m%d}-090000-daily",
+            incoming_schema_version="2", validate_package_fn=intake.validate_package,
+            write_package_source_fn=intake.write_package_source,
+            parse_sessions_fn=lambda *args: [SessionWork(
+                project="TVI2343R", messages=["TVI2343R；完成接口核查，对照源码和验证记录，核查完成"],
+                commands=["git diff"], source_work_type_hint="Patch",
+            )], discover_patches_fn=lambda *args: [],
+        )
+    else:
+        daily = {"package_key": "synthetic-daily-key", "report_date": date.isoformat(),
+                 "report_view": {"projects": [], "standalone_work": [], "documents": [
+                     {"work_type": "Doc", "document_name": "接口操作文档", "work_items": [actual_work()],
+                      "key_points": [], "dependencies": ["等待接口负责人确认"]}]}}
+        monkeypatch.setattr(weekly_facts, "load_history", lambda *args: (
+            [daily], [], {"source": "akbs_api", "daily_package_keys": [daily["package_key"]],
+                          "previous_weekly_package_keys": [], "api_errors": []},
+        ))
+        failed = build(report_type, date, config, run_id=f"{date:%Y%m%d}-090000-weekly")
+    check = json.loads((failed / "local-check.json").read_text())
+    assert check["status"] == "FAIL"
+    assert check["errors"]
+    assert check["report_generation_failed"] is True
+
+    facts = daily_facts_file(tmp_path, date) if report_type == "daily" else weekly_facts_file(tmp_path, date)
+    completed = build(report_type, date, config, **{f"{report_type}_facts_path": str(facts)})
+    assert_fact_package(completed, config, f"explicit_{report_type}_facts")
+    manifest = json.loads((completed / "manifest.json").read_text())
+    assert manifest["report_submission_intent"] == "initial"
+    assert "supersedes" not in manifest
+    assert "replacement_for_run_id" not in manifest
+    assert (failed / "manifest.json").is_file()
+    assert "report_generation_failed" not in json.loads((completed / "local-check.json").read_text())
+
+
+@pytest.mark.parametrize("report_type", ["daily", "weekly"])
+@pytest.mark.parametrize("bucket,check,receipt", [
+    ("pending", {"status": "PASS", "errors": []}, None),
+    ("pending", None, None),
+    ("pending", "invalid JSON", None),
+    ("pending", {"status": "UNKNOWN", "errors": ["unknown result"]}, None),
+    ("pending", {"status": "FAIL", "errors": ["local failure"]}, None),
+    ("pending", {"status": "FAIL", "errors": ["local failure"], "report_generation_failed": False}, None),
+    ("pending", {"status": "FAIL", "errors": ["local failure"], "report_generation_failed": "true"}, None),
+    ("pending", {"status": "FAIL", "errors": []}, None),
+    ("pending", {"status": "FAIL", "errors": "not a check error list"}, None),
+    ("pending", {"status": "FAIL", "errors": ["local failure"]}, {"submitted": True}),
+    ("pending", {"status": "FAIL", "errors": ["local failure"]}, {"status": "unknown"}),
+    ("submitted", {"status": "FAIL", "errors": ["local failure"]}, None),
+    ("submitted", {"status": "FAIL", "errors": ["local failure"], "report_generation_failed": True}, None),
+    ("pending", {"status": "FAIL", "errors": ["local failure"], "report_generation_failed": True}, {"status": "unknown"}),
+])
+def test_effective_or_uncertain_reports_still_block_a_duplicate(
+    tmp_path: Path, report_type: str, bucket: str, check, receipt,
+) -> None:
+    date = dt.date.today() - dt.timedelta(days=2)
+    config = report_config(tmp_path)
+    week = report_dates("weekly", date)[3]
+    package = Path(config["out_dir"]) / bucket / f"{date:%Y%m%d}" / config["member_alias"] / "existing-run"
+    write_json(package / "manifest.json", {"package_kind": f"{report_type}_trace",
+               "member_alias": config["member_alias"], "date": date.isoformat(),
+               "week_range": week, "run_id": "existing-run"})
+    if isinstance(check, dict):
+        write_json(package / "local-check.json", check)
+    elif check is not None:
+        (package / "local-check.json").write_text(check)
+    if receipt is not None:
+        write_json(package / ".akbs-upload-receipt.json", receipt)
+    identity = date.isoformat() if report_type == "daily" else week
+    with pytest.raises(SystemExit, match="已停止生成或上传第二个普通"):
+        ensure_report_not_duplicate(config, report_type, identity, "new-run")
+
+
+@pytest.mark.parametrize("report_type", ["daily", "weekly"])
+def test_lost_submit_response_then_failed_recheck_does_not_allow_new_initial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, provenance: None, report_type: str,
+) -> None:
+    date = dt.date.today() - dt.timedelta(days=2)
+    config = report_config(tmp_path)
+    facts = daily_facts_file(tmp_path, date) if report_type == "daily" else weekly_facts_file(tmp_path, date)
+    arguments = {f"{report_type}_facts_path": str(facts)}
+    package = build(report_type, date, config, **arguments)
+    request = Mock(side_effect=HttpClientFailure(failure_result(TimeoutError("response lost"))))
+    monkeypatch.setattr(submit_module, "submission_api_base_url", lambda _: "http://akbs.invalid/api")
+    monkeypatch.setattr(submit_module, "request_json_with_metadata", request)
+
+    with pytest.raises(SystemExit, match="HTTP 上传入口提交失败"):
+        intake.submit_package(package, config)
+    request.assert_called_once()
+    assert not (package / ".akbs-upload-receipt.json").exists()
+    report = package / f"reports/{report_type}.md"
+    report.write_text(report.read_text() + "\n未同步的补充内容\n")
+    with pytest.raises(SystemExit, match="本地工作包校验失败"):
+        intake.submit_package(package, config)
+    check = json.loads((package / "local-check.json").read_text())
+    assert check["status"] == "FAIL" and check["errors"]
+    assert "report_generation_failed" not in check
+    request.assert_called_once()
+    with pytest.raises(SystemExit, match="已停止生成或上传第二个普通"):
+        build(report_type, date, config, run_id=f"{date:%Y%m%d}-100000-{report_type}", **arguments)
+
+
+@pytest.mark.parametrize("helper", ["server", "http"])
+def test_direct_upload_failure_removes_generation_failure_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, provenance: None, helper: str,
+) -> None:
+    date = dt.date.today() - dt.timedelta(days=2)
+    config = report_config(tmp_path)
+    configure_report_session_consent(config, {date}, granted=True, fields=["work_summary", "command_summary"])
+    package = builder.build_report_package(
+        "daily", date, config, run_id=f"{date:%Y%m%d}-090000-daily",
+        incoming_schema_version="2", validate_package_fn=intake.validate_package,
+        write_package_source_fn=intake.write_package_source,
+        parse_sessions_fn=lambda *args: [SessionWork(
+            project="TVI2343R", messages=["TVI2343R；完成接口核查，对照源码和验证记录，核查完成"],
+            commands=["git diff"], source_work_type_hint="Patch",
+        )], discover_patches_fn=lambda *args: [],
+    )
+    check = json.loads((package / "local-check.json").read_text())
+    assert check["status"] == "FAIL" and check["report_generation_failed"] is True
+    ensure_report_not_duplicate(config, "daily", date.isoformat(), "new-run")
+    request = Mock(side_effect=HttpClientFailure(failure_result(TimeoutError("response lost"))))
+    monkeypatch.setattr(submit_module, "submission_api_base_url", lambda _: "http://akbs.invalid/api")
+    monkeypatch.setattr(submit_module, "request_json_with_metadata", request)
+
+    with pytest.raises(SystemExit, match="HTTP 上传入口提交失败"):
+        if helper == "server":
+            submit_module.server_submit_package(package, config)
+        else:
+            submit_module.http_submit_package(package, config, config["member_alias"], b"test-package")
+    request.assert_called_once()
+    expected_check = {key: value for key, value in check.items() if key != "report_generation_failed"}
+    assert json.loads((package / "local-check.json").read_text()) == expected_check
+    with pytest.raises(SystemExit, match="已停止生成或上传第二个普通"):
+        ensure_report_not_duplicate(config, "daily", date.isoformat(), "new-run")
 
 
 def test_effective_daily_history_generates_weekly_without_session_read(

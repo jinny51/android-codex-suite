@@ -19,7 +19,7 @@
   "verification_reference_evaluator": {
     "source_path": "plugins/akbs-member-ops/lib/akbs_member_ops/verification_acceptance.py",
     "server_path": "akbs_active/upload_domains/verification_acceptance.py",
-    "sha256": "863fae77e251691be196f1599a522c54042bc99ef5e1fbf06d3ce41793eb712e"
+    "sha256": "76395a4d5e81a1235d8f6927611eb8b959312116e8d8968d288371b58c306b3e"
   },
   "error_envelope": {
     "system_path": "contracts/http/error-envelope-v1.schema.json",

@@ -419,5 +419,7 @@ def build_report_package(
     manifest["files"]["evidence"].append(render_binding_path)
     write_json(package_dir / "manifest.json", manifest)
     check = validate_package_fn(package_dir)
+    if check.get("status") == "FAIL":
+        check["report_generation_failed"] = True
     write_json(package_dir / "local-check.json", check)
     return package_dir

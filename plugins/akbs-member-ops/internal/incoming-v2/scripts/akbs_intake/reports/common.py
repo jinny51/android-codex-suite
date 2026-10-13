@@ -117,6 +117,18 @@ def local_report_packages(config: dict[str, str], report_type: str, identity: st
         run_id = str(manifest.get("run_id") or package_dir.name)
         if exclude_run_id and run_id == exclude_run_id:
             continue
+        local_check = read_json_file(package_dir / "local-check.json")
+        if (
+            bucket == "pending"
+            and local_check.get("status") == "FAIL"
+            and local_check.get("report_generation_failed") is True
+            and isinstance(local_check.get("errors"), list)
+            and local_check["errors"]
+            and not (package_dir / ".akbs-upload-receipt.json").exists()
+        ):
+            # Only a builder failure proves this draft has not reached upload.
+            # Submit revalidation and direct HTTP attempts remove this marker.
+            continue
         package_key = package_key_from_manifest(manifest, package_dir)
         packages.setdefault(
             package_key,

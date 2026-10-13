@@ -70,7 +70,8 @@ def knowledge_evidence_level(
         return str(policy["non_authoritative_level"])
     if (
         payload.get("method") == "equivalent"
-        and payload.get("equivalent_type") in policy["static_equivalent_types"]
+        and str(payload.get("equivalent_type") or "").strip().lower()
+        in policy["static_equivalent_types"]
     ):
         return str(policy["static_equivalent_level"])
     remote_required = policy["remote_device_required_nonempty"]

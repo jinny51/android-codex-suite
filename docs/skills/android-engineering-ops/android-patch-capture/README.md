@@ -22,5 +22,7 @@
 当前工作流将知识搜索返回的 `usage_receipt` 与 `usage_receipt_sha256` 分别传入
 `--search-receipt`、`--search-receipt-sha256`。采集及提交保留回执原字节和结构化查询结果，
 不按同日日志合并或改写；回执不是产品源码归属证明，也不是复用成功证明。
+真实开发前搜索的用途仍为 `unknown` 时保留事实并提示，不因此把已验证的补丁降为
+`candidate`。开发前搜索未发生或回执被伪造时仍停止当前工作流的已验证采集。
 
 旧 `android-framework-patch-capture` 和 `framework_change` 历史材料只读兼容，不复制或改写。当前 capture 生成工程材料目录；将整个目录交给 `akbs-patch-submit`，由后者构造、检查、准备或提交唯一的 `knowledge-incoming-package/2/android_change` 最终包。

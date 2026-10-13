@@ -287,3 +287,15 @@ def test_explicit_unknown_does_not_relax_missing_pre_change_search() -> None:
         {"searched": False, "decision": "unknown", "reuse_decision": "unknown"},
     )
     assert any("未发生" in error for error in errors)
+
+
+def test_capture_instructions_keep_unknown_non_blocking_without_dropping_search_requirements() -> None:
+    skill = (PLUGIN / "skills/android-patch-capture/SKILL.md").read_text()
+    docs = (ROOT / "docs/skills/android-engineering-ops/android-patch-capture/README.md").read_text()
+    assert "it does not downgrade an otherwise verified capture" in skill
+    assert "不因此把已验证的补丁降为" in docs
+    assert "keep it as `candidate` until" not in skill
+    assert "the use decision is closed; do not submit it as `validated`" not in skill
+    assert "current-workflow search evidence is fabricated or missing" in skill
+    assert "retrospectively fabricate one" in skill
+    assert "开发前搜索未发生或回执被伪造时仍停止" in docs

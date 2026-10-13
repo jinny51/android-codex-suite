@@ -23,6 +23,7 @@ try:
         require_current_patch_contract,
         validate_success_response,
     )
+    from .io_utils import read_optional_json_object, write_json
     from .reports.common import ensure_report_submit_allowed, record_submitted_package
 except ImportError:  # pragma: no cover - direct script import fallback
     scripts_root = Path(__file__).resolve().parents[1]
@@ -37,6 +38,7 @@ except ImportError:  # pragma: no cover - direct script import fallback
         require_current_patch_contract,
         validate_success_response,
     )
+    from akbs_intake.io_utils import read_optional_json_object, write_json
     from akbs_intake.reports.common import ensure_report_submit_allowed, record_submitted_package
 
 
@@ -137,6 +139,11 @@ def http_submit_package(
             "X-AKBS-User": member,
         },
     )
+    local_check_path = package_dir / "local-check.json"
+    local_check = read_optional_json_object(local_check_path)
+    if "report_generation_failed" in local_check:
+        local_check.pop("report_generation_failed")
+        write_json(local_check_path, local_check)
     try:
         result, metadata = request_json_with_metadata(request, timeout=30, contract_codes=error_reason_codes())
     except HttpClientFailure as error:

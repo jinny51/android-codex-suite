@@ -146,8 +146,9 @@ hash and parsed payload agree. Do not combine this with old free-text search or
 reuse overrides, guess a same-day receipt, or retrospectively fabricate one.
 This records the actual search decision, not source ownership or reuse success.
 Keep a truthful `unknown` decision when search health or applicability is uncertain;
-it does not earn a reuse claim. With search results, keep it as `candidate` until
-the use decision is closed; do not submit it as `validated`. Existing captures without a raw receipt retain only
+it does not earn a reuse claim. A real pre-change search with an `unknown` use
+decision adds a warning; it does not downgrade an otherwise verified capture.
+Existing captures without a raw receipt retain only
 their own recorded facts; submit must not select a same-day record for them.
 
 ## Hard stops

@@ -268,7 +268,6 @@ Generate with:
 ```bash
 python3 "<akbs-weekly-report skill>/scripts/akbs_weekly_report.py" \
   --profile <member_alias> weekly \
-  --session-consent --session-field work_summary \
   --weekly-facts "$CODEX_HOME/artifacts/akbs-member-ops/weekly-facts/<week-range>.json" \
   --prepare
 ```

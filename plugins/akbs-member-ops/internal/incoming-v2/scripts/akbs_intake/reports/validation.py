@@ -9,7 +9,7 @@ from typing import Any, Callable
 from akbs_member_ops.knowledge_rules import find_company_project
 
 from ..report_sessions import clean_report_customer_name
-from ..session_privacy import session_evidence_errors
+from .common import report_session_privacy_errors
 from .daily_facts import (
     DAILY_FACT_SOURCES_SCHEMA,
     LEGACY_DAILY_GMS_FACT_SOURCES_SCHEMA,
@@ -306,11 +306,7 @@ def validate_work_findings(
 
 
 def validate_session_privacy_evidence(*, evidence_by_kind: dict[str, dict[str, Any]], errors: list[str]) -> None:
-    evidence = evidence_by_kind.get("codex_sessions")
-    if not isinstance(evidence, dict):
-        errors.append("report trace 缺少 codex_sessions privacy evidence")
-        return
-    errors.extend(session_evidence_errors(evidence.get("payload")))
+    errors.extend(report_session_privacy_errors(evidence_by_kind))
 
 
 def validate_weekly_fact_sources(

@@ -646,7 +646,7 @@ def validate_patch_pre_change_search(
     package_status: str,
     workflow_contract_requires_pre_change_search: WorkflowContractRequiresPreChangeSearch,
     search_payload_missing_required_pre_change_search: SearchPayloadPredicate,
-    search_payload_needs_closed_decision: SearchPayloadPredicate,
+    search_payload_has_unresolved_usage: SearchPayloadPredicate,
     errors: list[str],
     warnings: list[str],
 ) -> None:
@@ -726,11 +726,11 @@ def validate_patch_pre_change_search(
     if (
         package_status == "validated"
         and requires_pre_change_search
-        and search_payload_needs_closed_decision(search_payload)
+        and search_payload_has_unresolved_usage(search_payload)
     ):
-        errors.append(
-            "已验证（validated）补丁包命中知识搜索结果时必须闭合搜索使用决策（search usage decision），"
-            "请使用 reuse/adapt/reference_only/not_applicable/not_found"
+        warnings.append(
+            "已发生开发前知识搜索，但结果用途仍不确定；保留 unknown，不据此阻断补丁上传。"
+            "这不代表复用成功，也不获得搜索闭环加分。"
         )
 
 

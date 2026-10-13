@@ -43,13 +43,13 @@ Markdown、`report_view.json` 和周报事实由 `report_render_binding` 绑定�
 
 执行生成或提交前，Codex 应先从当前请求和可见会话上下文里找项目名 + 直接客户；找不到时先在会话里提示 `缺少项目名和客户名，请补充，例如：TVE1086U 青鸾云；如有客户的客户，继续写第三段，例如：TVE1091U AOC 福建移动高清。`，不要直接跑命令。
 
-成员本次明确要求生成周报，只授权本次周范围和本次选择的派生字段。最小范围使用 `--session-consent --session-field work_summary`；只有确有需要时才增加 `project_hint`、`command_summary` 或 `patch_discovery`，其中 `patch_discovery` 还要求 `project_hint`。没有本次明确请求时，必须在读取 session、打包和 HTTP 前停止；不得复用旧授权或给定时任务长期授权。
+成员明确设置的定时生成任务属于持续授权，无需每次重新询问。完整 `--weekly-facts`、当前有效日报与上周台账直接用于生成，不读取本机会话，不要求会话授权。没有报告来源、且请求明确允许从会话补充时，才对本次周范围传入 `--session-consent --session-field work_summary`；必要时加其他派生字段。缺少业务事实时只问缺失字段，不强求读取会话。“只生成”只调用 `--prepare` 并返回内容和链接，不包含提交或修订授权。Git 分支、路径和日志只能识别项目，客户必须来自成员同一行的声明或结构化范围事实。
 
 常用命令：
 
 ```bash
-python3 "scripts/akbs_weekly_report.py" --profile <member_alias> --session-consent --session-field work_summary --prepare
+python3 "scripts/akbs_weekly_report.py" --profile <member_alias> --prepare
 python3 "scripts/akbs_weekly_report.py" --profile <member_alias> --submit-latest
 python3 "scripts/akbs_weekly_report.py" --profile <member_alias> --session-consent --session-field work_summary --prepare --replace-weekly-run-id <old_run_id>
-python3 "scripts/akbs_weekly_report.py" --profile <member_alias> --session-consent --session-field work_summary --weekly-facts "$CODEX_HOME/artifacts/akbs-member-ops/weekly-facts/<week>.json" --prepare
+python3 "scripts/akbs_weekly_report.py" --profile <member_alias> --weekly-facts "$CODEX_HOME/artifacts/akbs-member-ops/weekly-facts/<week>.json" --prepare
 ```

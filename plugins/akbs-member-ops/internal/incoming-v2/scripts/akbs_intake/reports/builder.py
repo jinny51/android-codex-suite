@@ -11,7 +11,11 @@ from akbs_intake.report_sessions import SessionWork, synthetic_sessions
 from akbs_intake.session_privacy import require_report_session_consent, session_evidence_payload
 from akbs_intake.reports.common import ensure_report_date_allowed, ensure_report_not_duplicate, report_dates, report_identity, ymd
 from akbs_intake.reports.identity import infer_report_project
-from akbs_intake.reports.daily_facts import build_daily_facts, project_rows_to_items as daily_project_rows_to_items
+from akbs_intake.reports.daily_facts import (
+    build_daily_facts,
+    explicit_facts_need_work_supplement,
+    project_rows_to_items as daily_project_rows_to_items,
+)
 from akbs_intake.reports.render import write_report, write_report_view
 from akbs_intake.reports.render_binding import write_report_render_binding
 from akbs_intake.reports.session_summary import (
@@ -21,6 +25,7 @@ from akbs_intake.reports.session_summary import (
     overview_text,
     work_findings_payload,
 )
+from akbs_intake.reports import weekly_facts as weekly_facts_module
 from akbs_intake.reports.weekly_facts import build_weekly_facts, project_rows_to_items
 from akbs_intake.reports.scope import report_customer_contexts_from_rows
 from akbs_intake.search_usage import search_usage_payload
@@ -60,6 +65,7 @@ def incoming_report_manifest(
     project_evidence_path: str = "",
     display_path: str = "",
     has_non_project_work: bool = False,
+    session_evidence_path: str = "",
 ) -> dict[str, Any]:
     report_name = f"{report_type}.md"
     package_kind = "daily_trace" if report_type == "daily" else "weekly_trace"
@@ -78,7 +84,6 @@ def incoming_report_manifest(
         "files": {
             "evidence": [
                 materials_rel("evidence", "source.json"),
-                materials_rel("evidence", "codex_sessions.json"),
                 materials_rel("evidence", "work_findings.json"),
             ],
             "display": [display_path or materials_rel("display", "report_view.json")],
@@ -92,6 +97,8 @@ def incoming_report_manifest(
         manifest["has_non_project_work"] = True
     if project_evidence_path:
         manifest["files"]["evidence"].append(project_evidence_path)
+    if session_evidence_path:
+        manifest["files"]["evidence"].append(session_evidence_path)
     return manifest
 
 def build_report_package(
@@ -117,7 +124,18 @@ def build_report_package(
     dates, start, end, week_key = report_dates(report_type, date)
     ensure_report_date_allowed(report_type, date, config)
     is_synthetic = synthetic_mode(config)
-    consent = require_report_session_consent(config, dates, synthetic=is_synthetic)
+    explicit_facts = daily_facts_path if report_type == "daily" else weekly_facts_path
+    weekly_history = None
+    if report_type == "weekly" and not explicit_facts and not is_synthetic:
+        weekly_history = weekly_facts_module.load_history(config, start, end)
+    needs_daily_supplement = bool(
+        report_type == "daily" and explicit_facts
+        and explicit_facts_need_work_supplement(Path(explicit_facts).expanduser())
+    )
+    use_sessions = needs_daily_supplement or (
+        not explicit_facts and not (weekly_history and (weekly_history[0] or weekly_history[1]))
+    )
+    consent = require_report_session_consent(config, dates, synthetic=is_synthetic) if use_sessions else None
     run_id = run_id or f"{ymd(date)}-{local_now(config):%H%M%S}"
     out_dir = require_safe_artifact_path(expanded_path(config["out_dir"]), purpose="out_dir")
     package_dir = require_safe_artifact_path(out_dir / "pending" / ymd(date) / config["member_alias"] / run_id, purpose="incoming package output")
@@ -133,7 +151,9 @@ def build_report_package(
             run_id,
             replace_report_run_id,
         )
-    if is_synthetic:
+    if not use_sessions:
+        sessions, patches = [], []
+    elif is_synthetic:
         sessions = synthetic_sessions(config, dates)
         patches = []
     else:
@@ -201,6 +221,7 @@ def build_report_package(
             synthetic=is_synthetic,
             fallback_items=session_items,
             project_customers=project_customers,
+            history=weekly_history,
         )
         weekly_projects = weekly_facts.projects
         weekly_documents = weekly_facts.documents
@@ -303,14 +324,20 @@ def build_report_package(
         },
     )
 
-    evidence = session_evidence_payload(
-        consent,
-        synthetic=is_synthetic,
-        source_session_ids=[item.session_id for item in sessions],
-        timezone=config.get("timezone", "Asia/Shanghai"),
-    )
-    write_json(package_dir / materials_rel("evidence", "codex_sessions.json"), {"kind": "codex_sessions", "payload": evidence})
-    write_json(package_dir / materials_rel("evidence", "work_findings.json"), {"kind": "work_findings", "payload": work_findings_payload(sessions, patches)})
+    session_evidence_path = ""
+    if consent is not None:
+        session_evidence_path = materials_rel("evidence", "codex_sessions.json")
+        evidence = session_evidence_payload(
+            consent,
+            synthetic=is_synthetic,
+            source_session_ids=[item.session_id for item in sessions],
+            timezone=config.get("timezone", "Asia/Shanghai"),
+        )
+        write_json(package_dir / session_evidence_path, {"kind": "codex_sessions", "payload": evidence})
+    findings = work_findings_payload(sessions, patches)
+    if not use_sessions:
+        findings["scanned_sources"] = [f"{report_type}_fact_sources"]
+    write_json(package_dir / materials_rel("evidence", "work_findings.json"), {"kind": "work_findings", "payload": findings})
     search_path = ""
     if report_type == "daily":
         member_search_payload = search_usage_payload(config, date)
@@ -365,6 +392,7 @@ def build_report_package(
         project_path,
         display_path,
         bool(documents or standalone_work or planned_documents or planned_standalone_work),
+        session_evidence_path,
     )
     if report_type in {"daily", "weekly"} and replace_report_run_id:
         replacement = next((item for item in report_duplicates if item["run_id"] == replace_report_run_id), {})

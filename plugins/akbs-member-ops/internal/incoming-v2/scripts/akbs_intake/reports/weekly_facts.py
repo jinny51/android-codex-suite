@@ -1596,6 +1596,7 @@ def build_weekly_facts(
     synthetic: bool = False,
     fallback_items: dict[str, list[tuple[str, str]]] | None = None,
     project_customers: dict[str, Any] | None = None,
+    history: tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> WeeklyFactsResult:
     missing_fields: list[str] = []
     if explicit_path:
@@ -1626,7 +1627,8 @@ def build_weekly_facts(
         standalone_work = []
         missing_fields.extend(synthetic_missing)
     else:
-        daily_items, weekly_items, provenance = load_history(config, start, end)
+        daily_items, weekly_items, provenance = history if history is not None else load_history(config, start, end)
+        provenance = dict(provenance)
         as_of = min(end, local_now(config).date())
         daily_meta, daily_records = _daily_project_records(daily_items)
         previous = _previous_week_projects(weekly_items)

@@ -13,6 +13,7 @@ from typing import Any, Iterator
 
 from akbs_member_ops.artifact_paths import require_safe_artifact_path
 from akbs_member_ops.http_client import sanitize_public_text
+from akbs_member_ops.knowledge_rules import PROJECT_ANCHOR_RE
 
 
 SESSION_CONSENT_VERSION = "akbs-report-session-consent-v1"
@@ -165,10 +166,13 @@ def minimal_source_id(value: Any) -> str:
 
 
 def sanitize_work_summary(value: Any, *, limit: int = 180) -> str:
-    text = sanitize_public_text(value, "", limit=640)
+    # Keep input line boundaries before the public-text sanitizer compacts
+    # whitespace.  Otherwise a project-only line can acquire the next line's
+    # first word as a fabricated customer declaration.
+    text = "；".join(sanitize_public_text(line, "", limit=640) for line in str(value or "").splitlines())
     text = REPORT_REQUEST_TAIL_RE.sub("", text)
     clauses = [item.strip(" ，,。；;") for item in re.split(r"[\n\r。；;]+", text) if item.strip()]
-    selected = [item for item in clauses if WORK_CLAUSE_RE.search(item) and "[REDACTED]" not in item]
+    selected = [item for item in clauses if (WORK_CLAUSE_RE.search(item) or PROJECT_ANCHOR_RE.search(item)) and "[REDACTED]" not in item]
     if not selected:
         selected = [item for item in clauses if item and "[REDACTED]" not in item]
     summary = "；".join(selected[:2])

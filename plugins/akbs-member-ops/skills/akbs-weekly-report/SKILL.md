@@ -49,8 +49,9 @@ Weekly facts are resolved in this order:
 2. The current effective previous-week report as the rolling project ledger.
 3. Local `submitted` report packages as an offline fallback, with replacement
    leaves taking precedence over the reports they supersede.
-4. Sanitized Codex session summaries only as supplementary evidence for work
-   not represented by an effective daily report.
+4. Sanitized Codex session summaries only as an authorized fallback when no
+   effective report source exists. Normal history-based generation does not
+   read local sessions.
 
 Current daily rows carry project-bound Patch/App/GMS/Doc/Other scopes,
 non-project Doc scopes, and non-project Other scopes. Preserve the owning array when rolling daily work into the weekly ledger;
@@ -288,15 +289,17 @@ work name. Never create GMS without a company project and customer.
 
 The weekly display date is the last workday of the period. A late weekly submission still displays the weekly period date, not the upload day.
 
-The member's explicit request to generate this weekly report authorizes only this run's derived week window and selected derived fields. Pass `--session-consent --session-field work_summary` for the minimum report input. Add `project_hint`, `command_summary`, or `patch_discovery` only when the request needs them; `patch_discovery` requires `project_hint`. If there is no explicit current-run request, stop before session read, package creation, and HTTP. Do not reuse consent from a previous run or recurring automation.
+An explicit report request or a member-configured recurring task authorizes generation within its stated scope; a scheduled generate-only request does not need a new human request on each run. Use complete `--weekly-facts` or current effective daily reports/previous-week ledger directly without reading local sessions or requiring session-consent flags. If no report source exists and the instructions authorize session-derived supplementary work, pass `--session-consent --session-field work_summary` for this run's exact week window. Add other derived fields only when needed; `patch_discovery` requires `project_hint`. If the available facts are incomplete, ask only for the missing business facts, not blanket access to sessions. Existing date/field limits and privacy checks remain mandatory when sessions are actually read.
+
+Generation is not submission or revision authorization. A generate-only task calls `--prepare`, returns the content/link, and must not call `--upload`, `--submit-latest`, or a replacement option. Submit or revise only when explicitly included in the member's instructions. Paths, branches and Git output may identify the project but never establish its customer. Preserve same-line member declarations and structured scope facts; an inferred candidate is not a confirmed identity.
 
 ## Commands
 
 ```bash
-python3 "scripts/akbs_weekly_report.py" --profile <member_alias> --session-consent --session-field work_summary --prepare
+python3 "scripts/akbs_weekly_report.py" --profile <member_alias> --prepare
 python3 "scripts/akbs_weekly_report.py" --profile <member_alias> --submit-latest
 python3 "scripts/akbs_weekly_report.py" --profile <member_alias> --session-consent --session-field work_summary --prepare --replace-weekly-run-id <old_run_id>
-python3 "scripts/akbs_weekly_report.py" --profile <member_alias> --session-consent --session-field work_summary --prepare --weekly-facts "$CODEX_HOME/artifacts/akbs-member-ops/weekly-facts/<week>.json"
+python3 "scripts/akbs_weekly_report.py" --profile <member_alias> --weekly-facts "$CODEX_HOME/artifacts/akbs-member-ops/weekly-facts/<week>.json" --prepare
 ```
 
 Future periods are blocked. For a week with no existing effective report, the

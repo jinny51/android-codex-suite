@@ -40,13 +40,17 @@ Markdown、`report_view.json` 和日报事实由 `report_render_binding` 绑定�
 
 执行生成或提交前，Codex 应先从当前请求和可见会话上下文里找项目名 + 直接客户；找不到时只要求成员补这两个最小字段，并提示正确流程：`当前会话未关联项目，请补充项目名和客户名。例如：TVE1086U 青鸾云；如有客户的客户：TVE1091U AOC 福建移动高清。建议后续先创建项目，再在项目下创建开发会话。` 不要把项目角色、需求时间、需求来源、项目总量或剩余量等周报字段塞进日报追问。
 
-成员本次明确要求生成日报，只授权本次日报日期和本次选择的派生字段。默认使用 `work_summary`、`command_summary`、`project_hint` 和 `work_scope_hint`，以便提取工作内容、处理方法和安全的源码范围提示；原始路径不进入报告或证据文件。只有确有需要时才增加 `patch_discovery`，且它要求 `project_hint`。没有本次明确请求时，必须在读取 session、打包和 HTTP 前停止；不得复用旧授权或给定时任务长期授权。
+成员明确设置的定时任务就是持续授权，例如“每个工作日汇总当天记录，只生成并保留日报，不提交”；每次无需重新询问，只为本次日期和必要派生字段传入 `--session-consent`。会话读取通常使用 `work_summary`、`command_summary`、`project_hint` 和 `work_scope_hint`；仅确需发现补丁时增加 `patch_discovery`（同时需要 `project_hint`）。没有适用的请求或定时指令时仍不得读取会话。完整 `--daily-facts` 直接生成，不读取会话，也不要求会话授权；Codex 应把工作项写完整，不能转嫁给成员手改 JSON。
+
+只填写部分日报事实时，原有的单项目工作项补齐仍需本次日期和字段的会话授权；事实文件本身不代表允许扫描会话。
+
+“只生成”只调用 `--prepare` 并返回内容和链接，不包含上传、提交或修订已有报告。客户身份来自成员同一行的明确声明（例如 `TVI2343R 海信`）或结构化事实；Git 分支、路径和日志只能识别项目，不能作为“已确认客户”否决真实事实。
 
 常用命令：
 
 ```bash
 python3 "scripts/akbs_daily_report.py" --profile <member_alias> --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --prepare
 python3 "scripts/akbs_daily_report.py" --profile <member_alias> --submit-latest
-python3 "scripts/akbs_daily_report.py" --profile <member_alias> --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --daily-facts "$CODEX_HOME/artifacts/akbs-member-ops/daily-facts/<report-date>.json" --prepare
+python3 "scripts/akbs_daily_report.py" --profile <member_alias> --daily-facts "$CODEX_HOME/artifacts/akbs-member-ops/daily-facts/<report-date>.json" --prepare
 python3 "scripts/akbs_daily_report.py" --profile <member_alias> --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --prepare --replace-daily-run-id <old_run_id>
 ```

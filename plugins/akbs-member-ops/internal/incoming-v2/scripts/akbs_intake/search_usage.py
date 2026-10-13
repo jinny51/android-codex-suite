@@ -261,7 +261,7 @@ def search_payload_has_member_decision(payload: dict[str, Any]) -> bool:
     return bool(outcome and outcome != "not_started")
 
 
-def search_payload_needs_closed_decision(payload: dict[str, Any]) -> bool:
+def search_payload_has_unresolved_usage(payload: dict[str, Any]) -> bool:
     if not payload:
         return False
     if isinstance(payload.get("payload"), dict):

@@ -123,7 +123,7 @@ manifest.json
 reports/daily.md or reports/weekly.md
 materials/display/report_view.json
 materials/evidence/source.json
-materials/evidence/codex_sessions.json
+materials/evidence/codex_sessions.json      # only when session input was used
 materials/evidence/work_findings.json
 materials/evidence/weekly_fact_sources.json  # weekly_trace only
 ```
@@ -160,7 +160,7 @@ through `replacement_for_run_id` and `supersedes`. The server rejects a silent
 second ordinary package or a stale revision target before storage. Old versions
 remain immutable history while the revision becomes current.
 
-Real report generation requires explicit per-run consent before any session read or package creation. The report date/week is the exact authorized window; the caller selects only the derived fields needed for that run. `codex_sessions.json` stores only `source_session_ids`, `time_range`, `consent` (`version`, `scope`, `fields`, `granted`), and the memory-only retention policy. It must not store thread titles, cwd, raw messages, raw commands, clipboard/environment values, credentials, or unrelated session content. Temporary extraction state is removed after both success and failure, and a report package without valid consent/privacy evidence is rejected before HTTP.
+An explicit report request or a member-configured recurring task authorizes generation within its stated scope. A generate-only task never authorizes upload, submission or historical revision. Actual session reads require this run's exact date/week and selected derived fields in the existing consent flags. Complete explicit facts and effective report history do not read local sessions or invent session consent. `codex_sessions.json` is included only for actual session input and stores minimal source IDs, time range, consent and memory-only retention policy. It must not store raw messages/commands, paths, credentials or unrelated content. Temporary extraction state is removed after success and failure. Without session input, existing `daily_fact_sources`/`weekly_fact_sources` and render binding provide the provenance; no new schema or authorization protocol is introduced.
 
 `report_view` is required:
 
@@ -239,8 +239,8 @@ Every new `weekly_trace` also carries `weekly_fact_sources` evidence with
 `schema=akbs-weekly-fact-sources-v3`, the exact `week_range`, source package
 keys, unique project, document, and standalone-work counts, work-scope count, a sanitized facts hash, and `missing_fields`. The member
 client resolves current AKBS daily reports and the current previous-week report
-before local submitted replacement leaves; sessions only supplement missing
-daily coverage. Non-empty `missing_fields` fails local upload validation and is
+before local submitted replacement leaves without reading local sessions;
+only an authorized fallback with no report source reads sessions. Non-empty `missing_fields` fails local upload validation and is
 closed through an explicit `akbs-weekly-work-facts-v6` artifact. V6 binds the
 effective previous-week package and records main-owned project changes, so
 explicit facts cannot reset an existing total or hide a remaining-count gap.

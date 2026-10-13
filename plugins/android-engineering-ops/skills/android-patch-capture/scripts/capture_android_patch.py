@@ -969,11 +969,10 @@ def validate_search_decision_for_status(args: argparse.Namespace, search_payload
         ], []
     if not bool(classification.get("member_can_complete_before_upload")):
         return [], []
-    return [
-        "已验证（validated）补丁包命中知识搜索结果时必须闭合搜索使用决策（search usage decision），"
-        "请传 --reuse-decision reuse/adapt/reference_only/not_applicable/not_found，"
-        "并记录 --reuse-target、--reuse-match、--reuse-mismatch 或 --reuse-reason。"
-    ], []
+    return [], [
+        "已发生开发前知识搜索，但结果用途仍不确定；保留 unknown，不据此阻断补丁采集。"
+        "这不代表复用成功，也不获得搜索闭环加分。"
+    ]
 
 
 def validate_feature_scope(args: argparse.Namespace) -> list[str]:

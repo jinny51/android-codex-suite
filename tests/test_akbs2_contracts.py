@@ -37,7 +37,7 @@ from akbs_intake.patch import builder  # noqa: E402
 from akbs_intake.patch.validation import validate_patch_pre_change_search  # noqa: E402
 from akbs_intake.search_usage import (  # noqa: E402
     search_payload_missing_required_pre_change_search,
-    search_payload_needs_closed_decision,
+    search_payload_has_unresolved_usage,
     workflow_contract_requires_pre_change_search,
 )
 
@@ -289,7 +289,7 @@ def test_import_builder_retains_existing_search_reader(
     ("validated", "none"), ("candidate", "none"), ("candidate", "hash"),
     ("candidate", "environment"), ("validated", "not_searched"),
 ])
-def test_unknown_preserves_candidate_facts_and_validated_gate(package_status: str, mutation: str) -> None:
+def test_unknown_preserves_search_facts_without_blocking_validated_patch(package_status: str, mutation: str) -> None:
     payload = _unknown_search_payload()
     if mutation == "environment":
         payload["target_environment"]["project"] = "TVE9999U"
@@ -307,13 +307,13 @@ def test_unknown_preserves_candidate_facts_and_validated_gate(package_status: st
         evidence_by_kind={"search_before_change": evidence}, package_status=package_status,
         workflow_contract_requires_pre_change_search=workflow_contract_requires_pre_change_search,
         search_payload_missing_required_pre_change_search=search_payload_missing_required_pre_change_search,
-        search_payload_needs_closed_decision=search_payload_needs_closed_decision,
+        search_payload_has_unresolved_usage=search_payload_has_unresolved_usage,
         errors=errors, warnings=warnings,
     )
-    assert bool(errors) is (package_status == "validated" or mutation != "none")
+    assert bool(errors) is (mutation != "none")
     expected_error = {"hash": "hash", "environment": "目标环境", "not_searched": "未发生"}.get(mutation)
     if package_status == "validated" and mutation == "none":
-        expected_error = "闭合搜索使用决策"
+        assert any("用途仍不确定" in warning for warning in warnings)
     if expected_error:
         assert any(expected_error in error for error in errors)
     assert payload["decision"] == payload["reuse_decision"] == "unknown"

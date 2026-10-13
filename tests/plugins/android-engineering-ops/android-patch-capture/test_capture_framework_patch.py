@@ -268,8 +268,9 @@ def test_exact_unknown_receipt_retains_limitation_with_results(tmp_path: Path) -
     selected, selected_raw = capture.load_search_receipt(args, platform="rk", android_version="14")
     assert selected == payload
     assert selected_raw == raw
-    errors, _ = capture.validate_search_decision_for_status(args, selected)
-    assert any("闭合搜索使用决策" in error for error in errors)
+    errors, warnings = capture.validate_search_decision_for_status(args, selected)
+    assert errors == []
+    assert any("用途仍不确定" in warning for warning in warnings)
     args.status = "candidate"
     assert capture.validate_search_decision_for_status(args, selected) == ([], [])
     assert selected["decision"] == "unknown"

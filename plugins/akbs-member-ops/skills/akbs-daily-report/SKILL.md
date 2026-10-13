@@ -179,14 +179,19 @@ regenerate. `--prepare` returns failure when local validation fails,
 `--submit-latest` revalidates before HTTP, and an invalid report must not be
 described as successfully generated or submitted.
 
-The member's explicit request to generate this daily report authorizes only this run's report date and selected derived fields. Pass `work_summary`, `command_summary`, `project_hint`, and `work_scope_hint` so the report can describe the work and method and derive a safe source-scope hint without retaining the path. Add `patch_discovery` only when patch artifacts are needed; it requires `project_hint`. If there is no explicit current-run request, stop before session read, package creation, and HTTP. Do not reuse consent from a previous run or recurring automation.
+An explicit report request or a member-configured recurring task authorizes generation within its stated scope. A scheduled task such as "each workday, summarize today's records, generate and retain a daily report, do not submit" is continuing authorization; do not ask again on each scheduled run. Derive this run's date and pass only the needed `--session-consent` fields (`work_summary`, `command_summary`, `project_hint`, and `work_scope_hint` normally). Add `patch_discovery` only when needed; it requires `project_hint`. Do not read sessions without an applicable request or scheduled instruction. Complete `--daily-facts` input is used directly without reading sessions or requiring session-consent flags; Codex must include the actual work items in that facts file, not ask the member to edit JSON. Keep the existing date/field limits and privacy checks whenever sessions are read.
+
+Partial daily facts may use the existing single-project work-item fallback only
+with authorized session access for this run; the facts file itself is not consent.
+
+Generation is not submission or revision authorization. A generate-only task calls `--prepare`, returns the report content/link, and must not call `--upload`, `--submit-latest`, or a replacement option. Submit or revise only when explicitly included in the member's instructions. Project paths, branches and Git output may identify a project, never a customer. Use the member's same-line declaration (for example `TVI2343R 海信`) or structured facts for customer identity; do not convert an inferred candidate into "confirmed identity".
 
 ## Commands
 
 ```bash
 python3 "scripts/akbs_daily_report.py" --profile <member_alias> --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --prepare
 python3 "scripts/akbs_daily_report.py" --profile <member_alias> --submit-latest
-python3 "scripts/akbs_daily_report.py" --profile <member_alias> --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --daily-facts "$CODEX_HOME/artifacts/akbs-member-ops/daily-facts/<report-date>.json" --prepare
+python3 "scripts/akbs_daily_report.py" --profile <member_alias> --daily-facts "$CODEX_HOME/artifacts/akbs-member-ops/daily-facts/<report-date>.json" --prepare
 python3 "scripts/akbs_daily_report.py" --profile <member_alias> --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --prepare --replace-daily-run-id <old_run_id>
 ```
 

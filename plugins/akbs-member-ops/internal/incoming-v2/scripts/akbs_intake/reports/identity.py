@@ -140,7 +140,11 @@ def infer_report_project(
 
     checked_sources = sorted(dict.fromkeys(label for label, value in clues if str(value).strip()))
     raw_inputs = [f"{label}: {value}" for label, value in clues if str(value).strip()]
-    project_customers, customer_basis = report_project_customers_from_clues(clues)
+    # Project discovery may use paths, branches and generated work summaries.
+    # Customer identity needs the member's declaration, not those derived clues.
+    customer_clues = [(f"{label_prefix} session message", message)
+                      for session in sessions for message in session.messages if message]
+    project_customers, customer_basis = report_project_customers_from_clues(customer_clues)
 
     def attach_customers(payload: dict[str, Any]) -> dict[str, Any]:
         payload["project_customers"] = []

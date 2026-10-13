@@ -25,6 +25,13 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
       "project": "TVE1086U",
       "customer": "青鸾云",
       "work_type": "Patch",
+      "work_items": [{
+        "name": "完成产品接口修改",
+        "did": ["按客户要求修改系统源码接口"],
+        "how": ["对照源码并核查验证记录"],
+        "result": "接口修改已验证",
+        "status": "已完成"
+      }],
       "key_points": ["客户确认新增验收范围"],
       "dependencies": ["等待 BSP 提供联调固件"]
     },
@@ -33,6 +40,13 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
       "customer": "青鸾云",
       "work_type": "App",
       "app_name": "设备管理工具",
+      "work_items": [{
+        "name": "完成设备管理工具界面",
+        "did": ["完成独立 App 的管理界面"],
+        "how": ["本地开发并检查操作流程"],
+        "result": "管理界面已完成",
+        "status": "已完成"
+      }],
       "key_points": [],
       "dependencies": []
     },
@@ -48,6 +62,13 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
       "gms_self_test_result": "passed",
       "gms_submission_count": 0,
       "gms_submission_result": "not_submitted",
+      "work_items": [{
+        "name": "完成第二轮 GMS 自测",
+        "did": ["完成 GMS 自测并核对结果"],
+        "how": ["运行测试并核对测试记录"],
+        "result": "第二轮自测通过",
+        "status": "已完成"
+      }],
       "key_points": [],
       "dependencies": []
     }
@@ -156,9 +177,13 @@ Rules:
   field merely because work is unfinished.
 - Document scope identity is its concrete document name. Merge repeated work on
   the same document instead of creating duplicate rows.
-- When a project has only one scope, `work_items`, `today_topic`, and
-  `current_result` may be omitted; the generator fills them from the authorized
-  session-derived daily work.
+- Complete explicit facts are used without reading local sessions. Codex must complete
+  `work_items`, `today_topic`, and `current_result` from already available,
+  authorized work facts before calling the generator; missing work is not
+  fabricated and the member is asked only for unresolved facts.
+  The existing single-project work-item fallback remains available for partial
+  facts only when session access is authorized for this run's dates and fields;
+  partial facts alone are not permission to scan sessions.
 - When the same project has multiple scopes, each scope must explicitly carry
   its own `work_items[]` so work cannot be assigned to the wrong Patch or App.
 - Every work item contains `name`, non-empty `did[]`, non-empty `how[]`,
@@ -191,8 +216,6 @@ Generate with:
 ```bash
 python3 "<akbs-daily-report skill>/scripts/akbs_daily_report.py" \
   --profile <member_alias> daily \
-  --session-consent --session-field work_summary --session-field command_summary \
-  --session-field project_hint --session-field work_scope_hint \
   --daily-facts "$CODEX_HOME/artifacts/akbs-member-ops/daily-facts/<report-date>.json" \
   --prepare
 ```

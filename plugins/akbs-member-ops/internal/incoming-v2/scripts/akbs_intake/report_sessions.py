@@ -284,33 +284,37 @@ def split_report_customer_context(value: Any) -> dict[str, str]:
 
 
 def project_customer_contexts_from_text(text: Any) -> list[tuple[str, dict[str, str]]]:
-    raw_text = str(text or "")
     contexts: list[tuple[str, dict[str, str]]] = []
-    for match in PROJECT_ANCHOR_RE.finditer(raw_text):
-        project = find_company_project(match.group("base"))
-        if not project:
-            continue
-        raw_tail = raw_text[match.end() :]
-        next_project = PROJECT_ANCHOR_RE.search(raw_tail)
-        tail = raw_tail[: next_project.start()] if next_project else raw_tail
-        direct_match = REPORT_DIRECT_CUSTOMER_LABEL_RE.search(tail)
-        downstream_match = REPORT_DOWNSTREAM_CUSTOMER_LABEL_RE.search(tail)
-        context: dict[str, str] = {}
-        if direct_match:
-            customer = clean_report_customer_name(direct_match.group(1))
-            if customer:
-                context["customer_name"] = customer
-                if downstream_match:
-                    downstream = clean_report_customer_name(downstream_match.group(1))
-                    if downstream:
-                        context["downstream_customer"] = downstream
-        elif raw_tail and raw_tail[0].isspace():
-            customer_part = REPORT_CUSTOMER_STOP_RE.split(raw_tail.lstrip(), 1)[0]
-            context = split_report_customer_context(customer_part)
-        if context:
-            item = (project, context)
-            if item not in contexts:
-                contexts.append(item)
+    for line in re.split(r"[\n\r；;]+", str(text or "")):
+        for match in PROJECT_ANCHOR_RE.finditer(line):
+            project = find_company_project(match.group("base"))
+            if not project:
+                continue
+            # A branch, source path, or prose mentioning a project identifies
+            # the project, not its customer.  Accept the existing declaration
+            # form only at a line/clause boundary (including Markdown headings).
+            prefix = line[:match.start()].strip(" \t#*`-:：")
+            if prefix and not re.fullmatch(r"项目(?:客户|名|名称)?\s*(?:是|为)?", prefix):
+                continue
+            raw_tail = line[match.end():].lstrip("*`")
+            next_project = PROJECT_ANCHOR_RE.search(raw_tail)
+            tail = raw_tail[:next_project.start()] if next_project else raw_tail
+            direct_match = REPORT_DIRECT_CUSTOMER_LABEL_RE.search(tail)
+            downstream_match = REPORT_DOWNSTREAM_CUSTOMER_LABEL_RE.search(tail)
+            context: dict[str, str] = {}
+            if direct_match:
+                customer = clean_report_customer_name(direct_match.group(1))
+                if customer:
+                    context["customer_name"] = customer
+                    if downstream_match:
+                        downstream = clean_report_customer_name(downstream_match.group(1))
+                        if downstream:
+                            context["downstream_customer"] = downstream
+            elif raw_tail and raw_tail[0] in " \t":
+                customer_part = REPORT_CUSTOMER_STOP_RE.split(tail.lstrip(" \t"), 1)[0]
+                context = split_report_customer_context(customer_part)
+            if context and (project, context) not in contexts:
+                contexts.append((project, context))
     return contexts
 
 
@@ -324,15 +328,22 @@ def project_customer_pairs_from_text(text: Any) -> list[tuple[str, str]]:
 def report_project_customers_from_clues(clues: list[tuple[str, str]]) -> tuple[dict[str, dict[str, str]], dict[str, list[str]]]:
     customers: dict[str, dict[str, str]] = {}
     basis: dict[str, list[str]] = {}
+    ambiguous: set[str] = set()
     for label, value in clues:
         for project, context in project_customer_contexts_from_text(value):
-            current = customers.setdefault(project, dict(context))
-            if (
-                current.get("customer_name") == context.get("customer_name")
-                and not current.get("downstream_customer")
-                and context.get("downstream_customer")
-            ):
-                current["downstream_customer"] = context["downstream_customer"]
+            current = customers.get(project)
+            if project not in ambiguous:
+                if current is None:
+                    customers[project] = dict(context)
+                elif (current.get("customer_name") != context.get("customer_name") or
+                      current.get("downstream_customer") and context.get("downstream_customer") and
+                      current["downstream_customer"] != context["downstream_customer"]):
+                    # Flat session hints cannot choose between separate App /
+                    # Patch scopes, nor silently declare the first one correct.
+                    ambiguous.add(project)
+                    customers.pop(project, None)
+                elif context.get("downstream_customer"):
+                    current["downstream_customer"] = context["downstream_customer"]
             chain = " ".join(
                 item
                 for item in (context.get("customer_name", ""), context.get("downstream_customer", ""))

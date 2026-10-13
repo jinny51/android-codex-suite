@@ -2,7 +2,8 @@
 
 ## Session Filtering
 
-- Read sessions only after explicit consent for this report run. The report date or week is the exact time window, and only the selected `work_summary`, `project_hint`, `work_scope_hint`, `command_summary`, or `patch_discovery` fields may be derived.
+- A member-configured recurring generation task is continuing authorization within its stated scope; do not request new human consent on every scheduled run. When reading sessions, bind the existing consent flags to this run's exact date/week and necessary derived fields. A generate-only request does not authorize submit/upload or historical revision.
+- Complete explicit facts and effective report history are used without reading local sessions. Session privacy evidence is included and checked only when sessions were actually used.
 - Keep only sanitized derived summaries and minimal source session IDs. Do not retain thread titles, cwd, raw messages, raw commands, clipboard content, environment values, credentials, paths, or temporary extraction files.
 - Skip automation sessions, empty sessions, report self-test sessions, and pure report-maintenance sessions.
 - Keep cross-day sessions when messages on the target date contain real work.
@@ -27,6 +28,7 @@
   - `TVE1091UAOC移动高清` -> project `TVE1091U`, item or label `AOC移动高清`.
   - `TVA10A2R_camera_fix` -> project `TVA10A2R`, source context `camera_fix`.
 - If no project anchor can be identified, use `未识别项目` only when the content is still real work. Do not invent a project from directory names.
+- Project discovery and customer declaration are different evidence: branches, paths and Git output may identify a project but not its customer. Customer declarations stay within their original line/clause; preserve `TVI2343R 海信` and explicit scope facts. A weak text candidate cannot overrule structured identity or be described as confirmed.
 - For daily generation, ask only for the missing project + direct customer
   identity, then continue after the member supplies it. Also remind the member
   of the normal Codex workflow: create the project first, then create development
@@ -136,8 +138,9 @@ Settings 和 Framework 服务等系统源码修改属于 Patch；独立交付的
 
 Weekly project facts are not derived by counting sessions. Resolve current
 effective daily reports from AKBS, carry the current previous-week project
-ledger forward, apply report replacement chains, and use sessions only to
-supplement work absent from effective daily reports. `weekly_fact_sources`
+ledger forward and apply report replacement chains without reading local
+sessions. Only when no report source exists and the request authorizes it may
+sessions provide supplementary work. `weekly_fact_sources`
 records this provenance. Missing ledger fields block upload and are completed
 through the explicit `akbs-weekly-work-facts-v6` contract. Requirement
 source is created when the member receives the demand and must not be inferred

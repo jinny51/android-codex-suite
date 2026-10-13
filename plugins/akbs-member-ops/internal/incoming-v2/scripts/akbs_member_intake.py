@@ -258,7 +258,7 @@ from akbs_intake.search_usage import (  # noqa: E402
     patch_search_feature_tokens,
     search_payload_has_member_decision,
     search_payload_missing_required_pre_change_search,
-    search_payload_needs_closed_decision,
+    search_payload_has_unresolved_usage,
     search_usage_payload,
 )
 
@@ -520,7 +520,7 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             package_status=package_status,
             workflow_contract_requires_pre_change_search=workflow_contract_requires_pre_change_search,
             search_payload_missing_required_pre_change_search=search_payload_missing_required_pre_change_search,
-            search_payload_needs_closed_decision=search_payload_needs_closed_decision,
+            search_payload_has_unresolved_usage=search_payload_has_unresolved_usage,
             errors=errors,
             warnings=warnings,
         )
@@ -783,7 +783,11 @@ def main(argv: list[str] | None = None) -> int:
             granted=bool(args.session_consent),
             fields=list(args.session_field),
         )
-        require_report_session_consent(config, dates, synthetic=synthetic_mode(config))
+        # Explicit facts and effective daily/weekly reports do not authorize or
+        # need a session read.  The builder checks consent if it actually falls
+        # back to sessions; daily generation without facts always needs them.
+        if args.command == "daily" and not getattr(args, "daily_facts", ""):
+            require_report_session_consent(config, dates, synthetic=synthetic_mode(config))
     if args.command == "patch" and args.submit_latest:
         patch_submit_pending = latest_pending("patch", config, parse_date_arg(args.date, config) if args.date else None)
 

@@ -587,6 +587,26 @@ def validate_tomorrow_plan(
     return errors
 
 
+def explicit_facts_need_work_supplement(path: Path) -> bool:
+    """Keep the existing single-project fallback without reading complete facts' sessions."""
+    payload = read_json_file(path)
+    rows = payload.get("projects")
+    if not isinstance(rows, list):
+        return False  # Existing fact validation reports malformed input.
+    projects = [
+        find_company_project(clean_scope_text(row.get("project"))) or clean_scope_text(row.get("project"))
+        for row in rows if isinstance(row, dict)
+    ]
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        project = find_company_project(clean_scope_text(row.get("project"))) or clean_scope_text(row.get("project"))
+        work_items = row.get("work_items")
+        if project and projects.count(project) == 1 and not (isinstance(work_items, list) and work_items):
+            return True
+    return False
+
+
 def load_explicit_facts(
     path: Path,
     report_date: dt.date,

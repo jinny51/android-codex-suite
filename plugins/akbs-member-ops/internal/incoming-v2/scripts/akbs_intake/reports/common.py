@@ -200,18 +200,39 @@ def ensure_report_date_allowed(report_type: str, date: dt.date, config: dict[str
             raise SystemExit("不能提交未来周期的周报，请重新生成正确周期的周报。")
 
 
+def report_session_privacy_errors(evidence_by_kind: dict[str, dict[str, Any]]) -> list[str]:
+    """Require session privacy evidence only for session-derived reports."""
+    if "codex_sessions" in evidence_by_kind:
+        evidence = evidence_by_kind["codex_sessions"]
+        return session_evidence_errors(evidence.get("payload") if isinstance(evidence, dict) else None)
+    for kind, explicit_source in (("daily_fact_sources", "explicit_daily_facts"),
+                                  ("weekly_fact_sources", "explicit_weekly_facts")):
+        evidence = evidence_by_kind.get(kind)
+        payload = evidence.get("payload") if isinstance(evidence, dict) else None
+        if not isinstance(payload, dict):
+            continue
+        # Fact schemas, dates, missing fields and render hashes are validated by
+        # the normal report contract; this is not another provenance protocol.
+        if payload.get("source") == explicit_source:
+            return []
+        if (kind == "weekly_fact_sources" and payload.get("source") in {"akbs_api", "local_submitted"}
+                and payload.get("session_supplement_projects") == []
+                and (payload.get("daily_package_keys") or payload.get("previous_weekly_package_keys"))):
+            return []
+    return ["report trace 缺少 codex_sessions privacy evidence"]
+
+
 def ensure_report_submit_allowed(package_dir: Path, config: dict[str, str], manifest: dict[str, Any]) -> None:
     report_type = report_type_from_manifest(manifest)
     if report_type not in {"daily", "weekly"}:
         return
     evidence_paths = manifest.get("files", {}).get("evidence", []) if isinstance(manifest.get("files"), dict) else []
-    session_payload: Any = None
+    evidence_by_kind: dict[str, dict[str, Any]] = {}
     for relative in evidence_paths if isinstance(evidence_paths, list) else []:
         evidence = read_json_file(package_dir / str(relative))
-        if isinstance(evidence, dict) and evidence.get("kind") == "codex_sessions":
-            session_payload = evidence.get("payload")
-            break
-    privacy_errors = session_evidence_errors(session_payload)
+        if isinstance(evidence, dict) and isinstance(evidence.get("kind"), str):
+            evidence_by_kind[evidence["kind"]] = evidence
+    privacy_errors = report_session_privacy_errors(evidence_by_kind)
     if privacy_errors:
         raise SystemExit("报告包缺少有效 session consent/privacy evidence，已在 HTTP 前停止: " + privacy_errors[0])
     manifest_date = str(manifest.get("date") or "").strip()

@@ -1,12 +1,13 @@
 ---
 name: akbs-patch-submit
-description: "Use when an AKBS member needs to prepare, validate, submit, or complete information for an Android change package. Uses the single knowledge-incoming-package v2 contract across all seven Android layers; excludes source implementation, patch capture, and administrator curation."
+description: "Use to prepare, validate, submit, or complete information for an Android change package using the single incoming v2 contract across all seven Android layers. Reuses local preparation for an administrator's own Patch, with authenticated submission and curation owned by the available management Skill; excludes source implementation and capture."
 ---
 
 # AKBS Patch Submit
 
 This Skill turns one completed `android-patch-capture` directory into the final
-AKBS package, validates it, and submits it through the ordinary patch queue.
+AKBS package and validates it. Ordinary members submit through the member route;
+an administrator's own submission continues through the existing management Skill.
 
 There is one current package contract:
 
@@ -88,10 +89,49 @@ python3 "scripts/akbs_patch_submit.py" --profile <member_alias> --prepare \
 
 ## Validate and submit
 
+Local validation does not submit:
+
 ```bash
 python3 "scripts/akbs_patch_submit.py" --profile <member_alias> \
   --validate /path/to/pending/package
+```
 
+### Submission authority
+
+Choose authority before any upload, not from a profile alias, machine name, or the
+mere presence of a management Skill:
+
+- A previously confirmed `role=member` uses the existing member profile and the
+  command below, even if a management Skill is installed. Without a management
+  Skill, the ordinary member path also stays unchanged. Do not look for or require
+  administrator credentials on these paths.
+- For a confirmed administrator, or when the role is unknown but
+  `akbs-curation-maintainer` is available, let that Skill make one read-only
+  `author-identity` check in this same conversation. Availability enables this
+  check, not permission. A confirmed administrator's request such as “submit my
+  Patch” naturally selects this route; the user need not repeat “administrator”.
+  Only the returned `admin` role and server-bound author establish the own-Patch
+  route. The prepared package's author must match; do not rewrite attribution
+  to make it match. Reuse this Skill's local prepare/validate, then let the
+  management Skill submit that exact package and continue eligibility review, knowledge
+  comparison, and the formal curation decision through the existing workflow.
+  Upload success is not the stopping point. Preserve its returned
+  `patch_package_id` and workflow on retry or recovery; do not open another chat,
+  send the user to the UI, or submit again through ordinary `--submit-latest`.
+- If an administrative task lacks the management Skill, or the selected identity
+  check cannot confirm the administrator, authentication fails, or its bound author
+  differs, keep the prepared material local and explain the specific blocker.
+  Never silently fall back to member submission. An administrator handling another
+  author's material follows the management Skill's
+  existing other-author flow; this is not a self-submission shortcut.
+
+Only making, checking, or staging material (or an explicit instruction not to add
+knowledge) does not authorize production submission or curation. Honor an explicit
+upload-only limit instead of extending it to a knowledge write.
+
+For an authorized ordinary-member submission:
+
+```bash
 python3 "scripts/akbs_patch_submit.py" --profile <member_alias> --submit-latest
 ```
 
@@ -118,4 +158,4 @@ python3 "scripts/akbs_patch_submit.py" --profile <member_alias> \
 - Keep one functional goal per package; a goal may span multiple repositories or layers.
 - Evidence files declare their own `kind`; the manifest only lists their paths.
 - AKBS server validation is authoritative for identity, persistence, deduplication, and upload acceptance.
-- Administrator curation decides new case or merge after upload.
+- Administrator curation decides new case or merge after upload. For the administrator's own submission, the management Skill continues that decision in the current task rather than waiting for a separate member-review step.

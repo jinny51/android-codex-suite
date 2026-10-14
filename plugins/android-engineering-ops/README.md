@@ -117,6 +117,8 @@ Codex 编写的当前源码变更使用 `capture_remote_snapshot.py --package` �
 快照并立即调用原子打包器。旧两步接口继续兼容，但不再是默认人工流程。
 独立 App 源码不按 `application` layer 混入产品补丁；产品侧 APK 集成改动可按其产品源码仓采集。手工和快照捕获适用同一来源边界。
 
+管理员要求提交本人 Patch 时，workflow 按 `akbs-patch-submit` 的权限分流，在当前会话使用可用的管理 Skill 确认真实管理身份与作者绑定，再连续提交和判断沉淀，不停在上传成功；普通成员及仅制作/暂存行为不变。
+
 ## Source access
 
 公开入口只有 `android-source-access`。`android_source_access.py` 先以本机事实识别

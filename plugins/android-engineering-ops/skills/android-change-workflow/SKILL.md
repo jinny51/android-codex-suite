@@ -1,6 +1,6 @@
 ---
 name: android-change-workflow
-description: "Use when implementing, diagnosing, modifying, or verifying Android source changes across application, platform, native, HAL, kernel, device, or build layers. Coordinates source authority, optional AKBS knowledge search, optional orchestration, policy, build-route selection, layer-aware verification, current v2 Android change capture, and submission."
+description: "Use when implementing, diagnosing, modifying, or verifying Android source changes across application, platform, native, HAL, kernel, device, or build layers. Coordinates source authority, optional AKBS knowledge search and orchestration, policy, verification, current v2 capture, and role-appropriate submission in the same task."
 ---
 
 # Android Change Workflow
@@ -232,6 +232,12 @@ follows this rule: Every `files.patches` path appears exactly once in
 `components[].patches`.
 Independent App work completes through its own project verification and delivery
 route without Patch capture or submission.
+
+When submission is requested, follow `akbs-patch-submit`'s **Submission authority**
+section before choosing an upload command. Its administrator own-Patch route
+continues the authorized submission and formal knowledge decision in this same
+conversation, rather than stopping at upload success or handing off to a chat/UI.
+Making, checking, or staging a Patch alone does not authorize submission or curation.
 
 There is one current incoming v2 upload contract and one patch upload lifecycle;
 the engineering capture is local input to the member package builder, not another

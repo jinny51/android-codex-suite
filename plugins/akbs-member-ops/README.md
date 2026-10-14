@@ -60,6 +60,12 @@ same product-source boundary.
 Historical `knowledge-incoming-package/1/framework_change` archives remain readable
 without rewriting their bytes. Current tools do not create or submit that legacy kind.
 
+For an administrator's own Patch submission, local prepare/validate is reused,
+while the available local `akbs-curation-maintainer` verifies the server-bound
+administrator and author, then submits and continues the knowledge decision in
+the same conversation. Ordinary members keep the member route without probing
+administrator credentials; local-only preparation does not authorize production writes.
+
 ## Install-family boundary
 
 Daily, weekly and patch entrypoints share the existing member version gate. Its

@@ -16,8 +16,11 @@
 python3 "scripts/akbs_patch_submit.py" --profile <member_alias> --check-package /path/to/package
 python3 "scripts/akbs_patch_submit.py" --profile <member_alias> --prepare \
   --patch-package /path/to/package
-python3 "scripts/akbs_patch_submit.py" --profile <member_alias> --submit-latest
 ```
+
+提交前区分权限：普通成员继续用自身 profile 的 `--submit-latest`，不检查管理凭据。管理员提交本人 Patch 时，由当前会话可用的 `akbs-curation-maintainer` 用既有 `author-identity` 确认真实管理权限与服务端作者绑定；成员端只复用本地 prepare/validate，正式提交和随后的资格判断、知识比较、沉淀均在当前会话经管理 Skill 连续完成。不能凭 alias 或已安装 Skill 认定管理身份，也不能认证失败后悄悄降回成员上传。作者不符时保留原包，不改署名；处理中断沿用同一 `patch_package_id` 和 workflow 恢复，不转交其他会话或 UI。
+
+仅制作、检查、暂存或明确不入库时，不提交也不写知识；明确要求“仅上传”的边界同样保留。
 
 本地检查沿用 v1：manifest、README、patch 和 evidence 路径必须存在且安全；
 `components` 只能使用七个 layer，并且 `files.patches` 中每个路径必须恰好出现一次。
@@ -34,7 +37,7 @@ Patch 提交只适用于目标 Android 产品源码的改动；独立 App 源码
 $CODEX_HOME/artifacts/akbs-member-ops/incoming/pending/<member_alias>/<run_id>/
 ```
 
-准备和提交用法：
+准备和普通成员提交用法：
 
 ```bash
 python3 "scripts/akbs_patch_submit.py" --profile <member_alias> --prepare \
@@ -45,4 +48,4 @@ python3 "scripts/akbs_patch_submit.py" --profile <member_alias> --submit-latest
 
 需要修改源码或重新抓取时使用 `$android-patch-capture`，然后直接检查、准备或提交
 它生成的整个目录。不要手工拼 manifest。历史 `framework_change` 只读兼容；当前
-工具只写 `android_change`。管理员侧知识审核仍在上传后独立进行。
+工具只写 `android_change`。普通成员上传后的管理员审核保持原流程；管理员本人提交按上面的管理通路连续处理，不制造一次自我确认。

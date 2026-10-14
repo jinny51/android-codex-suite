@@ -1,4 +1,4 @@
 interface:
   display_name: "Android Change Workflow"
   short_description: "Seven-layer Android workflow with optional orchestration"
-  default_prompt: "Use $android-change-workflow to resolve any explicitly selected orchestration extension once, identify product-source Patches versus independent App work, implement or diagnose, verify, capture eligible product changes as engineering evidence, and use $akbs-patch-submit for the final incoming v2 package when authorized."
+  default_prompt: "Use $android-change-workflow to resolve any explicitly selected orchestration extension once, identify product-source Patches versus independent App work, implement or diagnose, verify, and capture eligible product changes; submit only when authorized, and continue through the available management Skill in this conversation only for an authenticated administrator's own Patch submission."

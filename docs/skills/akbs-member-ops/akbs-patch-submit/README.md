@@ -20,7 +20,7 @@ python3 "scripts/akbs_patch_submit.py" --profile <member_alias> --prepare \
 
 提交前区分权限：普通成员继续用自身 profile 的 `--submit-latest`，不检查管理凭据。管理员提交本人 Patch 时，由当前会话可用的 `akbs-curation-maintainer` 用既有 `author-identity` 确认真实管理权限与服务端作者绑定；成员端只复用本地 prepare/validate，正式提交和随后的资格判断、知识比较、沉淀均在当前会话经管理 Skill 连续完成。不能凭 alias 或已安装 Skill 认定管理身份，也不能认证失败后悄悄降回成员上传。作者不符时保留原包，不改署名；处理中断沿用同一 `patch_package_id` 和 workflow 恢复，不转交其他会话或 UI。
 
-仅制作、检查、暂存或明确不入库时，不提交也不写知识；明确要求“仅上传”的边界同样保留。
+仅制作、检查或暂存时，不提交也不写知识；明确要求“仅上传”时按已确认角色上传后停止，不处理队列、审核或写入知识。明确不入库的限制不得扩成沉淀授权。
 
 本地检查沿用 v1：manifest、README、patch 和 evidence 路径必须存在且安全；
 `components` 只能使用七个 layer，并且 `files.patches` 中每个路径必须恰好出现一次。

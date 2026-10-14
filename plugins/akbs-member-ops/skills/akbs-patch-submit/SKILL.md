@@ -125,9 +125,10 @@ mere presence of a management Skill:
   author's material follows the management Skill's
   existing other-author flow; this is not a self-submission shortcut.
 
-Only making, checking, or staging material (or an explicit instruction not to add
-knowledge) does not authorize production submission or curation. Honor an explicit
-upload-only limit instead of extending it to a knowledge write.
+Only making, checking, or staging material does not authorize production submission
+or curation. An explicit upload-only request authorizes submission through the selected
+role's entry, but not queue processing, review, or a knowledge write. An instruction
+not to add knowledge must never be expanded into curation.
 
 For an authorized ordinary-member submission:
 

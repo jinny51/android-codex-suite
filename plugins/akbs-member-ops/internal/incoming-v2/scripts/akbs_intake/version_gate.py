@@ -34,7 +34,6 @@ import codex_plugin_update as _plugin_update  # noqa: E402
 
 PLUGIN_UPDATE_SKIP_ENV = "CODEX_REPORT_SKIP_PLUGIN_UPDATE_CHECK"
 PLUGIN_UPDATE_REQUIRE_ENV = "CODEX_REPORT_REQUIRE_PLUGIN_UPDATE_CHECK"
-PLUGIN_REEXEC_ATTEMPT_ENV = "CODEX_REPORT_PLUGIN_REEXEC_ATTEMPTED"
 PLUGIN_REMOTE_MANIFEST_TIMEOUT = 6
 LAST_PLUGIN_VERSION_GATE: dict[str, Any] | None = None
 PLUGIN_LIST_CACHE: tuple[dict[str, Any] | None, str] | None = None
@@ -1021,7 +1020,7 @@ def packaged_plugin_freshness(
                     "message": (
                         f"Codex 插件缓存已自动更新到 AKBS Member Ops {remote_version}。"
                         "当前 Python 进程和 Codex 会话已经加载了过期技能缓存，当前会话不能热刷新；"
-                        "请重新运行原命令，并在 Codex 会话仍显示旧技能时新开或重启会话。"
+                        "请退出并重启 Codex，再继续原任务；本次生成或上传已停止。"
                     ),
                 }
             )
@@ -1094,54 +1093,6 @@ def auto_update_packaged_plugin(plugin_name: str) -> dict[str, Any]:
         run_command=run,
         verify_install=lambda: _verify_updated_member_install(plugin_name),
     )
-
-
-def plugin_intake_script_from_root(root: Path) -> Path:
-    if root.name == "incoming-v2" and root.parent.name == "internal":
-        return root / "scripts" / "akbs_member_intake.py"
-    return root / "internal" / "incoming-v2" / "scripts" / "akbs_member_intake.py"
-
-
-def updated_plugin_intake_script_path(freshness: dict[str, Any]) -> Path | None:
-    auto_update = freshness.get("auto_update") if isinstance(freshness.get("auto_update"), dict) else {}
-    plugin_name = str(freshness.get("plugin_name") or "akbs-member-ops")
-    root_values = [
-        auto_update.get("installed_plugin_path"),
-        freshness.get("installed_plugin_path"),
-    ]
-    cache_metadata = latest_installed_plugin_cache_metadata(plugin_name)
-    if cache_metadata.get("installed_plugin_path"):
-        root_values.append(cache_metadata["installed_plugin_path"])
-
-    for root_value in root_values:
-        if not root_value:
-            continue
-        script_path = plugin_intake_script_from_root(Path(str(root_value))).resolve()
-        if script_path.is_file():
-            return script_path
-
-    if auto_update.get("status") == "PASS" and auto_update.get("command"):
-        return Path(__file__).resolve()
-    return None
-
-
-def reexec_latest_plugin_script_after_update(freshness: dict[str, Any]) -> str:
-    if freshness.get("status") not in {"UPDATED_RESTART_REQUIRED", "SESSION_CACHE_STALE"}:
-        return ""
-    if os.environ.get(PLUGIN_REEXEC_ATTEMPT_ENV):
-        return ""
-    auto_update = freshness.get("auto_update") if isinstance(freshness.get("auto_update"), dict) else {}
-    if freshness.get("git_root") and auto_update.get("command") and not auto_update.get("installed_plugin_path"):
-        return ""
-    script_path = updated_plugin_intake_script_path(freshness)
-    if not script_path:
-        return "已更新插件缓存，但未找到新缓存里的上传脚本；请新开或重启 Codex 会话后重新运行。"
-    os.environ[PLUGIN_REEXEC_ATTEMPT_ENV] = "1"
-    try:
-        os.execv(sys.executable, [sys.executable, str(script_path), *sys.argv[1:]])
-    except OSError as exc:
-        return f"已更新插件缓存，但无法切换到新脚本继续执行: {exc}。请新开或重启 Codex 会话后重新运行。"
-    return ""
 
 
 def plugin_freshness_check(fetch: bool = True, require: bool = False) -> dict[str, Any]:

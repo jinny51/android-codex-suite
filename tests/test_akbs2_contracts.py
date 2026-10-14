@@ -300,6 +300,27 @@ def _build_search_package(tmp_path: Path, capture: Path, monkeypatch: pytest.Mon
     )
 
 
+def test_builder_does_not_refuse_capture_due_to_scope_wording(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capture, original = _capture_with_search_receipt(
+        tmp_path, {"kind": "search_before_change", "path": "evidence/search.json"},
+    )
+    manifest = load(capture / "manifest.json")
+    manifest["summary"] = "单一旋转功能，明确排除多个独立功能。"
+    manifest["workflow_contract"] = "current_codex_skill"
+    (capture / "manifest.json").write_text(json.dumps(manifest))
+    (capture / "README.md").write_text("## 功能描述\n单一旋转功能，明确排除多个独立功能。\n")
+    package = _build_search_package(tmp_path, capture, monkeypatch)
+    generated = load(package / "manifest.json")
+    assert (package / generated["files"]["patches"][0]).read_bytes() == original
+    # The builder defers the one advisory collection to the real validator.
+    import akbs_member_intake as intake
+    checked = intake.validate_incoming_package(package, generated)
+    assert any("复核" in warning for warning in checked["warnings"])
+    assert not any("聚合包" in error for error in checked["errors"])
+
+
 @pytest.mark.parametrize("workflow", ["manual_import", "historical_import"])
 def test_import_builder_retains_existing_search_reader(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, workflow: str,

@@ -149,6 +149,15 @@ also preserves `result_state`, `completeness`, `reason_code`, target environment
 filters, pagination and projection. Incomparable environment matches remain separate;
 the client does not rank Android version, platform or project with a global priority.
 
+A bounded multi-query run preserves successful server results when another query
+fails. JSON separately reports `query_failures` and `search_completeness`; a failed
+query is recorded as indeterminate client-side health, never a fabricated server
+response or an empty successful query. Human output states the whole pass is
+incomplete. If every server query fails, the existing local-fallback behavior applies.
+Results keep first-seen order. When the same result is returned by an incomplete
+and a complete query, retain the complete query's actual qualification/binding
+facts without borrowing its health to endorse a different incomplete instance.
+
 Local rows strip derived server grades, bindings, environment comparisons and reuse
 scores. Historical confidence/evidence/risk annotations stay as original source
 annotations, explicitly not this query's server qualification. Local hints may support
@@ -248,6 +257,13 @@ select a direct or adaptation candidate conservatively. Both require a concrete
 Implementation and closed accepted implementation evidence in healthy complete server
 responses. `reference_only` needs a target actually present in this result, not complete
 reuse proof. It may reference a Case or local hint without claiming application success.
+
+For a partial multi-query pass, each selected `reuse`/`adapt` candidate must be
+actually returned by a healthy complete query with the recorded proof. The usage
+receipt preserves its existing `matched_queries` association and every attempted
+query's health; capture and upload validate that association. An unrelated failed
+alternative does not invalidate that candidate. Older complete receipts continue
+to meet the existing all-query health contract without requiring new fields.
 
 `not_found` is a member usage conclusion, never a server decision. One bounded run
 must contain at least two distinct queries, each `empty_for_this_query`, complete,

@@ -912,16 +912,22 @@ def load_search_receipt(
             or not isinstance(health, list) or len(health) != len(queries)
             or any(
                 not isinstance(item, dict) or item.get("query") != query
-                or item.get("result_state") == "indeterminate"
-                or item.get("completeness") != "complete"
-                or not isinstance(item.get("projection"), dict)
-                or item["projection"].get("ready") is not True
-                or item["projection"].get("complete") is not True
-                or not isinstance(item.get("pagination"), dict)
                 for query, item in zip(queries, health)
             )
         ):
-            raise SystemExit("reuse/adapt/not_found 回执必须保留完整、就绪的服务端查询证据")
+            raise SystemExit("reuse/adapt/not_found 回执必须保留各次服务端查询证据")
+        def query_is_healthy(item):
+            projection = item.get("projection")
+            return (
+                item.get("result_state") != "indeterminate"
+                and item.get("completeness") == "complete"
+                and isinstance(projection, dict)
+                and projection.get("ready") is True and projection.get("complete") is True
+                and isinstance(item.get("pagination"), dict)
+            )
+        healthy_queries = {item["query"] for item in health if query_is_healthy(item)}
+        if decision == "not_found" and len(healthy_queries) != len(queries):
+            raise SystemExit("not_found 回执必须保留完整、就绪的服务端查询证据")
         if decision == "not_found" and (
             len({" ".join(query.split()).casefold() for query in queries}) < 2
             or results
@@ -945,6 +951,13 @@ def load_search_receipt(
             grades = {"direct_reuse_candidate"} if decision == "reuse" else {"direct_reuse_candidate", "adaptation_candidate"}
             for target in targets:
                 item = by_id[target]
+                matched_queries = item.get("matched_queries")
+                if len(healthy_queries) != len(queries) and (
+                    not isinstance(matched_queries, list) or not matched_queries
+                    or any(not isinstance(value, str) or value not in queries for value in matched_queries)
+                    or not (set(matched_queries) & healthy_queries)
+                ):
+                    raise SystemExit("reuse/adapt 目标必须来自完整、就绪的实际命中查询")
                 bindings = item.get("required_bindings")
                 if (
                     item.get("kind") != "implementation" or item.get("reuse_grade") not in grades
@@ -1158,6 +1171,11 @@ def coding_standard_check(args: argparse.Namespace, captures: list[RepositoryCap
     errors: list[str] = []
     warnings: list[str] = []
     repositories: list[dict[str, Any]] = []
+    patch_layers = capture_layers(
+        captures,
+        default_layer=getattr(args, "component_layer", "") or LEGACY_DOMAIN_LAYERS.get(args.change_domain, ""),
+        repository_layers=getattr(args, "repository_layers", {}),
+    )
     for capture in captures:
         facts = capture.facts
         repo_errors: list[str] = []
@@ -1259,7 +1277,7 @@ def coding_standard_check(args: argparse.Namespace, captures: list[RepositoryCap
                 f"{args.policy_member_alias!r}"
             )
         repo_errors.extend(f"author/date marker: {error}" for error in marker_errors)
-        framework_profile = args.change_domain == "framework"
+        framework_profile = patch_layers[capture.patch_rel] == "platform"
         if framework_profile and direct_logs and not args.allow_banned_logs:
             repo_errors.append("新增代码包含直接 Log/Slog 调用，应改用 FrameworkLog")
         if framework_profile and hardcoded_logs:
@@ -1273,6 +1291,7 @@ def coding_standard_check(args: argparse.Namespace, captures: list[RepositoryCap
             {
                 "repo_path": capture.repo_path,
                 "patch": capture.patch_rel,
+                "layer": patch_layers[capture.patch_rel],
                 "author_date_marker_present": marker_count > 0,
                 "marker_contract": (
                     "paired-current"
@@ -1583,11 +1602,6 @@ def main() -> int:
     platform = platform_token
     feature = slug(args.feature)
     args.feature = feature
-    scope_errors = validate_feature_scope(args)
-    if scope_errors:
-        for error in scope_errors:
-            print(error, file=sys.stderr)
-        return 1
     search_receipt_bytes: bytes | None = None
     if args.search_receipt:
         search_payload, search_receipt_bytes = load_search_receipt(
@@ -1655,7 +1669,7 @@ def main() -> int:
     feature_facts = aggregate_feature_facts(captures)
     problem_payload, risk_payload = feature_problem_and_risk_payloads(args, captures, feature_facts)
     coding_check = coding_standard_check(args, captures)
-    errors.extend(validate_feature_scope(args))
+    warnings.extend(validate_feature_scope(args))
     errors.extend(
         template_leak_errors(
             summary=args.summary,

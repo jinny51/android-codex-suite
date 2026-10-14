@@ -85,6 +85,36 @@ def test_current_codex_capture_records_versioned_matching_policy_evidence() -> N
     assert repository["marker_aliases"] == ["member01"]
 
 
+def test_framework_overlay_follows_each_repository_layer_in_one_feature() -> None:
+    module = load_capture_module()
+    framework = capture_for(
+        module,
+        diff_with("//member01 20260828@{", "customLogic();", "//member01 20260828@}"),
+    )
+    app = capture_for(
+        module,
+        diff_with("//member01 20260828@{", 'Slog.i(TAG, "rotation policy changed");', "//member01 20260828@}"),
+    )
+    app.repo_path = "packages/apps/Settings"
+    app.patch_rel = "patches/rk14-settings@policy.patch"
+    result = module.coding_standard_check(
+        arguments(component_layer="platform", repository_layers={app.repo_path: "application"}),
+        [framework, app],
+    )
+    assert result["result"] == "PASS"
+    assert result["repositories"][1]["errors"] == []
+
+    framework.diff_text = app.diff_text
+    framework.facts = module.facts_from_diff(framework.diff_text)
+    rejected = module.coding_standard_check(
+        arguments(component_layer="platform", repository_layers={app.repo_path: "application"}),
+        [framework, app],
+    )
+    assert rejected["result"] == "FAIL"
+    assert rejected["repositories"][0]["errors"]
+    assert rejected["repositories"][1]["errors"] == []
+
+
 def test_current_codex_capture_rejects_legacy_wrong_or_removed_only_markers() -> None:
     module = load_capture_module()
     cases = (

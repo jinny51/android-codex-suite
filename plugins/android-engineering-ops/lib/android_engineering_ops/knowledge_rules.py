@@ -596,6 +596,7 @@ def find_company_projects(text: str, platform: str = "") -> list[str]:
 
 
 def aggregate_package_scope_errors(text: str, patch_count: int = 0) -> list[str]:
+    """Return wording-only review hints; the legacy name is not a hard verdict."""
     if not (
         DAILY_BUNDLE_SUMMARY_RE.search(text)
         or MULTI_FEATURE_COLLECTION_RE.search(text)
@@ -608,10 +609,9 @@ def aggregate_package_scope_errors(text: str, patch_count: int = 0) -> list[str]
         snippet = snippet[:180].rstrip() + " ... " + snippet[-180:].lstrip()
     detail = f"疑似聚合内容：{snippet}。" if snippet else ""
     return [
-        f"补丁包（patch package）不能是无共同目标的聚合包（aggregate package）。{count}"
+        f"补丁包描述出现功能范围线索，需结合实际改动复核共同功能目标。{count}"
         f"{detail}"
-        "请按功能拆分（function split）为多个新的补丁包；"
-        "一个补丁包只能对应一个共同功能目标。"
+        "文字匹配本身不能证明多功能混包，不据此阻断采集或提交。"
     ]
 
 
@@ -768,7 +768,7 @@ def classify_function_scope(text: str, patch_count: int = 0) -> dict[str, Any]:
     errors = aggregate_package_scope_errors(text, patch_count)
     if errors:
         return {
-            "status": "fail",
+            "status": "warn",
             "issue_codes": ["aggregate_package"],
             "messages": errors,
         }

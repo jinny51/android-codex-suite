@@ -40,7 +40,6 @@ from akbs_member_ops.knowledge_rules import (
 )
 PLUGIN_UPDATE_SKIP_ENV = "CODEX_REPORT_SKIP_PLUGIN_UPDATE_CHECK"
 PLUGIN_UPDATE_REQUIRE_ENV = "CODEX_REPORT_REQUIRE_PLUGIN_UPDATE_CHECK"
-PLUGIN_REEXEC_ATTEMPT_ENV = "CODEX_REPORT_PLUGIN_REEXEC_ATTEMPTED"
 PLUGIN_REMOTE_MANIFEST_TIMEOUT = 6
 PACKAGE_TYPES = {"daily", "weekly", "patch"}
 INCOMING_KINDS = {"daily_trace", "weekly_trace", "android_change"}
@@ -82,9 +81,7 @@ from akbs_intake.version_gate import (  # noqa: E402
     plugin_manifest_path,
     plugin_update_unknown,
     plugin_version_gate_check,
-    reexec_latest_plugin_script_after_update,
     run,
-    updated_plugin_intake_script_path,
     version_parts,
 )
 
@@ -498,7 +495,7 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             template_leak_errors=template_leak_errors,
             errors=errors,
         )
-        errors.extend(
+        warnings.extend(
             validate_framework_function_scope(
                 package_dir=package_dir,
                 manifest=manifest,
@@ -820,14 +817,11 @@ def main(argv: list[str] | None = None) -> int:
     ):
         freshness = plugin_version_gate_check(config, fetch=True, require=True)
         if freshness.get("blocking"):
-            reexec_error = reexec_latest_plugin_script_after_update(freshness)
-            if reexec_error:
-                freshness["reexec_error"] = reexec_error
             print(
                 json.dumps(
                     {
                         "status": "FAIL",
-                        "message": freshness.get("reexec_error") or freshness.get("message") or "插件更新检查失败。",
+                        "message": freshness.get("message") or "插件更新检查失败。",
                         "plugin_freshness": freshness,
                     },
                     ensure_ascii=False,

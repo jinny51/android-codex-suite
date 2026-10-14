@@ -22,6 +22,7 @@ from akbs_member_ops.knowledge_search.api import (
     fetch_merge_confirmation_payload,
     fetch_server_results,
     merge_api_error,
+    normalize_server_results,
     post_merge_dispute,
     server_fallback_reason,
     should_try_server,
@@ -99,6 +100,7 @@ def usage_result(row: dict[str, Any]) -> dict[str, Any]:
         "target_environment",
         "matched_channels",
         "matched_anchors",
+        "matched_queries",
         "case_id",
         "implementation_id",
         "evidence_binding_id",
@@ -197,6 +199,7 @@ def record_search_usage(
     fallback_reason: str = "",
     queries: list[str] | None = None,
     server_payloads: list[dict[str, Any]] | None = None,
+    query_failures: list[dict[str, Any]] | None = None,
 ) -> Path | None:
     if not query:
         return None
@@ -216,13 +219,15 @@ def record_search_usage(
         targets=args.reuse_target or [],
         results=results,
     )
-    if decision in DECISION_REUSE_GRADES and not healthy_server_search(
+    if decision in DECISION_REUSE_GRADES and not healthy_target_server_search(
         source=source,
         queries=effective_queries,
         payloads=payloads,
+        results=results,
+        targets=args.reuse_target or [],
     ):
         raise SystemExit(
-            f"{decision} requires complete server search responses with a ready and complete projection"
+            f"{decision} requires its selected candidates from complete server queries with a ready and complete projection"
         )
     if decision == "not_found" and not healthy_multi_query_empty(
         source=source,
@@ -284,8 +289,16 @@ def record_search_usage(
                 "filters": payload.get("filters", {}),
             }
             for payload in payloads
+        ] + [
+            {"query": failure["query"], "result_state": "indeterminate",
+             "completeness": "indeterminate", "reason_code": failure["code"],
+             "projection": {}, "pagination": {}, "origin": "client_failure"}
+            for failure in query_failures or []
         ],
+        "query_failures": query_failures or [],
     }
+    health_by_query = {item["query"]: item for item in payload["server_search_health"]}
+    payload["server_search_health"] = [health_by_query[value] for value in effective_queries if value in health_by_query]
     semantic_digest = hashlib.sha256(
         json.dumps(
             payload,
@@ -369,8 +382,9 @@ def healthy_server_search(
     return True
 
 
-def combine_results(result_sets: list[tuple[str, list[dict[str, Any]]]]) -> list[dict[str, Any]]:
+def combine_results(result_sets: list[tuple[str, list[dict[str, Any]]]], *, complete_queries: set[str] | None = None) -> list[dict[str, Any]]:
     combined: dict[tuple[str, str], dict[str, Any]] = {}
+    complete_candidates: set[tuple[str, str]] = set()
     for query, rows in result_sets:
         for row in rows:
             key = (str(row.get("kind") or ""), result_id(row))
@@ -381,9 +395,43 @@ def combine_results(result_sets: list[tuple[str, list[dict[str, Any]]]]) -> list
                 existing = dict(row)
                 existing["matched_queries"] = [query]
                 combined[key] = existing
-            elif query not in existing["matched_queries"]:
-                existing["matched_queries"].append(query)
+            else:
+                matched_queries = list(existing["matched_queries"])
+                if query not in matched_queries:
+                    matched_queries.append(query)
+                if complete_queries is not None and query in complete_queries and key not in complete_candidates:
+                    # Keep first-seen order, but do not borrow a healthy query to
+                    # endorse an earlier incomplete instance's different proof.
+                    combined[key] = {**row, "matched_queries": matched_queries}
+                else:
+                    existing["matched_queries"] = matched_queries
+            if complete_queries is not None and query in complete_queries:
+                complete_candidates.add(key)
     return list(combined.values())
+
+
+def healthy_target_server_search(*, source, queries, payloads, results, targets) -> bool:
+    """A failed alternative query does not invalidate a healthy candidate's proof."""
+    by_id = {result_id(item): item for item in results}
+    for target in targets:
+        item = by_id.get(target, {})
+        matched = item.get("matched_queries") or queries
+        if not any(
+            payload.get("query") in matched
+            and healthy_server_search(source=source, queries=[payload["query"]], payloads=[payload])
+            and any(
+                result_id(candidate) == target
+                and all(candidate.get(key) == item.get(key) for key in (
+                    "reuse_grade", "qualification_reason", "requires_revalidation",
+                    "required_bindings", "evidence_gaps", "environment_comparison",
+                    "target_environment", "case_id", "implementation_id",
+                ))
+                for candidate in normalize_server_results(payload)
+            )
+            for payload in payloads
+        ):
+            return False
+    return bool(targets)
 
 
 def codex_documents_roots() -> list[Path]:
@@ -848,20 +896,31 @@ def main(argv: list[str] | None = None) -> int:
     search_mode = "unknown"
     results: list[dict[str, Any]] = []
     server_payloads: list[dict[str, Any]] = []
+    query_failures: list[dict[str, Any]] = []
 
     if should_try_server(args) and args.type not in LEGACY_LOCAL_TYPES:
-        try:
-            result_sets = []
-            for current_query in queries:
+        result_sets = []
+        for current_query in queries:
+            try:
                 current_results, server_payload = fetch_server_results(args, current_query)
                 result_sets.append((current_query, current_results))
                 server_payloads.append(server_payload)
-            results = combine_results(result_sets)
+            except Exception as exc:
+                if isinstance(exc, ValueError) and "member_alias" in str(exc):
+                    raise SystemExit(str(exc))
+                failure = failure_result(exc)
+                query_failures.append({"query": current_query, "code": failure.code,
+                                       "request_id": failure.request_id, "category": failure.kind.value,
+                                       "message": failure.message})
+                fallback_reason = server_fallback_reason(exc)
+        if server_payloads:
+            complete_queries = {
+                payload["query"] for payload in server_payloads
+                if healthy_server_search(source=source, queries=[payload["query"]], payloads=[payload])
+            }
+            results = combine_results(result_sets, complete_queries=complete_queries)
             search_mode = str(server_payloads[0].get("search_mode") or "unknown")
-        except Exception as exc:
-            if isinstance(exc, ValueError) and "member_alias" in str(exc):
-                raise SystemExit(str(exc))
-            fallback_reason = server_fallback_reason(exc)
+        else:
             if args.source == "server":
                 raise SystemExit(fallback_reason)
             source = "local_jsonl_fallback"
@@ -902,6 +961,7 @@ def main(argv: list[str] | None = None) -> int:
         fallback_reason=fallback_reason,
         queries=queries,
         server_payloads=server_payloads,
+        query_failures=query_failures,
     )
     usage_receipt_sha256 = ""
     if usage_receipt:
@@ -922,6 +982,8 @@ def main(argv: list[str] | None = None) -> int:
                     "refresh": refresh_status,
                     "results": results,
                     "server_responses": server_payloads,
+                    "query_failures": query_failures,
+                    "search_completeness": "complete" if healthy_server_search(source=source, queries=queries, payloads=server_payloads) else "partial",
                     "usage_receipt": str(usage_receipt or ""),
                     "usage_receipt_sha256": usage_receipt_sha256,
                 },
@@ -940,8 +1002,13 @@ def main(argv: list[str] | None = None) -> int:
                 search_mode=search_mode,
                 fallback_reason=fallback_reason,
                 server_payloads=server_payloads,
+                incomplete_queries=bool(query_failures),
             )
         )
+        if query_failures:
+            print("\n部分查询未完成，已保留成功查询结果；不能据此断言没有相关知识。")
+            for failure in query_failures:
+                print(f"查询失败：{failure['query']}；code={failure['code']}；{failure['message']}")
         if usage_receipt:
             print(f"\n搜索证据回执: {usage_receipt}")
             print(f"搜索证据 SHA256: {usage_receipt_sha256}")

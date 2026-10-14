@@ -576,10 +576,9 @@ def validate_framework_scope_pollution(
     sample = "、".join(unrelated[:SCOPE_POLLUTION_REPORT_LIMIT])
     return [
         (
-            "补丁包功能范围与补丁资源锚点不一致，疑似补丁资产污染。"
-            f"无关资源键示例：{sample}。"
-            "请在干净工作树重新采集同一功能补丁包；"
-            "如果实际是多个独立功能，请按功能拆分（function split）为多个新的补丁包。"
+            "补丁资源键与功能描述词面不完全对应，需结合实际改动复核。"
+            f"未匹配资源键示例：{sample}。"
+            "词面不匹配本身不能证明补丁资产污染，不据此阻断提交。"
         )
     ]
 

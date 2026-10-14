@@ -21,6 +21,13 @@ needed to validate historical v1 material; it is not a second public policy owne
 
 Member generation and upload preflight import this module directly from `akbs-member-ops`.
 
+Function-scope wording and resource-name similarity checks are review hints, not
+proof of unrelated functional goals. Their messages belong in local-check warnings;
+`classify_function_scope` reports `warn`, not `fail`, for wording-only matches.
+Actual functional coherence is still assessed from the source change and requirement
+by the engineering workflow and curation. Identity, file, layer and verification
+contract errors remain hard failures.
+
 The rules source is release-version independent. `current_plugin_version()` reads
 the enclosing `.codex-plugin/plugin.json` when the module is running inside an
 installed or checked-out plugin. A rules-only maintainer snapshot has no plugin

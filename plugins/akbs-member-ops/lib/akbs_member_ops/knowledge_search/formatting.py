@@ -461,6 +461,7 @@ def format_markdown(
     search_mode: str = "local_jsonl",
     fallback_reason: str = "",
     server_payloads: list[dict[str, Any]] | None = None,
+    incomplete_queries: bool = False,
 ) -> str:
     lines = [
         "# 知识库搜索结果",
@@ -475,6 +476,8 @@ def format_markdown(
         if fallback_reason:
             lines.append(f"- fallback_reason: {fallback_reason}")
         lines.append("- fallback 提示: 本地文本搜索，未经过服务端复用分级；不要把本地命中直接当作可复用结论。")
+    elif incomplete_queries:
+        lines.append("- 整轮状态: partial；部分查询未完成，已保留成功查询的结果和原分级。")
     payloads = server_payloads or []
     for payload in payloads:
         projection = payload.get("projection") if isinstance(payload.get("projection"), dict) else {}
@@ -499,14 +502,14 @@ def format_markdown(
         lines.append(f"- refresh: {refresh_status}")
     lines.append("")
     if not results:
-        unhealthy = source == "server_api" and any(
+        unhealthy = source == "server_api" and (incomplete_queries or any(
             payload.get("result_state") == "indeterminate"
             or payload.get("completeness") != "complete"
             or not isinstance(payload.get("projection"), dict)
             or payload["projection"].get("ready") is not True
             or payload["projection"].get("complete") is not True
             for payload in payloads
-        )
+        ))
         if unhealthy:
             lines.append("本次服务端搜索不完整，当前无法确定是否存在可复用知识；不得记为 not_found。")
         elif source == "server_api":

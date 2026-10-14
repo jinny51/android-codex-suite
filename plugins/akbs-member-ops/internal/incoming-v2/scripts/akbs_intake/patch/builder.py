@@ -20,7 +20,7 @@ from akbs_intake.patch.assets import (
     validate_patch_attribution,
     write_feature_readme_from_patch_entries,
 )
-from akbs_intake.patch.capture_import import copy_patch_capture_packages, patch_capture_package_scope_errors
+from akbs_intake.patch.capture_import import copy_patch_capture_packages
 from akbs_intake.patch.evidence import (
     aggregate_patch_diff_facts,
     bind_framework_evidence,
@@ -157,9 +157,8 @@ def build_patch_package(
                 f"--patch-package 必须位于 Codex artifacts 根目录下: {artifact_input_root}"
             ) from None
     run_id = run_id or f"{ymd(date)}-{local_now(config):%H%M%S}-patch"
-    scope_errors = patch_capture_package_scope_errors(patch_package_paths, summary, run_id)
-    if scope_errors:
-        raise SystemExit("\n".join(scope_errors))
+    # Wording/resource-name hints are collected once by final local validation.
+    # They cannot prove that the actual source diff contains unrelated features.
     out_dir = require_safe_artifact_path(expanded_path(config["out_dir"]), purpose="out_dir")
     package_dir = require_safe_artifact_path(out_dir / "pending" / ymd(date) / config["member_alias"] / run_id, purpose="incoming package output")
     if package_dir.exists():

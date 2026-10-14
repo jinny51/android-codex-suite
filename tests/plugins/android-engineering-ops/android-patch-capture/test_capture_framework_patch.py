@@ -122,12 +122,34 @@ def test_project_inference_keeps_conflicts_out_of_formal_target() -> None:
     "summary",
     ["今日补丁合集", "多个独立功能合集"],
 )
-def test_non_coherent_package_scope_is_rejected(summary: str) -> None:
+def test_scope_wording_emits_a_review_hint(summary: str) -> None:
     capture = load_capture()
     errors = capture.validate_feature_scope(
         argparse.Namespace(summary=summary, feature="batch-collection")
     )
     assert errors
+
+
+def test_capture_preserves_negated_scope_wording_as_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys,
+) -> None:
+    capture = load_capture()
+    patch = tmp_path / "product.patch"
+    patch.write_text(
+        "diff --git a/core/Example.java b/core/Example.java\n"
+        "--- a/core/Example.java\n+++ b/core/Example.java\n@@ -1 +1,2 @@\n-old();\n"
+        "+//legacy_author 20251016@\n+updated();\n",
+    )
+    monkeypatch.setattr(sys, "argv", [str(CAPTURE), "--workflow-contract", "historical_import",
+        "--implementation-origin", "historical", "--patch-artifact", str(patch),
+        "--patch-repo-path", "frameworks/base", "--platform", "rk14",
+        "--component-layer", "platform", "--feature", "rotation", "--summary",
+        "单一旋转功能，明确排除多个独立功能。", "--out-dir", str(tmp_path / "captures")])
+    assert capture.main() == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["local_check"]["errors"] == []
+    assert any("复核" in warning for warning in result["local_check"]["warnings"])
+    assert Path(result["package"]).is_dir()
 
 
 def test_controlled_patch_filename_rules() -> None:

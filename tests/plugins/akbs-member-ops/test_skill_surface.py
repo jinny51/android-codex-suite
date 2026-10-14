@@ -208,11 +208,6 @@ class SkillSurfaceTest(unittest.TestCase):
             ) as gate,
             mock.patch.object(
                 module,
-                "reexec_latest_plugin_script_after_update",
-                side_effect=AssertionError("validate must not re-exec"),
-            ) as reexec,
-            mock.patch.object(
-                module,
                 "plugin_version_gate_check",
                 side_effect=AssertionError("validate must not enter freshness/update"),
             ) as freshness,
@@ -230,7 +225,6 @@ class SkillSurfaceTest(unittest.TestCase):
         self.assertEqual(result, 1)
         self.assertEqual(json.loads(output.getvalue())["status"], "FAIL")
         gate.assert_called_once_with()
-        reexec.assert_not_called()
         freshness.assert_not_called()
         run.assert_not_called()
         execv.assert_not_called()

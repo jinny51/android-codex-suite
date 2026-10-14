@@ -1218,3 +1218,109 @@ def test_usage_json_creation_is_immutable_and_rejects_dangling_symlink(tmp_path:
         write_json_once(symlink, {"decision": "reference_only"})
     assert symlink.is_symlink()
     assert not target.exists()
+
+
+@pytest.mark.parametrize("source", ["auto", "server"])
+@pytest.mark.parametrize("failed_index", [0, 1])
+def test_multi_query_keeps_success_when_another_query_times_out(monkeypatch, capsys, source, failed_index):
+    queries = ["display power", "display power DisplayPowerController"]
+    monkeypatch.setattr(search_cli, "should_try_server", lambda _args: True)
+    def fetch(_args, query):
+        if query == queries[failed_index]:
+            raise TimeoutError("query timed out")
+        payload = {**_payload(), "query": query}
+        return normalize_server_results(payload), payload
+    monkeypatch.setattr(search_cli, "fetch_server_results", fetch)
+    def no_fallback(_root):
+        raise AssertionError("a successful server query must not be discarded for local fallback")
+    monkeypatch.setattr(search_cli, "find_root", no_fallback)
+    assert search_cli.main([queries[0], "--additional-query", queries[1], "--source", source, "--json", "--no-record-usage"]) == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["source"] == "server_api"
+    assert output["count"] == 1
+    assert output["results"][0]["matched_queries"] == [queries[1-failed_index]]
+    assert output["results"][0]["reuse_grade"] == "adaptation_candidate"
+    assert output["query_failures"][0]["query"] == queries[failed_index]
+    assert output["search_completeness"] == "partial"
+
+
+def test_partial_query_receipt_preserves_healthy_candidate_adapt_through_capture(monkeypatch, tmp_path, capsys):
+    import argparse
+    import importlib.util
+    queries = ["display power", "display power DisplayPowerController"]
+    monkeypatch.setattr(search_cli, "should_try_server", lambda _args: True)
+    def fetch(_args, query):
+        if query == queries[1]:
+            raise TimeoutError("query timed out")
+        payload = {**_payload(), "query": query}
+        return normalize_server_results(payload), payload
+    monkeypatch.setattr(search_cli, "fetch_server_results", fetch)
+    monkeypatch.setattr(search_cli, "search_usage_root", lambda: tmp_path / "usage")
+    monkeypatch.setattr(search_cli, "selected_member_alias", lambda: ("default", "wick"))
+    assert search_cli.main([queries[0], "--additional-query", queries[1], "--json", "--project", "TVE8402M", "--platform", "rk", "--android-version", "14", "--reuse-decision", "adapt", "--reuse-target", "implementation-display-rk14"]) == 0
+    output = json.loads(capsys.readouterr().out)
+    receipt = Path(output["usage_receipt"])
+    payload = json.loads(receipt.read_text())
+    assert payload["results"][0]["matched_queries"] == [queries[0]]
+    assert len(payload["server_search_health"]) == 2
+    assert payload["server_search_health"][1]["result_state"] == "indeterminate"
+    assert payload["server_search_health"][1]["projection"] == {}
+    engineering = ROOT / "plugins/android-engineering-ops"
+    sys.path.insert(0, str(engineering / "lib"))
+    spec = importlib.util.spec_from_file_location("partial_query_capture", engineering / "skills/android-patch-capture/scripts/capture_android_patch.py")
+    capture = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = capture
+    spec.loader.exec_module(capture)
+    args = argparse.Namespace(search_receipt=str(receipt), search_receipt_sha256=output["usage_receipt_sha256"], policy_member_alias="wick", project="TVE8402M")
+    selected, raw = capture.load_search_receipt(args, platform="rk", android_version="14")
+    assert selected == payload and raw == receipt.read_bytes()
+    payload["results"][0]["matched_queries"] = [queries[1]]
+    invalid_raw = json.dumps(payload).encode()
+    receipt.write_bytes(invalid_raw)
+    args.search_receipt_sha256 = hashlib.sha256(invalid_raw).hexdigest()
+    with pytest.raises(SystemExit, match="完整|就绪|healthy|complete"):
+        capture.load_search_receipt(args, platform="rk", android_version="14")
+
+
+def test_failed_query_cannot_turn_a_partial_empty_search_into_not_found(monkeypatch):
+    monkeypatch.setattr(search_cli, "should_try_server", lambda _args: True)
+    def fetch(_args, query):
+        if query == "display power DisplayPowerController":
+            raise TimeoutError("query timed out")
+        payload = {**_payload(empty=True), "query": query}
+        return [], payload
+    monkeypatch.setattr(search_cli, "fetch_server_results", fetch)
+    with pytest.raises(SystemExit, match="not_found"):
+        search_cli.main(["display power", "--additional-query", "display power DisplayPowerController", "--source", "server", "--json", "--no-record-usage", "--reuse-decision", "not_found"])
+
+
+def test_complete_query_does_not_endorse_an_incomplete_instances_different_binding(monkeypatch, capsys):
+    queries = ["display power", "display power DisplayPowerController"]
+    payloads = [{**_payload(), "query": value} for value in queries]
+    payloads[0] = copy.deepcopy(payloads[0])
+    payloads[0]["completeness"] = "partial"
+    payloads[0]["result_state"] = "indeterminate"
+    payloads[0]["results"][0]["required_bindings"][0]["binding_id"] = "old-incomplete-binding"
+    monkeypatch.setattr(search_cli, "should_try_server", lambda _args: True)
+    monkeypatch.setattr(search_cli, "fetch_server_results", lambda _args, query: (normalize_server_results(payloads[queries.index(query)]), payloads[queries.index(query)]))
+    assert search_cli.main([queries[0], "--additional-query", queries[1], "--json", "--no-record-usage", "--reuse-decision", "adapt", "--reuse-target", "implementation-display-rk14"]) == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["results"][0]["required_bindings"][0]["binding_id"] == "binding-display"
+    assert output["results"][0]["matched_queries"] == queries
+    stale = normalize_server_results(payloads[0])[0]
+    stale["matched_queries"] = queries
+    assert not search_cli.healthy_target_server_search(source="server_api", queries=queries, payloads=payloads, results=[stale], targets=[stale["id"]])
+
+
+def test_empty_partial_query_human_output_never_claims_the_whole_pass_complete(monkeypatch, capsys):
+    monkeypatch.setattr(search_cli, "should_try_server", lambda _args: True)
+    def fetch(_args, query):
+        if query != "display power":
+            raise TimeoutError("query timed out")
+        payload = _payload(empty=True)
+        return [], payload
+    monkeypatch.setattr(search_cli, "fetch_server_results", fetch)
+    assert search_cli.main(["display power", "--additional-query", "display power DisplayPowerController", "--no-record-usage"]) == 0
+    output = capsys.readouterr().out
+    assert "当前无法确定" in output
+    assert "本次完整服务端查询没有返回匹配结果" not in output

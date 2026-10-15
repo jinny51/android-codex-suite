@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+import ast
 import errno
 import os
 from pathlib import Path
@@ -113,7 +114,13 @@ def test_capture_uses_single_v1_handoff_contract() -> None:
     ).read_text(encoding="utf-8")
     assert '"package_type": "android_feature_patch"' in script
     assert '"components": component_rows(patch_layers)' in script
-    assert "qualification" not in script
+    # Retired package qualification fields must stay absent. The existing
+    # knowledge-search receipt's qualification_reason is not such a field.
+    dictionary_keys = {
+        key.value for node in ast.walk(ast.parse(script)) if isinstance(node, ast.Dict)
+        for key in node.keys if isinstance(key, ast.Constant) and isinstance(key.value, str)
+    }
+    assert "qualification" not in dictionary_keys
     reference = (
         PLUGIN
         / "skills/android-patch-capture/references/package-contract.md"

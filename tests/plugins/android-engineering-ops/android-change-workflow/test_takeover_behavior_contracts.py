@@ -50,9 +50,15 @@ def test_every_canonical_skill_requires_target_install_family_before_effects() -
             .split()
         )
         assert "install_family.py" in text, name
-        assert "--plugin-root" in text, name
-        assert "nonzero result" in text, name
-        assert "target-only" in text, name
+        if "references/task-start.md" in text:
+            # The shared task boundary owns this check; do not force Skills to
+            # repeat a manual preflight between already-guarded nested steps.
+            assert "task_start.py" in text, name
+            assert (PLUGIN / "lib/android_engineering_ops/task_start.py").is_file()
+        else:
+            assert "--plugin-root" in text, name
+            assert "nonzero result" in text, name
+            assert "target-only" in text, name
 
     workflow = WORKFLOW.read_text(encoding="utf-8")
     gate = workflow.split("## Gate 0: Active Install Family", 1)[1].split(

@@ -25,6 +25,10 @@ Default search uses the AKBS member search endpoint when reachable. The request 
 
 If the server endpoint is unavailable, unauthorized, times out, or returns an incompatible contract, the script falls back to the local JSONL knowledge repository worktree and marks the result as `source=local_jsonl_fallback`. Treat fallback output as local text search that has not passed server reuse grading.
 
+The default per-request socket timeout is 15 seconds; `--server-timeout` preserves
+an explicit caller budget. Multiple queries can take longer in total. This is
+not an automatic retry or a guarantee for every knowledge volume.
+
 Server failures use the shared `akbs-error-envelope-v1` client. Display only the stable error `code`, `request_id`, typed category, and sanitized message. A legacy HTTP body is explicitly marked as legacy and its free text must not decide retry, fallback business behavior, or merge state. Never expose a token, cookie, request body, session text, path, or underlying exception text.
 
 `akbs-knowledge-merge-review` is the user-facing owner of merge-confirmation list,
@@ -206,7 +210,7 @@ When handling a new Android engineering requirement in any supported change laye
 1. Pass the real target project, chip platform, Android version and relevant Patch layers. Unknown values stay empty; independent App work has no Patch layer.
 2. Apply Functional Query Construction above. Use an alternative faithful wording or an actually observed code anchor only in a complete, preselected query; a miss does not authorize guessing aliases or splitting required conditions.
 3. Compare the Case's purpose with the concrete Implementation and its bound patches, exact environment tuples, verification, risk and rollback. Matching a title or layer alone does not prove reuse.
-4. Preserve server grades exactly. `direct_reuse_candidate` permits considering `reuse`; `adaptation_candidate` permits considering `adapt`. Choosing a more conservative `adapt` or `reference_only` is allowed. `reuse` and `adapt` must select an Implementation with closed accepted implementation evidence; `reference_only` may select a Case or local hint present in this result.
+4. Preserve server grades exactly. `direct_reuse_candidate` permits considering `reuse`; `adaptation_candidate` permits considering `adapt`. Choosing a more conservative `adapt` or `reference_only` is allowed. Normally `reuse` and `adapt` select an Implementation with closed accepted implementation evidence. For a server-returned historical Implementation still graded `reference_only / legacy_unclassified` and requiring revalidation, inspect its exact readable originals before recording only an `adapt` plan with `--reuse-outcome not_started` or `unverified`. This does not establish current applicability or permit a reuse/success claim; do not invent accepted evidence or a target PASS. Other unqualified reasons remain reference-only. `reference_only` may select a Case or local hint present in this result.
 5. Compare complete environment tuples, not a union of projects/platforms/versions. Follow the returned matched dimensions without inventing a global version/platform/project priority. Platform differences may matter far more for HAL/BSP than Framework; target verification is still required.
 6. `not_found` requires at least two distinct queries in one bounded invocation, all empty with complete responses and a ready, complete projection. A single empty query, partial response, server failure or local fallback remains `unknown`; engineering may still continue with that limitation recorded.
 7. Local JSONL is text-only fallback. Historical annotations remain identifiable as source annotations, not current server qualification; derived reuse grades/bindings are stripped. It cannot authorize `reuse`, `adapt` or `not_found`, but can be recorded as `reference_only`.

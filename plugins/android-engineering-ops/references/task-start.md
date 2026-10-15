@@ -19,6 +19,10 @@ it does not enter Android source, credentials, capture or incoming packages.
 
 - `PASS`: start work. Later calls with the same task/root/version reuse the result,
   including when `--retry` is supplied. There is no TTL or background update.
+  If release transport alone is unavailable, the result explicitly carries
+  `version_check_status=UNKNOWN` and a warning: local installation is valid, not
+  proven latest. Continue the local task without repeated checks. Invalid or
+  untrusted manifests and installation drift still block.
 - `UPDATED_RESTART_REQUIRED`: files were updated but this Codex session still has old
   instructions. Stop before business work; ask the member to exit and restart Codex.
   In the restarted session resolve the newly loaded plugin root and repeat startup with

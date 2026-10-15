@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import socket
+import ssl
 import subprocess
+import urllib.error
 from pathlib import Path
 from unittest import mock
 
@@ -23,6 +26,25 @@ def test_both_plugin_runtime_copies_match_the_shared_owner() -> None:
     for plugin in ("akbs-member-ops", "android-engineering-ops"):
         runtime = ROOT / "plugins" / plugin / "lib/codex_plugin_update.py"
         assert runtime.read_bytes() == expected, runtime
+
+
+@pytest.mark.parametrize("failure", [
+    TimeoutError(), ConnectionError("offline"), socket.gaierror(-2, "no host"),
+    urllib.error.URLError(TimeoutError()),
+])
+def test_only_unavailable_manifest_transport_is_warning_eligible(failure: Exception) -> None:
+    assert update.manifest_transport_unavailable(failure) is True
+
+
+@pytest.mark.parametrize("failure", [
+    ValueError("invalid manifest"), OSError("not known to be a network error"),
+    urllib.error.HTTPError("https://example.test", 404, "missing", {}, None),
+    urllib.error.URLError("unclassified reason"),
+    ssl.SSLCertVerificationError("untrusted certificate"),
+    urllib.error.URLError(ssl.SSLCertVerificationError("untrusted certificate")),
+])
+def test_manifest_integrity_http_and_unknown_failures_remain_blocking(failure: Exception) -> None:
+    assert update.manifest_transport_unavailable(failure) is False
 
 
 @pytest.mark.parametrize("repository", [

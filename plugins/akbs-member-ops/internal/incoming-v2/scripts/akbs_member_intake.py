@@ -760,6 +760,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    global LAST_PLUGIN_VERSION_GATE
     args = parse_args(argv)
 
     config, loaded = load_config(args.profile)
@@ -788,6 +789,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "patch" and args.submit_latest:
         patch_submit_pending = latest_pending("patch", config, parse_date_arg(args.date, config) if args.date else None)
 
+    local_patch_version_warning = None
     patch_information_action = bool(
         getattr(args, "inspect_information_request", "")
         or getattr(args, "complete_information_request", "")
@@ -816,6 +818,20 @@ def main(argv: list[str] | None = None) -> int:
         or patch_information_action
     ):
         freshness = plugin_version_gate_check(config, fetch=True, require=True)
+        if (
+            args.command == "patch" and args.prepare
+            and not args.upload and not args.submit_latest and not patch_information_action
+            and freshness.get("status") == "UNKNOWN"
+            and freshness.get("reason") == "remote_transport_unavailable"
+            and isinstance(freshness.get("install_family"), dict)
+            and freshness["install_family"].get("blocking") is False
+        ):
+            local_patch_version_warning = {
+                **freshness, "blocking": False,
+                "message": "本地安装检查通过，但远端查新暂时不可用；仅继续本地准备，不代表已确认最新版本，也不放宽实际提交检查。",
+            }
+            freshness = local_patch_version_warning
+            LAST_PLUGIN_VERSION_GATE = freshness
         if freshness.get("blocking"):
             print(
                 json.dumps(
@@ -877,7 +893,10 @@ def main(argv: list[str] | None = None) -> int:
                 getattr(args, "weekly_facts", ""),
             )
         result = json.loads((package_dir / "local-check.json").read_text(encoding="utf-8"))
-        print(json.dumps({"package": str(package_dir), "local_check": result}, ensure_ascii=False, indent=2))
+        output = {"package": str(package_dir), "local_check": result}
+        if local_patch_version_warning is not None:
+            output["plugin_freshness"] = local_patch_version_warning
+        print(json.dumps(output, ensure_ascii=False, indent=2))
         return 0 if result["status"] == "PASS" else 1
     if args.submit_latest:
         package_dir = patch_submit_pending or latest_pending(args.report_type, config, date if args.date else None)

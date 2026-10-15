@@ -993,7 +993,10 @@ def packaged_plugin_freshness(
     try:
         remote_manifest = fetch_remote_plugin_manifest(metadata)
     except Exception as exc:
-        return plugin_update_unknown(f"无法读取插件远端版本，不能确认是否有更新: {exc}", require)
+        result = plugin_update_unknown(f"无法读取插件远端版本，不能确认是否有更新: {exc}", require)
+        if _plugin_update.manifest_transport_unavailable(exc):
+            result["reason"] = "remote_transport_unavailable"
+        return result
     remote_version = str(remote_manifest.get("version") or "")
     payload["remote_version"] = remote_version
     payload["remote_plugin_version"] = remote_version
@@ -1298,7 +1301,7 @@ def plugin_version_gate_check(config: dict[str, str] | None = None, fetch: bool 
     if not isinstance(family, dict):
         family = installed_plugin_family_status()
         gate["install_family"] = family
-    if fetch and not gate.get("blocking", False):
+    if fetch and (not gate.get("blocking", False) or gate.get("reason") == "remote_transport_unavailable"):
         # Release lookup can wait on the network. Rebind once after that
         # boundary, rather than reusing a pre-lookup tree check indefinitely.
         PLUGIN_LIST_CACHE = None

@@ -7,11 +7,15 @@ same plugin-specific verifier for the refreshed installation.
 
 from __future__ import annotations
 
+import errno
 import json
 import math
 import re
 import shlex
 import subprocess
+import socket
+import ssl
+import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
 from typing import Any
@@ -24,6 +28,18 @@ MAX_MANIFEST_BYTES = 1024 * 1024
 REMOTE_MANIFEST_TIMEOUT = 6
 UPDATE_COMMAND_TIMEOUT = 60
 MAX_COMMAND_OUTPUT_CHARS = 16000
+
+
+def manifest_transport_unavailable(error: BaseException) -> bool:
+    """Only unavailable transport, never a received or untrusted manifest."""
+    if isinstance(error, (urllib.error.HTTPError, ssl.SSLError)):
+        return False
+    if isinstance(error, urllib.error.URLError):
+        return isinstance(error.reason, BaseException) and manifest_transport_unavailable(error.reason)
+    return isinstance(error, (TimeoutError, ConnectionError, socket.gaierror)) or (
+        isinstance(error, OSError)
+        and error.errno in {errno.ENETDOWN, errno.ENETUNREACH, errno.EHOSTUNREACH}
+    )
 
 
 def version_parts(value: str) -> tuple[int, ...]:

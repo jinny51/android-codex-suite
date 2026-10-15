@@ -367,6 +367,27 @@ def test_unknown_layer_exception_does_not_relax_other_results(changes: dict, res
         validate_server_payload(payload)
 
 
+def test_server_timeout_default_is_bounded_and_explicit_budget_is_preserved() -> None:
+    assert build_parser().parse_args(["display"]).server_timeout == 15.0
+    assert build_parser().parse_args(["display", "--server-timeout", "0.25"]).server_timeout == 0.25
+
+
+def test_server_response_preserves_unrelated_legal_unknown_binding_evidence() -> None:
+    payload = copy.deepcopy(_payload())
+    binding = payload["results"][0]["required_bindings"][0]
+    unknown = copy.deepcopy(binding["environment_evidence"][0])
+    unknown.update(project="OTHER-UNKNOWN", constraints_state="unknown",
+                   constraints=["unknown:legacy_applicability_not_structured"])
+    binding["environment_evidence"].append(unknown)
+    before = copy.deepcopy(payload)
+    validate_server_payload(payload)
+    assert payload == before
+    # Unknown evidence must not replace the complete known alternative.
+    binding["environment_evidence"] = [unknown]
+    with pytest.raises(HttpClientFailure):
+        validate_server_payload(payload)
+
+
 def test_server_response_accepts_one_closed_exact_tuple_for_direct_reuse() -> None:
     payload = copy.deepcopy(_payload())
     item = payload["results"][0]
@@ -1280,6 +1301,85 @@ def test_partial_query_receipt_preserves_healthy_candidate_adapt_through_capture
     args.search_receipt_sha256 = hashlib.sha256(invalid_raw).hexdigest()
     with pytest.raises(SystemExit, match="完整|就绪|healthy|complete"):
         capture.load_search_receipt(args, platform="rk", android_version="14")
+
+
+def _historical_intent_payload() -> dict:
+    payload = _payload()
+    payload["results"][0].update(
+        reuse_grade="reference_only", qualification_reason="legacy_unclassified",
+        requires_revalidation=True, required_bindings=[],
+        environment_comparison={"mode": "not_qualified", "alternative_tuples": [],
+                                "non_dominated_matched_dimension_sets": []},
+        evidence_gaps=[{"reason": "legacy_unclassified", "binding_id": "", "context": {}}],
+    )
+    return payload
+
+
+@pytest.mark.parametrize("outcome", ["not_started", "unverified"])
+def test_historical_adaptation_intent_keeps_grade_and_passes_capture(monkeypatch, tmp_path, capsys, outcome):
+    import argparse
+    import importlib.util
+
+    payload = _historical_intent_payload()
+    before = copy.deepcopy(payload)
+    monkeypatch.setattr(search_cli, "should_try_server", lambda _args: True)
+    monkeypatch.setattr(search_cli, "fetch_server_results", lambda _args, _query: (normalize_server_results(payload), payload))
+    monkeypatch.setattr(search_cli, "search_usage_root", lambda: tmp_path / "usage")
+    monkeypatch.setattr(search_cli, "selected_member_alias", lambda: ("default", "wick"))
+    assert search_cli.main(["display power", "--source", "server", "--json", "--project", "TVE8402M",
+        "--platform", "rk", "--android-version", "14", "--reuse-decision", "adapt", "--reuse-outcome", outcome,
+        "--reuse-target", "implementation-display-rk14"]) == 0
+    output = json.loads(capsys.readouterr().out)
+    receipt = Path(output["usage_receipt"])
+    raw = receipt.read_bytes()
+    usage = json.loads(raw)
+    assert usage["decision"] == usage["reuse_decision"] == "adapt" and usage["outcome"] == outcome
+    assert usage["results"][0]["reuse_grade"] == "reference_only"
+    assert usage["results"][0]["qualification_reason"] == "legacy_unclassified"
+    assert not usage["results"][0].get("required_bindings")
+    assert payload == before
+    engineering = ROOT / "plugins/android-engineering-ops"
+    sys.path.insert(0, str(engineering / "lib"))
+    spec = importlib.util.spec_from_file_location("historical_intent_capture", engineering / "skills/android-patch-capture/scripts/capture_android_patch.py")
+    capture = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = capture
+    spec.loader.exec_module(capture)
+    args = argparse.Namespace(search_receipt=str(receipt), search_receipt_sha256=output["usage_receipt_sha256"],
+        policy_member_alias="wick", project="TVE8402M")
+    selected, selected_raw = capture.load_search_receipt(args, platform="rk", android_version="14")
+    assert selected == usage and selected_raw == raw
+    for changed_outcome in ("adapted_success", ["not_started"]):
+        invalid = {**usage, "outcome": changed_outcome}
+        invalid_raw = json.dumps(invalid).encode()
+        receipt.write_bytes(invalid_raw)
+        args.search_receipt_sha256 = hashlib.sha256(invalid_raw).hexdigest()
+        with pytest.raises(SystemExit, match="闭合|分级"):
+            capture.load_search_receipt(args, platform="rk", android_version="14")
+
+
+@pytest.mark.parametrize("decision,outcome,reason", [
+    ("reuse", "not_started", "legacy_unclassified"),
+    ("adapt", "adapted_success", "legacy_unclassified"),
+    ("adapt", "reused_success", "legacy_unclassified"),
+    ("adapt", "", "legacy_unclassified"),
+    ("adapt", "not_started", "inactive_authority"),
+    ("adapt", "unverified", "required_implementation_evidence_missing"),
+])
+def test_historical_intent_does_not_qualify_success_or_other_reference_reasons(decision, outcome, reason):
+    result = normalize_server_results(_historical_intent_payload())[0]
+    result["qualification_reason"] = reason
+    with pytest.raises(SystemExit, match="requires server grade"):
+        validate_reuse_decision(decision=decision, outcome=outcome, targets=[result["id"]], results=[result])
+
+
+def test_historical_intent_still_requires_a_healthy_server_query(monkeypatch):
+    payload = _historical_intent_payload()
+    payload["projection"]["ready"] = False
+    monkeypatch.setattr(search_cli, "should_try_server", lambda _args: True)
+    monkeypatch.setattr(search_cli, "fetch_server_results", lambda _args, _query: (normalize_server_results(payload), payload))
+    with pytest.raises(SystemExit, match="complete|ready"):
+        search_cli.main(["display power", "--source", "server", "--json", "--no-record-usage",
+            "--reuse-decision", "adapt", "--reuse-outcome", "not_started", "--reuse-target", "implementation-display-rk14"])
 
 
 def test_failed_query_cannot_turn_a_partial_empty_search_into_not_found(monkeypatch):

@@ -958,6 +958,14 @@ def load_search_receipt(
                     or not (set(matched_queries) & healthy_queries)
                 ):
                     raise SystemExit("reuse/adapt 目标必须来自完整、就绪的实际命中查询")
+                if (
+                    decision == "adapt" and payload.get("outcome") in ("not_started", "unverified")
+                    and item.get("kind") == "implementation"
+                    and item.get("reuse_grade") == "reference_only"
+                    and item.get("qualification_reason") == "legacy_unclassified"
+                    and item.get("requires_revalidation") is True
+                ):
+                    continue  # Preserve a historical adaptation plan, not a success claim.
                 bindings = item.get("required_bindings")
                 if (
                     item.get("kind") != "implementation" or item.get("reuse_grade") not in grades

@@ -255,7 +255,12 @@ Case/Implementation/binding identities. Human output maps the candidate grade ex
 No other server grade is accepted. `reuse` requires a direct candidate; `adapt` may
 select a direct or adaptation candidate conservatively. Both require a concrete
 Implementation and closed accepted implementation evidence in healthy complete server
-responses. `reference_only` needs a target actually present in this result, not complete
+responses, except an `adapt` intent with explicit `outcome=not_started|unverified`
+may retain a server Implementation's `reference_only / legacy_unclassified` grade
+and `requires_revalidation=true` after its exact historical originals are inspected.
+That intent is not direct reuse, successful adaptation, accepted evidence or a target
+PASS; other reference-only reasons do not qualify for this exception.
+`reference_only` needs a target actually present in this result, not complete
 reuse proof. It may reference a Case or local hint without claiming application success.
 
 For a partial multi-query pass, each selected `reuse`/`adapt` candidate must be

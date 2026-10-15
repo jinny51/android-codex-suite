@@ -29,6 +29,51 @@ def intake_module():
     return module
 
 
+@pytest.mark.parametrize(("command", "action", "reason", "status", "family_blocking", "allowed"), [
+    ("patch", "--prepare", "remote_transport_unavailable", "UNKNOWN", False, True),
+    ("patch", "--upload", "remote_transport_unavailable", "UNKNOWN", False, False),
+    ("patch", "--submit-latest", "remote_transport_unavailable", "UNKNOWN", False, False),
+    ("daily", "--prepare", "remote_transport_unavailable", "UNKNOWN", False, False),
+    ("weekly", "--prepare", "remote_transport_unavailable", "UNKNOWN", False, False),
+    ("patch", "--prepare", "", "UNKNOWN", False, False),
+    ("patch", "--prepare", "remote_transport_unavailable", "ACTIVE_IDENTITY_MISMATCH", False, False),
+    ("patch", "--prepare", "remote_transport_unavailable", "UNKNOWN", True, False),
+])
+def test_only_local_patch_preparation_can_continue_when_version_transport_is_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys,
+    command: str, action: str, reason: str, status: str, family_blocking: bool, allowed: bool,
+) -> None:
+    module = intake_module()
+    gate = {"status": status, "blocking": True, "reason": reason, "message": "version unknown",
+            "install_family": {"status": "UNKNOWN" if family_blocking else "PASS", "blocking": family_blocking}}
+    monkeypatch.setattr(module, "load_config", lambda _profile: ({}, []))
+    monkeypatch.setattr(module, "plugin_version_gate_check", lambda *args, **kwargs: gate)
+    monkeypatch.setattr(module, "parse_date_arg", lambda *_: dt.date(2026, 10, 15))
+    monkeypatch.setattr(module, "report_dates", lambda *_: ([], None, None, ""))
+    monkeypatch.setattr(module, "configure_report_session_consent", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "enforce_mode_allowed", lambda *args: None)
+    monkeypatch.setattr(module, "latest_pending", lambda *args: tmp_path)
+    (tmp_path / "local-check.json").write_text('{"status":"PASS"}')
+    prepared = []
+    def prepare(*args, **kwargs):
+        prepared.append(True)
+        return tmp_path
+    def forbidden(*args, **kwargs):
+        pytest.fail("no upload/report or re-exec may be reached in this boundary test")
+    monkeypatch.setattr(module, "prepare_patch_package", prepare)
+    monkeypatch.setattr(module, "prepare_package", forbidden)
+    monkeypatch.setattr(module, "submit_package", forbidden)
+    argv = [command, action]
+    if command == "daily":
+        argv += ["--daily-facts", "/unused/facts.json"]
+    assert module.main(argv) == (0 if allowed else 1)
+    result = json.loads(capsys.readouterr().out)
+    assert bool(prepared) is allowed
+    assert result["plugin_freshness"]["blocking"] is (not allowed)
+    if allowed:
+        assert module.LAST_PLUGIN_VERSION_GATE == result["plugin_freshness"]
+
+
 @pytest.mark.parametrize("rules", [member_rules, engineering_rules], ids=["member", "engineering"])
 def test_wording_heuristics_are_review_hints_not_scope_verdicts(rules) -> None:
     result = rules.classify_function_scope("单一旋转功能，明确排除多个独立功能。", 2)

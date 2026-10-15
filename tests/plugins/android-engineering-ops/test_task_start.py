@@ -190,8 +190,8 @@ def test_restarted_updated_runtime_can_recheck_the_same_task(installed: FakeInst
     assert installed.fetches == 2
 
 
-@pytest.mark.parametrize("failure", [TimeoutError("manifest request timed out"), OSError("offline")])
-def test_manifest_failure_blocks_and_is_reused_until_explicit_retry(
+@pytest.mark.parametrize("failure", [TimeoutError("manifest request timed out"), ConnectionError("offline")])
+def test_transport_unknown_warns_and_pins_local_task_without_repeated_lookup(
     installed: FakeInstallation, monkeypatch: pytest.MonkeyPatch, failure: Exception,
 ) -> None:
     def unavailable() -> dict[str, Any]:
@@ -199,13 +199,38 @@ def test_manifest_failure_blocks_and_is_reused_until_explicit_retry(
         raise failure
 
     monkeypatch.setattr(task_start, "fetch_remote_manifest", unavailable)
+    first = installed.start()
+    assert_result(first, "PASS")
+    assert first["version_check_status"] == "UNKNOWN"
+    assert first["warning"] == "remote_transport_unavailable"
+    monkeypatch.setattr(task_start, "fetch_remote_manifest", installed.fetch)
+    assert_result(installed.start(), "PASS", reused=True)
+    assert installed.fetches == 1
+    assert_result(installed.start(retry=True), "PASS", reused=True)
+    assert installed.fetches == 1
+    assert installed.mutations == []
+
+
+def test_unclassified_os_error_still_blocks_until_explicit_retry(
+    installed: FakeInstallation, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unavailable():
+        raise OSError("not classified as unavailable transport")
+    monkeypatch.setattr(task_start, "fetch_remote_manifest", unavailable)
     assert_result(installed.start(), "CHECK_FAILED")
     monkeypatch.setattr(task_start, "fetch_remote_manifest", installed.fetch)
     assert_result(installed.start(), "CHECK_FAILED", reused=True)
-    assert installed.fetches == 1
     assert_result(installed.start(retry=True), "PASS")
-    assert installed.fetches == 2
-    assert installed.mutations == []
+
+
+def test_transport_failure_does_not_override_installation_changed_during_lookup(
+    installed: FakeInstallation, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unavailable():
+        (installed.runtime / "README.md").write_text("changed during lookup")
+        raise TimeoutError()
+    monkeypatch.setattr(task_start, "fetch_remote_manifest", unavailable)
+    assert installed.start()["blocking"] is True
 
 
 @pytest.mark.parametrize(

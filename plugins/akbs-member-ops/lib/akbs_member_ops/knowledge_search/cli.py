@@ -118,6 +118,7 @@ def validate_reuse_decision(
     decision: str,
     targets: list[str],
     results: list[dict[str, Any]],
+    outcome: str = "",
 ) -> None:
     if decision not in {"reuse", "adapt", "reference_only"}:
         return
@@ -153,11 +154,19 @@ def validate_reuse_decision(
             raise SystemExit(
                 f"{decision} must bind an implementation result: {', '.join(non_implementations)}"
             )
+    historical_intents = {
+        target for target in normalized_targets
+        if decision == "adapt" and outcome in ("not_started", "unverified")
+        and result_by_id[target].get("reuse_grade") == "reference_only"
+        and result_by_id[target].get("qualification_reason") == "legacy_unclassified"
+        and result_by_id[target].get("requires_revalidation") is True
+    }
     allowed_grades = DECISION_REUSE_GRADES[decision]
     mismatched = sorted(
         target
         for target in normalized_targets
-        if result_by_id[target].get("reuse_grade") not in allowed_grades
+        if target not in historical_intents
+        and result_by_id[target].get("reuse_grade") not in allowed_grades
     )
     if mismatched:
         raise SystemExit(
@@ -165,6 +174,8 @@ def validate_reuse_decision(
         )
     invalid_evidence = []
     for target in sorted(normalized_targets):
+        if target in historical_intents:
+            continue  # An unverified plan is not accepted implementation evidence.
         item = result_by_id[target]
         bindings = item.get("required_bindings")
         if (
@@ -218,6 +229,7 @@ def record_search_usage(
         decision=decision,
         targets=args.reuse_target or [],
         results=results,
+        outcome=args.reuse_outcome or "not_started",
     )
     if decision in DECISION_REUSE_GRADES and not healthy_target_server_search(
         source=source,
@@ -755,7 +767,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--include-synthetic", action="store_true", help="Include synthetic test data.")
     parser.add_argument("--no-record-usage", action="store_true", help="Do not write member-side search usage evidence.")
     parser.add_argument("--source", choices=["auto", "server", "local"], default="auto", help="Search source: auto prefers server API, server forbids fallback, local uses JSONL only.")
-    parser.add_argument("--server-timeout", type=float, default=3.0, help="Server search timeout in seconds.")
+    parser.add_argument("--server-timeout", type=float, default=15.0, help="Per-request server socket timeout in seconds (default: 15; no automatic retry).")
     parser.add_argument("--reuse-decision", choices=REUSE_DECISIONS, help="Member-side use decision for this search.")
     parser.add_argument("--reuse-target", action="append", default=[], help="Matched case, implementation, patch, or symbol id considered by this search. Repeatable.")
     parser.add_argument("--reuse-match", action="append", default=[], help="Why the matched knowledge may apply. Repeatable.")

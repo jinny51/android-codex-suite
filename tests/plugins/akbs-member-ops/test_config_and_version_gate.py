@@ -27,6 +27,36 @@ from akbs_member_ops.knowledge_search import config as search_config  # noqa: E4
 from akbs_member_ops.member import profile as member_profile  # noqa: E402
 
 
+@pytest.mark.parametrize(("failure", "transport"), [
+    (TimeoutError("timeout"), True),
+    (ConnectionError("offline"), True),
+    (ValueError("invalid manifest"), False),
+    (OSError("unclassified"), False),
+])
+def test_packaged_lookup_marks_only_unavailable_transport(failure, transport) -> None:
+    with mock.patch.object(version_gate, "latest_installed_plugin_cache_metadata", return_value={}), mock.patch.object(
+        version_gate, "current_skill_cache_metadata", return_value={}
+    ), mock.patch.object(version_gate, "fetch_remote_plugin_manifest", side_effect=failure):
+        result = version_gate.packaged_plugin_freshness({"plugin_version": "2.0.0"}, True, True)
+    assert result["blocking"] is True  # actual submission policy is unchanged
+    assert (result.get("reason") == "remote_transport_unavailable") is transport
+
+
+def test_failed_remote_transport_rechecks_installation_and_preserves_unknown_block() -> None:
+    gate = {"status": "UNKNOWN", "blocking": True, "reason": "remote_transport_unavailable",
+            "install_family": {"status": "PASS", "blocking": False}}
+    unavailable = {"status": "UNKNOWN", "blocking": True, "message": "inventory unavailable"}
+    with mock.patch.object(version_gate, "plugin_freshness_check", return_value=gate), mock.patch.object(
+        version_gate, "installed_plugin_family_status", return_value=unavailable
+    ) as recheck, mock.patch.object(version_gate, "plugin_install_metadata", return_value={}), mock.patch.object(
+        version_gate, "current_skill_cache_metadata", return_value={}
+    ), mock.patch.object(version_gate, "latest_installed_plugin_cache_metadata", return_value={}):
+        result = version_gate.plugin_version_gate_check(fetch=True, require=True)
+    recheck.assert_called_once()
+    assert result["blocking"] is True
+    assert result["install_family"]["blocking"] is True
+
+
 def test_member_installed_rpc_rejects_incomplete_and_duplicate_marketplaces() -> None:
     member = {
         "id": "akbs-member-ops@android-codex-suite",

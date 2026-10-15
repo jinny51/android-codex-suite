@@ -458,7 +458,7 @@ def validate_server_payload(
                         )
                     )
                     or not _is_sha256(evidence.get("content_hash"))
-                    or not _in_enum(evidence.get("constraints_state"), {"known_empty", "typed", "invalid"})
+                    or not _in_enum(evidence.get("constraints_state"), {"known_empty", "typed", "unknown", "invalid"})
                 ):
                     raise invalid_success_response(
                         "server search binding environment evidence is invalid"

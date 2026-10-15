@@ -29,7 +29,8 @@ from android_engineering_ops.install_family import (
     assert_target_install_family,
 )
 from codex_plugin_update import (
-    compare_versions, fetch_manifest, github_manifest_url, update_plugin, version_parts,
+    compare_versions, fetch_manifest, github_manifest_url, manifest_transport_unavailable,
+    update_plugin, version_parts,
 )
 
 SCHEMA = "android-engineering-task-start-v1"
@@ -161,7 +162,14 @@ def ensure_task_started(
                 _version(remote_version)
                 newer = compare_versions(remote_version, local_version) > 0
             except Exception as exc:
-                result = _result("CHECK_FAILED", f"无法确认工程插件最新版本（{type(exc).__name__}）；未开始业务操作。网络恢复后用 --retry 重试。", **binding)
+                if manifest_transport_unavailable(exc):
+                    assert_target_install_family(root, codex_home=home)
+                    result = _result(
+                        "PASS", "本地工程插件安装有效；远端查新暂时不可用，版本未确认。允许继续当前本地任务，本任务不反复联网查新。",
+                        version_check_status="UNKNOWN", warning="remote_transport_unavailable", **binding,
+                    )
+                else:
+                    result = _result("CHECK_FAILED", f"无法确认工程插件最新版本（{type(exc).__name__}）；未开始业务操作。网络恢复后用 --retry 重试。", **binding)
             else:
                 if not newer:
                     result = _result("PASS", "工程插件版本检查通过；本任务后续步骤复用该结果。", remote_version=remote_version, **binding)

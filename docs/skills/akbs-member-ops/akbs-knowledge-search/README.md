@@ -4,6 +4,8 @@
 
 团队知识库检索 skill。
 
+单次请求默认等待上限为 15 秒，可用 `--server-timeout` 显式设置；多个查询总耗时可能累加，不自动重试，也不保证任意数据规模都在此时限内。
+
 任何搜索、本地索引读取、服务端请求、refresh 或 usage 记录写入前，必须先运行
 `akbs_member_setup.py preflight-install-family` 并取得 `status=PASS`；只有纯
 `--help` 可以跳过。
@@ -127,7 +129,7 @@ python3 "scripts/akbs_knowledge_search.py" \
 
 它不会自动读取数据库仓库或成员 incoming 工作区。管理员要排查数据库仓库内部数据时，必须显式传 `--root`。
 
-服务端结果原样保留 `reuse_grade`、证据缺口和环境比较。`direct_reuse_candidate` 才可考虑直接复用，`adaptation_candidate` 才可考虑适配；还须选择有闭合、已接受实现证据的 Implementation，并完成目标环境验证。Android 版本、芯片平台和项目按完整环境组合比较，不设全局固定优先级。本地 fallback 只能作文本参考。
+服务端结果原样保留 `reuse_grade`、证据缺口和环境比较。`direct_reuse_candidate` 才可考虑直接复用，`adaptation_candidate` 可考虑适配；通常还须选择有闭合、已接受实现证据的 Implementation。历史实现若仍为 `reference_only / legacy_unclassified` 且要求重验，在读取其精确原件后，仅可记录 `adapt + not_started/unverified` 的改造意图，不表示已适用、已成功或已获现代证据资格，其他未资格化原因不因此放开。目标环境仍须验证；Android 版本、芯片平台和项目按完整环境组合比较，不设全局固定优先级。本地 fallback 只能作文本参考。
 
 “未命中”要求同一次有界调用至少两个独立查询、均完整且为空、检索投影就绪且完整；
 单次空结果、部分响应、服务失败或本地 fallback 都只能记 `unknown`。

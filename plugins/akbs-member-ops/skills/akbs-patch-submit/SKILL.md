@@ -51,6 +51,12 @@ marketplace version. If an update is installed, follow
 the returned instruction to restart Codex before continuing. A local
 `--validate` is read-only and does not fetch or update.
 
+If only remote version transport is unavailable and the current installation
+still validates, `--prepare` may finish locally with an explicit unknown-version
+warning. Actual submission and information completion keep their existing
+freshness requirements; invalid manifests, installation drift and stale caches
+still stop. Daily and weekly reporting are unchanged.
+
 ## Prepare
 
 Use the complete capture directory, not copied individual files:

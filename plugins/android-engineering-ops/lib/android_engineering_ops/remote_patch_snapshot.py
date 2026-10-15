@@ -168,9 +168,98 @@ def _redact_remote_url(value: str) -> str:
     return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
 
 
-def _remote_inventory(root: Path) -> list[dict[str, Any]]:
+def parse_repository_files(
+    repository_paths: Sequence[str], values: Sequence[str],
+) -> dict[str, list[str]]:
+    """Select exact files inside real Git repositories, never shell/Git globs."""
+    repositories = {_canonical_repo_path(item) for item in repository_paths}
+    selected: dict[str, list[str]] = {}
+    for value in values:
+        repo_path, separator, filename = value.partition("=")
+        if not separator:
+            raise RemotePatchSnapshotError("--repo-file requires REPO_PATH=EXACT_FILE")
+        repo_path = _canonical_repo_path(repo_path)
+        filename = _safe_relative_path(filename, field="selected file")
+        if repo_path not in repositories:
+            raise RemotePatchSnapshotError(f"selected file references an unrequested repository: {repo_path}")
+        files = selected.setdefault(repo_path, [])
+        if filename not in files:
+            files.append(filename)
+    if selected and set(selected) != repositories:
+        missing = ", ".join(sorted(repositories - selected.keys()))
+        raise RemotePatchSnapshotError(f"file-scoped capture requires files for every repository: {missing}")
+    return selected
+
+
+def _literal_paths(files: Sequence[str]) -> list[str]:
+    return [f":(literal){name}" for name in files]
+
+
+def _validate_rename_scope(root: Path, files: Sequence[str], status: bytes) -> None:
+    """Do not silently turn an identifiable rename into a scoped add/delete."""
+    if not files:
+        return
+    selected = {name.encode("utf-8") for name in files}
+    entries = iter(status.split(b"\0"))
+    for entry in entries:
+        if entry.startswith(b"##") or len(entry) < 4:
+            continue
+        if b"R" in entry[:2] or b"C" in entry[:2]:
+            destination, source = entry[3:], next(entries, b"")
+            if source not in selected or destination not in selected:
+                raise RemotePatchSnapshotError("file selection splits a rename; select both old and new paths")
+
+    # A pathspec can make Git report one half of a staged rename as just A/D.
+    # Ask Git about HEAD/index renames, including edited staged destinations.
+    # This may inspect staged Git blobs, never unselected worktree output (out/).
+    raw = _run_bytes(
+        ["git", "diff", "--cached", "--raw", "-z", "--no-abbrev", "--find-renames", "HEAD", "--"],
+        root,
+    )
+    entries = iter(raw.split(b"\0"))
+    for header in entries:
+        if not header:
+            continue
+        fields = header.split()
+        name = next(entries, b"")
+        if len(fields) != 5:
+            raise RemotePatchSnapshotError("cannot read staged rename metadata")
+        if fields[4].startswith((b"R", b"C")):
+            destination = next(entries, b"")
+            if not name or not destination:
+                raise RemotePatchSnapshotError("cannot read staged rename paths")
+            if (name in selected) != (destination in selected):
+                raise RemotePatchSnapshotError("file selection splits a rename; select both old and new paths")
+
+
+def _validate_selected_files(root: Path, files: Sequence[str]) -> None:
+    for name in files:
+        _safe_relative_path(name, field="selected file")
+        parent = root
+        for part in PurePosixPath(name).parts[:-1]:
+            parent /= part
+            if parent.is_symlink():
+                raise RemotePatchSnapshotError(f"selected file has a symlink parent: {name}")
+        path = root / name
+        if path.is_symlink():
+            continue  # Git captures the link itself, not its target.
+        if path.exists():
+            if not path.is_file():
+                raise RemotePatchSnapshotError(f"selected path is not an exact file: {name}")
+            continue
+        # Deleted tracked files are legitimate selections; typos and directories are not.
+        entries = _run_bytes(["git", "ls-tree", "-z", "HEAD", "--", *_literal_paths([name])], root)
+        if not any(
+            entry.partition(b"\t")[0].split()[1:2] == [b"blob"]
+            and entry.partition(b"\t")[2] == name.encode("utf-8")
+            for entry in entries.split(b"\0") if entry
+        ):
+            raise RemotePatchSnapshotError(f"selected file is missing or is not a tracked deletion: {name}")
+
+
+def _remote_inventory(root: Path, files: Sequence[str] = ()) -> list[dict[str, Any]]:
     names = _run_bytes(
-        ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+        ["git", "ls-files", "--others", "--exclude-standard", "-z", "--", *_literal_paths(files)],
         root,
     ).split(b"\0")
     inventory: list[dict[str, Any]] = []
@@ -228,11 +317,13 @@ def _untracked_diff(root: Path, inventory: Sequence[Mapping[str, Any]]) -> bytes
     return b"".join(chunks)
 
 
-def _changed_paths(root: Path, inventory: Sequence[Mapping[str, Any]]) -> list[str]:
+def _changed_paths(
+    root: Path, inventory: Sequence[Mapping[str, Any]], files: Sequence[str] = (),
+) -> list[str]:
     values: set[str] = {str(item["path"]) for item in inventory}
     commands = (
-        ["git", "diff", "--name-only", "-z", "--cached", "HEAD", "--"],
-        ["git", "diff", "--name-only", "-z", "--"],
+        ["git", "diff", "--name-only", "-z", "--cached", "HEAD", "--", *_literal_paths(files)],
+        ["git", "diff", "--name-only", "-z", "--", *_literal_paths(files)],
     )
     for command in commands:
         for raw_name in _run_bytes(command, root).split(b"\0"):
@@ -267,7 +358,9 @@ def _git_remotes(root: Path) -> list[dict[str, Any]]:
     return remotes
 
 
-def _capture_repository(remote_root: Path, repo_path: str) -> dict[str, Any]:
+def _capture_repository(
+    remote_root: Path, repo_path: str, files: Sequence[str] = (),
+) -> dict[str, Any]:
     repo_path = _canonical_repo_path(repo_path)
     candidate = remote_root if repo_path == "." else remote_root / repo_path
     try:
@@ -286,26 +379,34 @@ def _capture_repository(remote_root: Path, repo_path: str) -> dict[str, Any]:
             f"snapshot repository path is not its Git root: {repo_path} -> {git_root}"
         )
 
+    _validate_selected_files(root, files)
+    paths = _literal_paths(files)
     head = _run_bytes(["git", "rev-parse", "HEAD"], root).decode("ascii").strip()
     branch = _run_bytes(["git", "branch", "--show-current"], root).decode("utf-8").strip()
-    status = _run_bytes(["git", "status", "--porcelain=v1", "-z", "--branch"], root)
-    staged = _run_bytes(["git", "diff", "--cached", "--binary", "--full-index", "HEAD", "--"], root)
-    unstaged = _run_bytes(["git", "diff", "--binary", "--full-index", "--"], root)
-    head_diff = _run_bytes(["git", "diff", "--binary", "--full-index", "HEAD", "--"], root)
-    untracked = _remote_inventory(root)
-    changed_files = _changed_paths(root, untracked)
+    status = _run_bytes(["git", "status", "--porcelain=v1", "-z", "--branch", "--", *paths], root)
+    _validate_rename_scope(root, files, status)
+    staged = _run_bytes(["git", "diff", "--cached", "--binary", "--full-index", "HEAD", "--", *paths], root)
+    unstaged = _run_bytes(["git", "diff", "--binary", "--full-index", "--", *paths], root)
+    head_diff = _run_bytes(["git", "diff", "--binary", "--full-index", "HEAD", "--", *paths], root)
+    untracked = _remote_inventory(root, files)
+    changed_files = _changed_paths(root, untracked, files)
+    if files and not changed_files:
+        raise RemotePatchSnapshotError(f"selected files contain no changes: {repo_path}")
+    if files and not set(changed_files).issubset(files):
+        raise RemotePatchSnapshotError(f"snapshot includes files outside the requested selection: {repo_path}")
     final_head = _run_bytes(["git", "rev-parse", "HEAD"], root).decode("ascii").strip()
-    final_status = _run_bytes(["git", "status", "--porcelain=v1", "-z", "--branch"], root)
+    final_status = _run_bytes(["git", "status", "--porcelain=v1", "-z", "--branch", "--", *paths], root)
+    _validate_rename_scope(root, files, final_status)
     final_staged = _run_bytes(
-        ["git", "diff", "--cached", "--binary", "--full-index", "HEAD", "--"],
+        ["git", "diff", "--cached", "--binary", "--full-index", "HEAD", "--", *paths],
         root,
     )
-    final_unstaged = _run_bytes(["git", "diff", "--binary", "--full-index", "--"], root)
+    final_unstaged = _run_bytes(["git", "diff", "--binary", "--full-index", "--", *paths], root)
     final_head_diff = _run_bytes(
-        ["git", "diff", "--binary", "--full-index", "HEAD", "--"],
+        ["git", "diff", "--binary", "--full-index", "HEAD", "--", *paths],
         root,
     )
-    final_untracked = _remote_inventory(root)
+    final_untracked = _remote_inventory(root, files)
     if (
         final_head != head
         or final_status != status
@@ -364,6 +465,7 @@ def create_remote_patch_snapshot(
     workspace_id: str,
     command_id: str,
     repository_paths: Sequence[str],
+    repository_files: Sequence[str] = (),
     generated_at_ns: int | None = None,
 ) -> dict[str, Any]:
     if not _WORKSPACE_RE.fullmatch(workspace_id):
@@ -377,7 +479,11 @@ def create_remote_patch_snapshot(
     except OSError as exc:
         raise RemotePatchSnapshotError(f"remote root does not exist: {remote_root}") from exc
     canonical_root = _canonical_remote_root(root.as_posix())
-    repositories = [_capture_repository(root, item) for item in dict.fromkeys(repository_paths)]
+    selected = parse_repository_files(repository_paths, repository_files)
+    repositories = [
+        _capture_repository(root, item, selected.get(item, ()))
+        for item in dict.fromkeys(repository_paths)
+    ]
     timestamp = time.time_ns() if generated_at_ns is None else generated_at_ns
     if type(timestamp) is not int or timestamp <= 0:
         raise RemotePatchSnapshotError("generated_at_ns must be a positive integer")
@@ -388,7 +494,10 @@ def create_remote_patch_snapshot(
         "command_id": command_id,
         "remote_root": canonical_root,
         "generated_at_ns": timestamp,
-        "repo_status": _repo_status(root),
+        "repo_status": (
+            {"available": False, "reason": "file-scoped-capture", "output": _blob(b"")}
+            if selected else _repo_status(root)
+        ),
         "repositories": repositories,
     }
     payload["snapshot_sha256"] = _snapshot_digest(payload)
@@ -569,6 +678,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--workspace-id", required=True)
     parser.add_argument("--command-id", required=True)
     parser.add_argument("--repo-path", action="append", required=True)
+    parser.add_argument("--repo-file", action="append", default=[], help="REPO_PATH=EXACT_FILE; repeat for this feature's files.")
     return parser.parse_args()
 
 
@@ -579,6 +689,7 @@ def _main() -> int:
         workspace_id=args.workspace_id,
         command_id=args.command_id,
         repository_paths=args.repo_path,
+        repository_files=args.repo_file,
     )
     path = write_immutable_remote_snapshot(payload)
     print(f"SNAPSHOT_REMOTE_PATH={path}")

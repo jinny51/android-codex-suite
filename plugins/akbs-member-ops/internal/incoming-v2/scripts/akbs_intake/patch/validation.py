@@ -12,6 +12,7 @@ from akbs_member_ops.patch_analysis import (
     resource_keys_from_patch_text,
 )
 from akbs_member_ops.verification_evidence import has_authoritative_requirement_result
+from akbs_member_ops.knowledge_rules import search_receipt_platform_matches_package
 
 RequireFile = Callable[[Any, str], Optional[Path]]
 ReadReferencedJson = Callable[[Path, str], Optional[dict[str, Any]]]
@@ -680,7 +681,13 @@ def validate_patch_pre_change_search(
             environment = parsed.get("target_environment")
             if not isinstance(environment, dict) or any(
                 not isinstance(environment.get(key), str)
-                or (environment[key] and environment[key] != manifest.get(key))
+                or (
+                    environment[key]
+                    and (
+                        not search_receipt_platform_matches_package(environment[key], manifest.get(key))
+                        if key == "platform" else environment[key] != manifest.get(key)
+                    )
+                )
                 for key in ("project", "platform", "android_version")
             ):
                 errors.append("search_before_change 回执声明的目标环境与当前包不一致")

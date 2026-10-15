@@ -447,6 +447,73 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
             )
             self.assertEqual(binding["source_tree_sha256"], binding["execution_tree_sha256"])
 
+    def test_version_gate_reuses_binding_within_each_lookup_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.dict(
+            os.environ, {"CODEX_HOME": temporary}, clear=False
+        ):
+            home = Path(temporary)
+            source = home / ".tmp/marketplaces/android-codex-suite/plugins/akbs-member-ops"
+            execution = self.cache_root(home)
+            self.write_manifest(source)
+            self.write_manifest(execution)
+            payload = {"installed": [self.target_row(source)]}
+            with mock.patch.object(version_gate, "PLUGIN_ROOT", execution), mock.patch.object(
+                version_gate, "_app_server_installed_payload", return_value=payload
+            ) as inventory, mock.patch.object(
+                version_gate, "run", return_value=subprocess.CompletedProcess([], 1, stdout="", stderr="not a git checkout")
+            ), mock.patch.object(
+                version_gate, "fetch_remote_plugin_manifest", return_value={"version": "2.0.0"}
+            ) as remote, mock.patch.object(
+                version_gate, "_active_target_binding", wraps=version_gate._active_target_binding
+            ) as binding, mock.patch.object(
+                version_gate, "_tree_digest_once", wraps=version_gate._tree_digest_once
+            ) as scan:
+                first = version_gate.plugin_version_gate_check(fetch=True, require=True)
+                self.assertEqual(first["status"], "PASS")
+                self.assertFalse(first["blocking"])
+                self.assertEqual(first["installed_plugin_version"], "2.0.0")
+                self.assertEqual(binding.call_count, 2)
+                self.assertEqual(scan.call_count, 8)  # once before/after release lookup
+                remote.assert_called_once()
+
+                (execution / "changed.txt").write_text("not published", encoding="utf-8")
+                second = version_gate.plugin_version_gate_check(fetch=True, require=True)
+                self.assertEqual(second["status"], "ACTIVE_IDENTITY_MISMATCH")
+                self.assertTrue(second["blocking"])
+                self.assertEqual(binding.call_count, 3)
+                self.assertEqual(scan.call_count, 12)
+                remote.assert_called_once()  # drift stops before any release lookup
+
+                (execution / "changed.txt").unlink()
+
+                def change_during_lookup(*_args, **_kwargs):
+                    (execution / "changed.txt").write_text("changed during lookup", encoding="utf-8")
+                    return {"version": "2.0.0"}
+
+                remote.side_effect = change_during_lookup
+                third = version_gate.plugin_version_gate_check(fetch=True, require=True)
+                self.assertEqual(third["status"], "ACTIVE_IDENTITY_MISMATCH")
+                self.assertTrue(third["blocking"])
+                self.assertEqual(binding.call_count, 5)
+                self.assertEqual(scan.call_count, 20)
+
+                (execution / "changed.txt").unlink()
+                local_only = version_gate.plugin_version_gate_check(fetch=False, require=True)
+                self.assertEqual(local_only["status"], "PASS")
+                self.assertFalse(local_only["blocking"])
+                self.assertEqual(binding.call_count, 6)
+                self.assertEqual(scan.call_count, 24)
+                self.assertEqual(remote.call_count, 2)
+
+                def disable_during_lookup(*_args, **_kwargs):
+                    inventory.return_value = {"installed": []}
+                    return {"version": "2.0.0"}
+
+                remote.side_effect = disable_during_lookup
+                disabled = version_gate.plugin_version_gate_check(fetch=True, require=True)
+                self.assertEqual(disabled["status"], "TARGET_NOT_ACTIVE")
+                self.assertTrue(disabled["blocking"])
+
     def test_active_target_identity_mismatches_fail_closed(self) -> None:
         with tempfile.TemporaryDirectory() as temporary, mock.patch.dict(
             os.environ, {"CODEX_HOME": str(Path(temporary) / "codex")}, clear=False
@@ -870,7 +937,11 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
                 ), mock.patch.object(
                     version_gate, "installed_plugin_family_status", wraps=original_family
                 ) as family:
-                    result = version_gate.auto_update_packaged_plugin("akbs-member-ops")
+                    with mock.patch.object(
+                        version_gate, "_active_target_binding", wraps=version_gate._active_target_binding
+                    ) as binding:
+                        result = version_gate.auto_update_packaged_plugin("akbs-member-ops")
+                    self.assertEqual(binding.call_count, 1 if outcome == "no-active" else 2)
                     self.assertEqual(version_gate.PLUGIN_ROOT, old_cache)
                 self.assertEqual(len(commands), 2)
                 self.assertEqual(family.call_count, 1 if outcome == "no-active" else 2)

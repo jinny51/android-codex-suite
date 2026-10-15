@@ -354,3 +354,39 @@ def test_unknown_preserves_search_facts_without_blocking_validated_patch(package
     assert classify_pre_change_search(
         payload, workflow_contract="current_codex_skill", package_status=package_status,
     )["validity_score_effect"] == "no_search_loop_score"
+
+
+@pytest.mark.parametrize("chip,family,compatible", [
+    ("uis7885", "unisoc", True), ("ums512", "unisoc", True), ("sc9863a", "unisoc", True),
+    ("rk3576", "rk", True), ("mt9653", "mtk", True), ("sprd", "unisoc", True),
+    ("unisoc", "unisoc", True), ("uis7885", "rk", False), ("rk3576", "mtk", False),
+    ("unknown", "unisoc", False), ("mysterychip", "unisoc", False),
+])
+def test_receipt_chip_family_compatibility_is_shared_and_preserves_raw_evidence(
+    chip: str, family: str, compatible: bool,
+) -> None:
+    from akbs_member_ops.knowledge_rules import search_receipt_platform_matches_package as member_matches
+    from android_engineering_ops.knowledge_rules import search_receipt_platform_matches_package as capture_matches
+    assert member_matches(chip, family) is compatible
+    assert capture_matches(chip, family) is compatible
+    payload = _unknown_search_payload()
+    payload["target_environment"]["platform"] = chip
+    raw = json.dumps(payload, indent=2) + "\r\n"
+    before = copy.deepcopy(payload)
+    evidence = {"payload": payload, "source_receipt_json": raw,
+        "source_receipt_sha256": hashlib.sha256(raw.encode()).hexdigest()}
+    errors, warnings = [], []
+    validate_patch_pre_change_search(
+        manifest={"workflow_contract": "current_codex_skill", "member_alias": "member-test",
+            "project": "TVI2343R", "platform": family, "android_version": "14"},
+        evidence_by_kind={"search_before_change": evidence}, package_status="validated",
+        workflow_contract_requires_pre_change_search=workflow_contract_requires_pre_change_search,
+        search_payload_missing_required_pre_change_search=search_payload_missing_required_pre_change_search,
+        search_payload_has_unresolved_usage=search_payload_has_unresolved_usage,
+        errors=errors, warnings=warnings,
+    )
+    assert bool(errors) is not compatible
+    assert payload == before
+    assert evidence["source_receipt_json"] == raw
+    assert evidence["source_receipt_sha256"] == hashlib.sha256(raw.encode()).hexdigest()
+    assert payload["target_environment"]["platform"] == chip

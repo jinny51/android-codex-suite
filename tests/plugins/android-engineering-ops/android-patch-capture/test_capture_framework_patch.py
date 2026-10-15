@@ -280,6 +280,112 @@ def test_exact_unknown_receipt_retains_limitation_with_results(tmp_path: Path) -
         capture.load_search_receipt(args, platform="rk", android_version="14")
 
 
+def _chip_search_receipt(tmp_path: Path, *, platform: str = "uis7885") -> tuple[Path, bytes]:
+    payload = {
+        "schema": "android-knowledge-search-usage", "schema_version": "1",
+        "member_alias": "member-test", "searched": True, "queries": ["display policy"],
+        "results": [], "target_environment": {
+            "project": "TVI7885U", "platform": platform, "android_version": "14",
+        },
+        "source": "local_jsonl_fallback", "decision": "unknown", "reuse_decision": "unknown",
+        "targets": [], "reason": "Search health remains unknown.",
+    }
+    raw = (json.dumps(payload, indent=2) + "\r\n").encode()
+    receipt = tmp_path / "chip-usage.json"
+    receipt.write_bytes(raw)
+    return receipt, raw
+
+
+def _chip_capture_argv(receipt: Path, raw: bytes) -> list[str]:
+    return [str(CAPTURE), "--profile", "member-test", "--platform", "unisoc14",
+        "--component-layer", "platform", "--feature", "display-policy", "--summary", "显示策略",
+        "--project", "TVI7885U", "--status", "validated", "--search-receipt", str(receipt),
+        "--search-receipt-sha256", hashlib.sha256(raw).hexdigest()]
+
+
+def test_chip_receipt_maps_to_package_family_without_changing_original(tmp_path: Path) -> None:
+    capture = load_capture()
+    receipt, raw = _chip_search_receipt(tmp_path)
+    args = argparse.Namespace(search_receipt=str(receipt), search_receipt_sha256=hashlib.sha256(raw).hexdigest(),
+        policy_member_alias="member-test", project="TVI7885U")
+    selected, selected_raw = capture.load_search_receipt(args, platform="unisoc", android_version="14")
+    assert selected["target_environment"]["platform"] == "uis7885"
+    assert selected_raw == raw == receipt.read_bytes()
+    assert selected["decision"] == "unknown"
+    for incompatible in ("rk", "mtk", "unknown"):
+        with pytest.raises(SystemExit, match="target_environment.platform"):
+            capture.load_search_receipt(args, platform=incompatible, android_version="14")
+
+
+def test_preflight_needs_no_snapshot_and_creates_no_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys,
+) -> None:
+    capture = load_capture()
+    receipt, raw = _chip_search_receipt(tmp_path)
+    monkeypatch.setattr(capture, "load_member_profile", lambda _: argparse.Namespace(profile="member-test", member_alias="member-test"))
+    monkeypatch.setattr(capture, "collect_snapshot_captures", lambda *args: pytest.fail("preflight must not collect remote source"))
+    output = tmp_path / "not-created"
+    monkeypatch.setattr(sys, "argv", _chip_capture_argv(receipt, raw) + ["--preflight", "--out-dir", str(output)])
+    assert capture.main() == 0
+    assert json.loads(capsys.readouterr().out) == {"preflight": "PASS"}
+    assert not output.exists()
+    assert receipt.read_bytes() == raw
+
+
+@pytest.mark.parametrize("mutation,error", [
+    ("hash", "SHA256"), ("member_alias", "成员身份"), ("schema", "schema"),
+    ("platform", "target_environment.platform"), ("project", "target_environment.project"),
+    ("android_version", "target_environment.android_version"),
+])
+def test_capture_checks_bad_receipt_before_remote_collection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str, error: str,
+) -> None:
+    capture = load_capture()
+    receipt, raw = _chip_search_receipt(tmp_path)
+    payload = json.loads(raw)
+    if mutation in {"member_alias", "schema"}:
+        payload[mutation] = "different"
+    elif mutation != "hash":
+        payload["target_environment"][mutation] = "different"
+    if mutation != "hash":
+        raw = json.dumps(payload).encode()
+        receipt.write_bytes(raw)
+    argv = _chip_capture_argv(receipt, raw)
+    if mutation == "hash":
+        argv[-1] = "a" * 64
+    argv += ["--remote-snapshot", str(tmp_path / "never-read.json"),
+        "--snapshot-workspace-id", "workspace", "--snapshot-command-id", "command",
+        "--snapshot-sha256", "a" * 64, "--remote-source-root", "/source"]
+    monkeypatch.setattr(capture, "load_member_profile", lambda _: argparse.Namespace(profile="member-test", member_alias="member-test"))
+    monkeypatch.setattr(capture, "collect_snapshot_captures", lambda *args: pytest.fail("invalid receipt reached remote collection"))
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(SystemExit, match=error):
+        capture.main()
+
+
+def test_capture_rechecks_receipt_after_resolving_real_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capture = load_capture()
+    receipt, raw = _chip_search_receipt(tmp_path)
+    change = capture.RepositoryCapture(source_root="/source/frameworks/base", repo_path="frameworks/base",
+        git_info={}, diff_text="diff", facts={}, module="frameworks-base",
+        patch_name="unisoc14-frameworks-base@display-policy.patch",
+        patch_rel="patches/unisoc14-frameworks-base@display-policy.patch")
+    argv = _chip_capture_argv(receipt, raw)
+    argv[argv.index("--project") + 1] = "unknown"
+    argv += ["--remote-snapshot", "snapshot.json", "--snapshot-workspace-id", "workspace",
+        "--snapshot-command-id", "command", "--snapshot-sha256", "a" * 64,
+        "--remote-source-root", "/source"]
+    monkeypatch.setattr(capture, "load_member_profile", lambda _: argparse.Namespace(profile="member-test", member_alias="member-test"))
+    monkeypatch.setattr(capture, "collect_snapshot_captures", lambda *args: ([change], {}))
+    monkeypatch.setattr(capture, "infer_capture_project_for_feature", lambda *args, **kwargs: ("TVI9999U", {}))
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(SystemExit, match="target_environment.project"):
+        capture.main()
+    assert receipt.read_bytes() == raw
+
+
 def test_explicit_unknown_does_not_relax_missing_pre_change_search() -> None:
     capture = load_capture()
     errors, _ = capture.validate_search_decision_for_status(

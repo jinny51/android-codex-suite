@@ -29,6 +29,7 @@ from android_engineering_ops.knowledge_rules import (
     find_company_project,
     find_company_projects,
     parse_platform_input as parse_platform_arg,
+    search_receipt_platform_matches_package,
     template_leak_errors,
 )
 from android_engineering_ops.artifact_paths import require_safe_artifact_path
@@ -839,8 +840,24 @@ def search_before_change(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def validate_search_receipt_environment(
+    payload: dict[str, Any], *, project: str, platform: str, android_version: str
+) -> None:
+    environment = payload["target_environment"]
+    for key, expected in {
+        "project": project, "platform": platform, "android_version": android_version,
+    }.items():
+        declared = environment[key]
+        matches = (
+            search_receipt_platform_matches_package(declared, expected)
+            if key == "platform" else declared == expected
+        )
+        if declared and expected and not matches:
+            raise SystemExit(f"开发前搜索回执 target_environment.{key} 与本次补丁不一致")
+
+
 def load_search_receipt(
-    args: argparse.Namespace, *, platform: str, android_version: str
+    args: argparse.Namespace, *, platform: str, android_version: str, project: str | None = None
 ) -> tuple[dict[str, Any], bytes]:
     """Carry one selected receipt, not a reconstructed same-day search summary."""
     if any(
@@ -881,14 +898,10 @@ def load_search_receipt(
         or any(not isinstance(environment.get(key), str) for key in ("project", "platform", "android_version"))
     ):
         raise SystemExit("开发前搜索回执缺少结构化查询、结果或目标环境")
-    expected_environment = {
-        "project": str(args.project or ""), "platform": platform,
-        "android_version": android_version,
-    }
-    for key, expected in expected_environment.items():
-        declared = environment[key]
-        if declared and expected and declared != expected:
-            raise SystemExit(f"开发前搜索回执 target_environment.{key} 与本次补丁不一致")
+    validate_search_receipt_environment(
+        payload, project=str(args.project or "") if project is None else project,
+        platform=platform, android_version=android_version,
+    )
     decision = payload.get("reuse_decision")
     if decision not in REUSE_DECISIONS or payload.get("decision") != decision:
         raise SystemExit("开发前搜索回执使用决定不一致")
@@ -1346,6 +1359,7 @@ def coding_standard_check(args: argparse.Namespace, captures: list[RepositoryCap
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Package one Android feature into README, patches, and evidence assets.")
+    parser.add_argument("--preflight", action="store_true", help="Check local package parameters, profile and search receipt without source capture or output files.")
     parser.add_argument(
         "--source-root",
         action="append",
@@ -1517,7 +1531,7 @@ def parse_args() -> argparse.Namespace:
             )
         if args.patch_artifact or args.patch_repo_path:
             parser.error("current_codex_skill 不接受 caller patch artifact；必须消费 channel snapshot")
-        if not all(snapshot_fields):
+        if not args.preflight and not all(snapshot_fields):
             parser.error(
                 "current_codex_skill 必须提供 --remote-snapshot、snapshot workspace/command/sha256 "
                 "和 --remote-source-root"
@@ -1574,6 +1588,20 @@ def main() -> int:
         for error in scope_errors:
             print(error, file=sys.stderr)
         return 1
+    search_receipt_bytes: bytes | None = None
+    if args.search_receipt:
+        search_payload, search_receipt_bytes = load_search_receipt(
+            args, platform=platform_name, android_version=android_version,
+            project="" if args.project == "unknown" else str(args.project or ""),
+        )
+    else:
+        search_payload = search_before_change(args)
+    if args.preflight:
+        search_errors, _ = validate_search_decision_for_status(args, search_payload)
+        if search_errors:
+            raise SystemExit("; ".join(search_errors))
+        print(json.dumps({"preflight": "PASS"}, ensure_ascii=False))
+        return 0
     snapshot_payload: dict[str, Any] | None = None
     if args.workflow_contract == "current_codex_skill":
         captures, snapshot_payload = collect_snapshot_captures(args, platform, feature)
@@ -1591,13 +1619,11 @@ def main() -> int:
     )
     resolved_project, project_inference = infer_capture_project_for_feature(args, captures, trusted_platform=platform_name)
     args.project = resolved_project
-    search_receipt_bytes: bytes | None = None
-    if args.search_receipt:
-        search_payload, search_receipt_bytes = load_search_receipt(
-            args, platform=platform_name, android_version=android_version,
+    if search_receipt_bytes is not None:
+        validate_search_receipt_environment(
+            search_payload, project=resolved_project,
+            platform=platform_name, android_version=android_version,
         )
-    else:
-        search_payload = search_before_change(args)
 
     now = dt.datetime.now()
     run_id = args.run_id or f"{now:%Y%m%d-%H%M%S}-feature"

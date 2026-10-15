@@ -776,7 +776,9 @@ def _historical_cache_evidence(plugin_name: str) -> list[str]:
     return sorted(paths)
 
 
-def latest_installed_plugin_cache_metadata(plugin_name: str = "akbs-member-ops") -> dict[str, Any]:
+def latest_installed_plugin_cache_metadata(
+    plugin_name: str = "akbs-member-ops", *, _binding: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Resolve the one active install, never the numerically highest cache entry."""
     payload, list_error = _plugin_list_payload()
     if payload is not None:
@@ -796,7 +798,9 @@ def latest_installed_plugin_cache_metadata(plugin_name: str = "akbs-member-ops")
                 "installed_plugin_source": source if isinstance(source, dict) else {},
             }
             if plugin_name == TARGET_MEMBER_PLUGIN:
-                binding = _active_target_binding(row)
+                # A compound version gate has already bound this same inventory.
+                # Reuse that call-local result, never a saved receipt or disk cache.
+                binding = _binding if _binding is not None else _active_target_binding(row)
                 result["installed_plugin_binding"] = binding
                 if binding.get("valid"):
                     execution_root = str(binding.get("execution_plugin_realpath") or "")
@@ -932,9 +936,15 @@ def git_remote_plugin_version(git_root: Path, ref: str) -> str:
     return str(payload.get("version") or "") if isinstance(payload, dict) else ""
 
 
-def packaged_plugin_freshness(metadata: dict[str, str], fetch: bool, require: bool) -> dict[str, Any]:
+def packaged_plugin_freshness(
+    metadata: dict[str, str], fetch: bool, require: bool,
+    *, _install_family: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     local_version = str(metadata.get("plugin_version") or "")
-    cache_metadata = latest_installed_plugin_cache_metadata(metadata.get("plugin_name") or "akbs-member-ops")
+    cache_metadata = latest_installed_plugin_cache_metadata(
+        metadata.get("plugin_name") or "akbs-member-ops",
+        _binding=(_install_family or {}).get("target_member_binding"),
+    )
     skill_cache = current_skill_cache_metadata()
     payload: dict[str, Any] = {
         "status": "PASS" if local_version else "UNKNOWN",
@@ -949,6 +959,8 @@ def packaged_plugin_freshness(metadata: dict[str, str], fetch: bool, require: bo
         "installation": metadata.get("plugin_installation") or "packaged",
         "message": "插件缓存版本已记录。",
     }
+    if _install_family is not None:
+        payload["install_family"] = _install_family
     payload["installed_plugin_authority"] = cache_metadata.get("installed_plugin_authority", "")
     payload["installed_plugin_fallback"] = cache_metadata.get("installed_plugin_fallback", False)
     if cache_metadata.get("installed_plugin_ambiguous"):
@@ -1057,7 +1069,9 @@ def _verify_updated_member_install(plugin_name: str) -> dict[str, Any]:
         # cache, while the running process and its eventual re-exec remain explicit.
         PLUGIN_ROOT = runtime
         family = installed_plugin_family_status()
-        metadata = latest_installed_plugin_cache_metadata(plugin_name)
+        metadata = latest_installed_plugin_cache_metadata(
+            plugin_name, _binding=family.get("target_member_binding")
+        )
     finally:
         PLUGIN_ROOT = previous_root
     return {**metadata, "install_family": family, "blocking": family.get("blocking", True)}
@@ -1152,7 +1166,7 @@ def plugin_freshness_check(fetch: bool = True, require: bool = False) -> dict[st
     if root_cp.returncode != 0:
         metadata = plugin_install_metadata()
         if metadata.get("plugin_version"):
-            return packaged_plugin_freshness(metadata, fetch, require)
+            return packaged_plugin_freshness(metadata, fetch, require, _install_family=family)
         return plugin_update_unknown(
             "无法确认插件版本：当前插件目录不是 Git 仓库（git repository）。请在 Codex 插件市场更新 AKBS Member Ops 插件后重新运行。",
             require,
@@ -1211,6 +1225,7 @@ def plugin_freshness_check(fetch: bool = True, require: bool = False) -> dict[st
 
     payload: dict[str, Any] = {
         "git_root": str(git_root),
+        "install_family": family,
         "local_commit": local_commit[:12],
         "remote_ref": upstream_ref,
         "remote_commit": remote_commit[:12],
@@ -1225,7 +1240,10 @@ def plugin_freshness_check(fetch: bool = True, require: bool = False) -> dict[st
     if remote_version:
         payload["remote_version"] = remote_version
         payload["remote_plugin_version"] = remote_version
-    cache_metadata = latest_installed_plugin_cache_metadata(metadata.get("plugin_name") or "akbs-member-ops")
+    cache_metadata = latest_installed_plugin_cache_metadata(
+        metadata.get("plugin_name") or "akbs-member-ops",
+        _binding=family.get("target_member_binding"),
+    )
     if cache_metadata:
         payload.update(cache_metadata)
     if warnings:
@@ -1323,12 +1341,30 @@ def plugin_freshness_check(fetch: bool = True, require: bool = False) -> dict[st
 
 
 def plugin_version_gate_check(config: dict[str, str] | None = None, fetch: bool = True, require: bool = True) -> dict[str, Any]:
-    global LAST_PLUGIN_VERSION_GATE
+    global LAST_PLUGIN_VERSION_GATE, PLUGIN_LIST_CACHE
     gate = plugin_freshness_check(fetch=fetch, require=require)
-    gate.setdefault("install_family", installed_plugin_family_status())
+    family = gate.get("install_family")
+    if not isinstance(family, dict):
+        family = installed_plugin_family_status()
+        gate["install_family"] = family
+    if fetch and not gate.get("blocking", False):
+        # Release lookup can wait on the network. Rebind once after that
+        # boundary, rather than reusing a pre-lookup tree check indefinitely.
+        PLUGIN_LIST_CACHE = None
+        family = installed_plugin_family_status()
+        gate["install_family"] = family
+        if family.get("blocking", True):
+            gate.update(
+                status=family.get("status", "UNKNOWN"),
+                blocking=True,
+                message=family.get("message", "插件安装在版本查询期间发生变化。"),
+            )
     metadata = plugin_install_metadata()
     skill_cache = current_skill_cache_metadata()
-    cache_metadata = latest_installed_plugin_cache_metadata(metadata.get("plugin_name") or "akbs-member-ops")
+    cache_metadata = latest_installed_plugin_cache_metadata(
+        metadata.get("plugin_name") or "akbs-member-ops",
+        _binding=family.get("target_member_binding"),
+    )
     gate.setdefault("plugin_name", metadata.get("plugin_name") or "akbs-member-ops")
     gate.setdefault("plugin_version", metadata.get("plugin_version") or "")
     gate.setdefault("local_version", metadata.get("plugin_version") or "")

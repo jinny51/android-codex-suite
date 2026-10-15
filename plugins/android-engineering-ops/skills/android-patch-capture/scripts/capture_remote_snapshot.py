@@ -20,10 +20,10 @@ if str(PLUGIN_LIB) not in sys.path:
     sys.path.insert(0, str(PLUGIN_LIB))
 
 from android_engineering_ops.artifact_paths import require_safe_artifact_path
-from android_engineering_ops.install_family import require_target_install_family
 from android_engineering_ops.remote_patch_snapshot import (
     RemotePatchSnapshotError,
     load_remote_patch_snapshot,
+    parse_repository_files,
 )
 
 
@@ -46,6 +46,7 @@ _ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 _WORKSPACE_RE = re.compile(r"[0-9a-f]{16}")
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 _PACKAGER_OWNED_OPTIONS = (
+    "--preflight",
     "--patch-artifact",
     "--patch-repo-path",
     "--remote-snapshot",
@@ -72,10 +73,11 @@ def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
         raise SystemExit(f"无法执行 snapshot handoff 命令: {command[0]}: {exc}") from exc
 
 
-def _snapshot_command(repository_paths: list[str]) -> str:
+def _snapshot_command(repository_paths: list[str], repository_files: list[str]) -> str:
     source = base64.b64encode(SNAPSHOT_MODULE.read_bytes()).decode("ascii")
     python = "import base64;exec(compile(base64.b64decode(%r),'<remote_patch_snapshot>','exec'))" % source
     arguments = " ".join(f"--repo-path {shlex.quote(item)}" for item in repository_paths)
+    arguments += "".join(f" --repo-file {shlex.quote(item)}" for item in repository_files)
     return (
         f"python3 -c {shlex.quote(python)} generate "
         '--remote-root "$CANONICAL_ROOT" '
@@ -177,6 +179,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ssh-host", required=True)
     parser.add_argument("--remote-root", required=True)
     parser.add_argument("--repo-path", action="append", required=True)
+    parser.add_argument("--repo-file", action="append", default=[], help="REPO_PATH=EXACT_FILE; repeat to capture only this feature without altering its source worktree.")
     parser.add_argument("--command-id", required=True)
     parser.add_argument("--channel-script", type=Path, default=CHANNEL_SCRIPT)
     parser.add_argument("--out", type=Path)
@@ -200,7 +203,12 @@ def main() -> int:
         help_result = _run([sys.executable, str(CAPTURE_SCRIPT), "--help"])
         _emit_completed_process(help_result)
         return help_result.returncode
-    require_target_install_family(PLUGIN_ROOT)
+    # The bundled channel is the execution boundary and performs the complete
+    # installation check. Do not repeat its app-server and four tree scans here.
+    try:
+        selected_files = parse_repository_files(args.repo_path, args.repo_file)
+    except RemotePatchSnapshotError as exc:
+        raise SystemExit(str(exc)) from exc
     if not _ID_RE.fullmatch(args.command_id):
         raise SystemExit("--command-id 必须符合 remote-channel v2 id 合同")
     if args.max_age_seconds <= 0 or args.max_age_seconds > 86400:
@@ -216,8 +224,13 @@ def main() -> int:
         raise SystemExit(f"remote snapshot 合同模块不存在: {SNAPSHOT_MODULE}")
     if args.package and not CAPTURE_SCRIPT.is_file():
         raise SystemExit(f"本地 capture packager 不存在: {CAPTURE_SCRIPT}")
+    if args.package:
+        preflight = _run([sys.executable, str(CAPTURE_SCRIPT), "--preflight", *package_arguments])
+        if preflight.returncode != 0:
+            _emit_completed_process(preflight)
+            return preflight.returncode
 
-    remote_command = _snapshot_command(args.repo_path)
+    remote_command = _snapshot_command(args.repo_path, args.repo_file)
     channel = _run(
         [
             str(channel_script),
@@ -269,7 +282,7 @@ def main() -> int:
         if transfer.returncode != 0:
             raise SystemExit(f"snapshot SSH 文件传输失败: {transfer.stderr or transfer.stdout}")
         try:
-            load_remote_patch_snapshot(
+            snapshot = load_remote_patch_snapshot(
                 temporary,
                 expected_workspace_id=handoff["SNAPSHOT_WORKSPACE_ID"],
                 expected_command_id=handoff["SNAPSHOT_COMMAND_ID"],
@@ -278,6 +291,12 @@ def main() -> int:
                 now_ns=time.time_ns(),
                 max_age_ns=args.max_age_seconds * 1_000_000_000,
             )
+            if {item["repo_path"] for item in snapshot["repositories"]} != set(args.repo_path):
+                raise RemotePatchSnapshotError("snapshot repositories differ from the requested repositories")
+            for repository in snapshot["repositories"]:
+                selected = selected_files.get(repository["repo_path"])
+                if selected is not None and not set(repository["changed_files"]).issubset(selected):
+                    raise RemotePatchSnapshotError("snapshot includes files outside the requested selection")
         except RemotePatchSnapshotError as exc:
             raise SystemExit(f"本地 snapshot 验证失败: {exc}") from exc
         os.chmod(temporary, 0o400)

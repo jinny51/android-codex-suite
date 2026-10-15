@@ -16,16 +16,9 @@ Before a new engineering task starts, set `PLUGIN_ROOT` to the directory two lev
 above this `SKILL.md`, read `../../references/task-start.md`, and run its shared
 `task_start.py` entry. Reuse that result across nested engineering Skills.
 
-Before reading source facts or writing an artifact, run:
-
-```bash
-python3 "$PLUGIN_ROOT/lib/android_engineering_ops/install_family.py" \
-  --plugin-root "$PLUGIN_ROOT"
-```
-
-Continue only when the target install family passes; a nonzero result is a hard stop.
-This is the target-only install receipt. If the task-start check installs
-an update, restart Codex before continuing.
+The task-start entry and actual source channel enforce the installation checks;
+do not rerun `install_family.py` manually between their nested steps. A failed
+check remains a hard stop. If task-start installs an update, restart Codex first.
 
 ## Layer classification
 
@@ -90,6 +83,8 @@ python3 "scripts/capture_remote_snapshot.py" \
   --remote-root "$REMOTE_ROOT" \
   --repo-path frameworks/base \
   --repo-path packages/apps/Settings \
+  --repo-file frameworks/base=services/core/java/com/android/server/policy/PhoneWindowManager.java \
+  --repo-file packages/apps/Settings=src/com/android/settings/DisplaySettings.java \
   --command-id "$PATCH_SNAPSHOT_COMMAND_ID" \
   --package -- \
   --profile <member_alias> \
@@ -101,7 +96,6 @@ python3 "scripts/capture_remote_snapshot.py" \
   --problem-summary "当前产品缺少对应策略和设置入口" \
   --solution-summary "修改平台策略并补齐设置入口" \
   --implementation-origin codex \
-  --workflow-contract current_codex_skill \
   --project TVE8402M \
   --verification "相关模块构建通过" \
   --device rk3576 \
@@ -110,6 +104,23 @@ python3 "scripts/capture_remote_snapshot.py" \
   --search-receipt-sha256 "$SEARCH_USAGE_RECEIPT_SHA256" \
   --rollback "恢复本次修改并重新构建相关模块"
 ```
+
+Use repeated `--repo-file REPO_PATH=EXACT_FILE` arguments when the real repository
+contains unrelated changes; give files for every selected repository. Paths are
+literal, not directory or glob selections. The snapshot retains the actual Git
+root and HEAD and does not read unselected generated output. Include both old and
+new paths of a rename; an identifiable rename crossing the selection is refused.
+Selection is file-level: all changes within a selected file are captured, not just
+this feature's hunks. Inspect them before capture; do not claim file selection
+isolates unrelated edits in the same file, or create a temporary source worktree
+solely to exclude other files.
+
+The one-step wrapper validates local capture arguments before remote acquisition.
+Reuse this task's verified build/device facts and original search receipt; only
+fill missing capture description, without rebuilding or reconstructing evidence.
+“Generate a package first; do not submit” means this normal capture followed by
+`akbs-patch-submit --prepare` and local validation, stopping before upload. Do not
+invent a review-only ZIP, a different format, or an ad-hoc packaging script.
 
 A truthful pre-existing product-Git import may use `--patch-artifact` and
 `--patch-repo-path` under `manual_import` or `historical_import`. Each artifact

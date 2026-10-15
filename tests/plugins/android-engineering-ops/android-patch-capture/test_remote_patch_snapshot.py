@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -20,6 +21,7 @@ from android_engineering_ops.remote_patch_snapshot import (  # noqa: E402
     RemotePatchSnapshotError,
     create_remote_patch_snapshot,
     decode_snapshot_blob,
+    parse_repository_files,
     validate_remote_patch_snapshot,
 )
 
@@ -278,6 +280,171 @@ class RemotePatchSnapshotTests(unittest.TestCase):
             decode_snapshot_blob(self.snapshot["repo_status"]["output"], field="repo-status"),
             b"repo-status-fixture\n",
         )
+
+    def test_file_scoped_monorepo_keeps_identity_and_never_reads_unselected_output(self) -> None:
+        output = self.repo / "out" / "unrelated.apk"
+        output.parent.mkdir()
+        output.write_bytes(b"unrelated generated binary")
+        before_head = run(["git", "rev-parse", "HEAD"], self.repo).stdout
+        before_index = (self.repo / ".git/index").read_bytes()
+        before_source = (self.repo / "services/core/DisplayPolicy.java").read_bytes()
+        read_bytes = Path.read_bytes
+
+        def selected_read(path: Path) -> bytes:
+            self.assertNotEqual(path, output, "file-scoped capture read an unrelated APK")
+            return read_bytes(path)
+
+        selected = ["services/core/DisplayPolicy.java", "services/core/NewPolicy.java"]
+        with patch.object(Path, "read_bytes", selected_read), patch(
+            "android_engineering_ops.remote_patch_snapshot._repo_status",
+            side_effect=AssertionError("file-scoped capture ran global repo status"),
+        ):
+            snapshot = create_remote_patch_snapshot(
+                remote_root=self.repo, workspace_id=self.workspace_id,
+                command_id=self.command_id, repository_paths=["."],
+                repository_files=[f".={name}" for name in selected],
+            )
+        repository = snapshot["repositories"][0]
+        self.assertEqual(repository["repo_path"], ".")
+        self.assertEqual(repository["root"], self.repo.as_posix())
+        self.assertEqual(repository["head"], before_head.strip())
+        self.assertEqual(repository["changed_files"], selected)
+        self.assertEqual(repository["untracked"][0]["path"], selected[1])
+        all_diff = b"".join(decode_snapshot_blob(repository[key], field=key) for key in (
+            "staged_diff", "unstaged_diff", "head_diff", "untracked_diff",
+        ))
+        self.assertNotIn(b"Framework.java", all_diff)
+        self.assertNotIn(b"unrelated.apk", all_diff)
+        self.assertEqual(snapshot["repo_status"]["reason"], "file-scoped-capture")
+        self.assertEqual((self.repo / ".git/index").read_bytes(), before_index)
+        self.assertEqual((self.repo / "services/core/DisplayPolicy.java").read_bytes(), before_source)
+        self.assertEqual(run(["git", "rev-parse", "HEAD"], self.repo).stdout, before_head)
+        validate_remote_patch_snapshot(
+            snapshot, expected_workspace_id=self.workspace_id,
+            expected_command_id=self.command_id, expected_remote_root=self.repo.as_posix(),
+            expected_sha256=snapshot["snapshot_sha256"],
+        )
+
+    def test_file_selection_supports_tracked_deletion_and_literal_filename(self) -> None:
+        (self.repo / "core/Framework.java").unlink()
+        literal = self.repo / "Literal*.java"
+        literal.write_text("class Literal {}\n")
+        (self.repo / "LiteralOther.java").write_text("class Other {}\n")
+        snapshot = create_remote_patch_snapshot(
+            remote_root=self.remote_root, workspace_id=self.workspace_id,
+            command_id=self.command_id, repository_paths=["frameworks/base"],
+            repository_files=["frameworks/base=core/Framework.java", "frameworks/base=Literal*.java"],
+        )
+        repository = snapshot["repositories"][0]
+        self.assertEqual(repository["changed_files"], ["Literal*.java", "core/Framework.java"])
+        self.assertEqual([row["path"] for row in repository["untracked"]], ["Literal*.java"])
+
+    def test_file_selection_does_not_split_a_staged_rename(self) -> None:
+        source, destination = "core/Framework.java", "core/RenamedFramework.java"
+        original = run(["git", "show", f"HEAD:{source}"], self.repo)
+        self.assertEqual(original.returncode, 0, original.stderr)
+        (self.repo / source).write_text(original.stdout, encoding="utf-8")
+        self.assertEqual(run(["git", "add", "--", source], self.repo).returncode, 0)
+        self.assertEqual(run(["git", "mv", source, destination], self.repo).returncode, 0)
+        for selected in ([source], [destination]):
+            with self.subTest(selected=selected), self.assertRaisesRegex(RemotePatchSnapshotError, "splits a rename"):
+                create_remote_patch_snapshot(
+                    remote_root=self.remote_root, workspace_id=self.workspace_id,
+                    command_id=self.command_id, repository_paths=["frameworks/base"],
+                    repository_files=[f"frameworks/base={name}" for name in selected],
+                )
+        snapshot = create_remote_patch_snapshot(
+            remote_root=self.remote_root, workspace_id=self.workspace_id,
+            command_id=self.command_id, repository_paths=["frameworks/base"],
+            repository_files=[f"frameworks/base={source}", f"frameworks/base={destination}"],
+        )
+        captured = decode_snapshot_blob(snapshot["repositories"][0]["head_diff"], field="head_diff")
+        self.assertIn(f"rename from {source}".encode(), captured)
+        self.assertIn(f"rename to {destination}".encode(), captured)
+
+    def test_file_selection_keeps_multiple_real_repositories_separate(self) -> None:
+        settings = self.remote_root / "packages/apps/Settings"
+        settings.mkdir(parents=True)
+        for command in (
+            ["git", "init"],
+            ["git", "config", "user.email", "snapshot@example.invalid"],
+            ["git", "config", "user.name", "Snapshot Test"],
+        ):
+            self.assertEqual(run(command, settings).returncode, 0)
+        source = settings / "Settings.java"
+        source.write_text("class Settings {}\n")
+        self.assertEqual(run(["git", "add", "."], settings).returncode, 0)
+        self.assertEqual(run(["git", "commit", "-m", "initial"], settings).returncode, 0)
+        source.write_text("class Settings { boolean enabled = true; }\n")
+        snapshot = create_remote_patch_snapshot(
+            remote_root=self.remote_root, workspace_id=self.workspace_id,
+            command_id=self.command_id,
+            repository_paths=["frameworks/base", "packages/apps/Settings"],
+            repository_files=[
+                "frameworks/base=services/core/DisplayPolicy.java",
+                "packages/apps/Settings=Settings.java",
+            ],
+        )
+        self.assertEqual([row["root"] for row in snapshot["repositories"]], [
+            self.repo.as_posix(), settings.as_posix(),
+        ])
+        self.assertEqual([row["changed_files"] for row in snapshot["repositories"]], [
+            ["services/core/DisplayPolicy.java"], ["Settings.java"],
+        ])
+
+    def test_file_selection_does_not_split_an_edited_staged_rename(self) -> None:
+        source, destination = "core/RenameSource.java", "core/RenameDestination.java"
+        original = "class RenameSource {\n" + "".join(
+            f"  static final int VALUE_{index} = {index};\n" for index in range(20)
+        ) + "}\n"
+        (self.repo / source).write_text(original, encoding="utf-8")
+        self.assertEqual(run(["git", "add", "--", source], self.repo).returncode, 0)
+        self.assertEqual(run(["git", "commit", "--only", "-m", "rename baseline", "--", source], self.repo).returncode, 0)
+        self.assertEqual(run(["git", "mv", source, destination], self.repo).returncode, 0)
+        (self.repo / destination).write_text(original.replace("VALUE_0 = 0", "VALUE_0 = 42"), encoding="utf-8")
+        self.assertEqual(run(["git", "add", "--", destination], self.repo).returncode, 0)
+        for selected in ([source], [destination]):
+            with self.subTest(selected=selected), self.assertRaisesRegex(RemotePatchSnapshotError, "splits a rename"):
+                create_remote_patch_snapshot(
+                    remote_root=self.remote_root, workspace_id=self.workspace_id,
+                    command_id=self.command_id, repository_paths=["frameworks/base"],
+                    repository_files=[f"frameworks/base={name}" for name in selected],
+                )
+        snapshot = create_remote_patch_snapshot(
+            remote_root=self.remote_root, workspace_id=self.workspace_id,
+            command_id=self.command_id, repository_paths=["frameworks/base"],
+            repository_files=[f"frameworks/base={source}", f"frameworks/base={destination}"],
+        )
+        captured = decode_snapshot_blob(snapshot["repositories"][0]["head_diff"], field="head_diff")
+        self.assertIn(f"rename from {source}".encode(), captured)
+        self.assertIn(f"rename to {destination}".encode(), captured)
+        self.assertIn(b"+  static final int VALUE_0 = 42;", captured)
+
+    def test_file_selection_rejects_escape_directory_unknown_and_partial_repository_scope(self) -> None:
+        for values in (
+            ["frameworks/base=../outside.java"],
+            ["frameworks/base=/absolute.java"],
+            ["other/repo=File.java"],
+            ["frameworks/base"],
+        ):
+            with self.subTest(values=values), self.assertRaises(RemotePatchSnapshotError):
+                parse_repository_files(["frameworks/base"], values)
+        with self.assertRaisesRegex(RemotePatchSnapshotError, "every repository"):
+            parse_repository_files(["frameworks/base", "packages/apps/Settings"], ["frameworks/base=File.java"])
+        for name in ("services", "does-not-exist.java"):
+            with self.subTest(name=name), self.assertRaises(RemotePatchSnapshotError):
+                create_remote_patch_snapshot(
+                    remote_root=self.remote_root, workspace_id=self.workspace_id,
+                    command_id=self.command_id, repository_paths=["frameworks/base"],
+                    repository_files=[f"frameworks/base={name}"],
+                )
+        (self.repo / "linked").symlink_to(self.root, target_is_directory=True)
+        with self.assertRaisesRegex(RemotePatchSnapshotError, "symlink parent"):
+            create_remote_patch_snapshot(
+                remote_root=self.remote_root, workspace_id=self.workspace_id,
+                command_id=self.command_id, repository_paths=["frameworks/base"],
+                repository_files=["frameworks/base=linked/outside.java"],
+            )
 
     def test_snapshot_validation_rejects_missing_tampered_wrong_identity_and_stale(self) -> None:
         cases: list[tuple[dict[str, object], dict[str, object]]] = []
@@ -662,6 +829,50 @@ class RemotePatchSnapshotTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("不得覆盖一步流程绑定的 --remote-snapshot", result.stderr)
+
+    def test_handoff_package_preflight_rejects_bad_arguments_before_remote_channel(self) -> None:
+        bin_dir = self.root / "preflight-bin"
+        bin_dir.mkdir()
+        marker = self.root / "preflight-channel-was-called"
+        fake_channel = bin_dir / "fake-channel"
+        fake_channel.write_text(f"#!/bin/sh\ntouch '{marker}'\nexit 99\n", encoding="utf-8")
+        fake_channel.chmod(0o755)
+        codex_home = self.root / "preflight-codex-home"
+        plugin = self.install_plugin(codex_home, channel=fake_channel, bin_dir=bin_dir)
+        arguments = self.capture_arguments(codex_home)
+        arguments[arguments.index("--platform") + 1] = "not-a-chip-platform"
+        result = run(
+            [
+                sys.executable, str(plugin / "skills/android-patch-capture/scripts/capture_remote_snapshot.py"),
+                "--ssh-host", "unused-host", "--remote-root", self.remote_root.as_posix(),
+                "--repo-path", "frameworks/base", "--command-id", self.command_id,
+                "--package", "--", *arguments,
+            ],
+            self.root,
+            env={"CODEX_HOME": str(codex_home), "PATH": f"{bin_dir}:{os.environ['PATH']}"},
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(marker.exists(), result.stderr or result.stdout)
+        self.assertNotIn("remote-channel snapshot", result.stderr)
+
+    def test_handoff_package_mode_rejects_caller_preflight_override(self) -> None:
+        codex_home = self.root / "caller-preflight-codex-home"
+        plugin = self.install_plugin(codex_home)
+        handoff = plugin / "skills/android-patch-capture/scripts/capture_remote_snapshot.py"
+        for option in ("--preflight", "--preflight=true"):
+            with self.subTest(option=option):
+                result = run(
+                    [
+                        sys.executable, str(handoff), "--ssh-host", "unused-host",
+                        "--remote-root", self.remote_root.as_posix(),
+                        "--repo-path", "frameworks/base", "--command-id", self.command_id,
+                        "--package", "--", option,
+                    ],
+                    self.root,
+                    env={"CODEX_HOME": str(codex_home)},
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("不得覆盖一步流程绑定的 --preflight", result.stderr)
 
     def test_handoff_channel_failure_never_falls_back_to_transfer_or_source(self) -> None:
         bin_dir = self.root / "failure-bin"

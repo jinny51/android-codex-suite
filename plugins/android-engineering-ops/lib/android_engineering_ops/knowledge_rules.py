@@ -255,6 +255,27 @@ def is_valid_platform_value(value: str) -> bool:
     return value in VALID_FRAMEWORK_PLATFORMS or value == "unknown"
 
 
+def search_receipt_platform_matches_package(value: str, package_platform: str) -> bool:
+    """Compare a receipt's chip/family to a package family, not search applicability.
+
+    Search retains the exact chip and its original environment comparisons. Only
+    this boundary needs the coarser family used by the existing package contract.
+    Unrecognized values cannot establish family compatibility.
+    """
+    declared = str(value or "").strip().lower()
+    family = PLATFORM_PREFIX_ALIASES.get(declared, "")
+    if not family:
+        for pattern, candidate in (
+            (r"rk\d{3,5}[a-z0-9]*", "rk"),
+            (r"mt\d{3,5}[a-z0-9]*", "mtk"),
+            (r"(?:uis|ums|sc)\d{3,5}[a-z0-9]*", "unisoc"),
+        ):
+            if re.fullmatch(pattern, declared):
+                family = candidate
+                break
+    return bool(family) and family == str(package_platform or "").strip().lower()
+
+
 def valid_framework_platform(value: str) -> bool:
     return str(value or "").strip().lower() in VALID_FRAMEWORK_PLATFORMS
 

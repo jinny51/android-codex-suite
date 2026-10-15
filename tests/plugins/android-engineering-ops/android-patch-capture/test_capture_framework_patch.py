@@ -317,6 +317,15 @@ def test_chip_receipt_maps_to_package_family_without_changing_original(tmp_path:
             capture.load_search_receipt(args, platform=incompatible, android_version="14")
 
 
+def test_capture_rejects_abbreviated_internal_preflight(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    capture = load_capture()
+    receipt, raw = _chip_search_receipt(tmp_path)
+    monkeypatch.setattr(sys, "argv", _chip_capture_argv(receipt, raw) + ["--prefl"])
+    with pytest.raises(SystemExit) as failure:
+        capture.main()
+    assert failure.value.code == 2
+
+
 def test_preflight_needs_no_snapshot_and_creates_no_artifacts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys,
 ) -> None:

@@ -1358,7 +1358,7 @@ def coding_standard_check(args: argparse.Namespace, captures: list[RepositoryCap
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Package one Android feature into README, patches, and evidence assets.")
+    parser = argparse.ArgumentParser(description="Package one Android feature into README, patches, and evidence assets.", allow_abbrev=False)
     parser.add_argument("--preflight", action="store_true", help="Check local package parameters, profile and search receipt without source capture or output files.")
     parser.add_argument(
         "--source-root",

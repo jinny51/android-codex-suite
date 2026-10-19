@@ -34,6 +34,7 @@ from akbs_intake.patch.evidence import (  # noqa: E402
     select_search_before_change_payload,
 )
 from akbs_intake.patch import builder  # noqa: E402
+from akbs_intake import search_usage  # noqa: E402
 from akbs_intake.patch.validation import validate_patch_pre_change_search  # noqa: E402
 from akbs_intake.search_usage import (  # noqa: E402
     search_payload_missing_required_pre_change_search,
@@ -267,7 +268,7 @@ def test_current_builder_never_borrows_another_same_day_search(
     def wrong_same_day_search(*args, **kwargs):
         pytest.fail("current capture must not consult same-day search from TVE9999U/unisoc13")
 
-    monkeypatch.setattr(builder, "search_usage_payload", wrong_same_day_search)
+    monkeypatch.setattr(search_usage, "load_search_usage_records", wrong_same_day_search)
     package = _build_search_package(tmp_path, capture, monkeypatch)
     evidence = load(package / "materials/evidence/search_before_change.json")
     if receipt_mode == "missing":
@@ -322,21 +323,59 @@ def test_builder_does_not_refuse_capture_due_to_scope_wording(
 
 
 @pytest.mark.parametrize("workflow", ["manual_import", "historical_import"])
-def test_import_builder_retains_existing_search_reader(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, workflow: str,
+@pytest.mark.parametrize("search_state", ["false", "missing", "explicit"])
+def test_import_builder_preserves_original_search_facts_without_same_day_guessing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, workflow: str, search_state: str,
 ) -> None:
-    capture, _ = _capture_with_search_receipt(
+    capture, original_patch = _capture_with_search_receipt(
         tmp_path, {"kind": "search_before_change", "path": "evidence/search.json"},
     )
     manifest = load(capture / "manifest.json")
     manifest["workflow_contract"] = workflow
+    original_search = {"searched": False, "queries": [], "decision": "unknown"}
+    if search_state == "missing":
+        manifest["evidence"] = []
+    elif search_state == "explicit":
+        original_search = {
+            "searched": True, "queries": ["original product investigation"],
+            "decision": "reference_only", "reason": "Recorded during original work",
+        }
+    (capture / "evidence/search.json").write_text(json.dumps(original_search), encoding="utf-8")
     (capture / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    recorded = {"searched": True, "decision": "reference_only", "reuse_decision": "reference_only"}
     calls = []
-    monkeypatch.setattr(builder, "search_usage_payload", lambda *args, **kwargs: calls.append(args) or recorded)
+    recorded = {"date": "2026-10-08", "created_at": "2026-10-08T11:00:00+08:00",
+                "member_alias": "member-test", "query": "display policy",
+                "decision": "reference_only", "results": [{"title": "Display policy"}]}
+    monkeypatch.setattr(search_usage, "load_search_usage_records", lambda *args, **kwargs: calls.append(args) or [recorded])
     package = _build_search_package(tmp_path, capture, monkeypatch)
-    assert len(calls) == 1
-    assert load(package / "materials/evidence/search_before_change.json")["payload"] == recorded
+    assert calls == []
+    actual = load(package / "materials/evidence/search_before_change.json")["payload"]
+    if search_state == "missing":
+        assert actual["searched"] is False
+        assert actual["queries"] == []
+    else:
+        assert actual == original_search
+    generated = load(package / "manifest.json")
+    assert generated["date"] == "2026-10-08"
+    assert generated["member_alias"] == "member-test"
+    assert generated["workflow_contract"] == workflow
+    assert (package / generated["files"]["patches"][0]).read_bytes() == original_patch
+
+
+@pytest.mark.parametrize("workflow,expected", [
+    ("current_codex_skill", "search_loop_score_possible"),
+    ("manual_import", "no_search_loop_score"),
+    ("historical_import", "no_search_loop_score"),
+])
+def test_search_loop_hint_respects_existing_workflow(workflow: str, expected: str) -> None:
+    from akbs_member_ops.knowledge_rules import classify_pre_change_search as member_classify
+    payload = {"searched": True, "decision": "reference_only", "results": ["original source"]}
+    before = copy.deepcopy(payload)
+    for classify in (member_classify, classify_pre_change_search):
+        result = classify(payload, workflow_contract=workflow, package_status="validated")
+        assert result["searched"] is True
+        assert result["validity_score_effect"] == expected
+        assert payload == before
 
 
 @pytest.mark.parametrize("package_status,mutation", [

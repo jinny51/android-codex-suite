@@ -11,7 +11,7 @@ from akbs_intake.io_utils import list_string_values, materials_rel, unique_strin
 from akbs_intake.project_identity import infer_project as _infer_project
 from akbs_intake.report_sessions import ymd
 from akbs_intake.reports.identity import related_report_project_clues, same_day_daily_report_run_ids
-from akbs_intake.search_usage import patch_search_feature_tokens, search_payload_has_member_decision, search_usage_payload
+from akbs_intake.search_usage import search_payload_has_member_decision
 from akbs_intake.patch.assets import (
     copy_patch_assets,
     patch_infos_from_paths,
@@ -417,15 +417,11 @@ def build_patch_package(
         exact_search_receipt["payload"] if exact_search_receipt is not None
         else first_evidence_payload(package_dir, capture_evidence_entries, "search_before_change")
     )
-    # Current captures keep only their selected receipt/recorded facts. The daily
-    # reader remains available for real imports, not as a receipt selector.
-    member_search_payload = (
-        {} if exact_search_receipt is not None or workflow_contract == "current_codex_skill"
-        else search_usage_payload(config, date, feature_tokens=patch_search_feature_tokens(summary, all_patch_items, modified_files))
-    )
+    # Preparation preserves the original search facts for every workflow.
+    # Same-day reporting searches do not establish pre-implementation timing.
     search_payload = select_search_before_change_payload(
         capture_search_payload=capture_search_payload,
-        member_search_payload=member_search_payload,
+        member_search_payload={},
         capture_has_member_decision=search_payload_has_member_decision(capture_search_payload),
         capture_is_exact_receipt=exact_search_receipt is not None,
     )

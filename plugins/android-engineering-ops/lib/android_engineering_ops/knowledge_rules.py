@@ -654,7 +654,7 @@ def classify_pre_change_search(
         "member_can_complete_before_upload": can_complete_before_upload,
         "missing_field": "search_usage" if can_complete_before_upload else "",
         "requires_post_change_overlap_check": requires_overlap,
-        "validity_score_effect": "search_loop_score_possible" if searched and decision != "unknown" else "no_search_loop_score",
+        "validity_score_effect": "search_loop_score_possible" if requires_search and searched and decision != "unknown" else "no_search_loop_score",
         "package_status": str(package_status or "").strip().lower(),
     }
 

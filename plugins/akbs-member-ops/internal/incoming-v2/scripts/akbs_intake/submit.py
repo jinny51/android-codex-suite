@@ -57,6 +57,18 @@ def read_json_file(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _require_member_patch_workflow(manifest: dict[str, Any]) -> None:
+    if (
+        manifest.get("package_kind") == "android_change"
+        and manifest.get("workflow_contract") != "current_codex_skill"
+    ):
+        raise SystemExit(
+            "普通成员新补丁只接受 current_codex_skill 正常提交；"
+            "手工或历史补录请由管理员使用现有 submit-local-patch 入口。"
+            "不要将新开发改标为导入，也不要改写旧材料来源来通过提交。"
+        )
+
+
 def package_tar_gz_bytes(package_dir: Path) -> bytes:
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
@@ -79,6 +91,7 @@ def server_submit_package(
         raise SystemExit("AKBS 成员上传只支持 HTTP API；SSH/local 上传字段已废弃，请先更新插件并执行配置迁移。")
     manifest = read_json_file(package_dir / "manifest.json")
     require_current_patch_contract(manifest)
+    _require_member_patch_workflow(manifest)
     payload = package_tar_gz_bytes(package_dir)
     return http_submit_package(
         package_dir,
@@ -98,6 +111,7 @@ def submit_package(
 ) -> dict[str, Any]:
     manifest = read_json_file(package_dir / "manifest.json")
     require_current_patch_contract(manifest)
+    _require_member_patch_workflow(manifest)
     check = validate_package_fn(package_dir)
     write_json_fn(package_dir / "local-check.json", check)
     if check["status"] != "PASS":
@@ -128,6 +142,7 @@ def http_submit_package(
         raise SystemExit("submission_api_base_url 不能为空")
     manifest = read_json_file(package_dir / "manifest.json")
     require_current_patch_contract(manifest)
+    _require_member_patch_workflow(manifest)
     upload_type = upload_type_for_manifest(manifest)
     url = f"{base_url}/member/me/uploads/{upload_type}"
     request = urllib.request.Request(

@@ -123,7 +123,14 @@ fill missing capture description, without rebuilding or reconstructing evidence.
 invent a review-only ZIP, a different format, or an ad-hoc packaging script.
 
 A truthful pre-existing product-Git import may use `--patch-artifact` and
-`--patch-repo-path` under `manual_import` or `historical_import`. Each artifact
+`--patch-repo-path` under `manual_import` or `historical_import` for administrator
+local preparation. Imports consume existing patch files only; never capture
+current Git changes under an import label. `historical_import` is for production
+patches from before Codex was used; `manual_import` is for other genuinely
+pre-existing product patches. Today's packaging date or use of Codex to organize
+an old artifact does not change its original development facts. Ordinary members'
+newly developed patches use the current workflow and normal submission; both
+import labels are submitted only by the existing administrator route. Each artifact
 must be generated from one actual Git repository and paired with that repository's
 path. Repeat both arguments for a cross-repository change; Android source root `.`
 is not a repository path and is rejected.

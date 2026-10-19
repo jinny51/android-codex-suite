@@ -71,8 +71,14 @@ python3 "scripts/akbs_patch_submit.py" --profile <member_alias> --prepare \
   --status validated
 ```
 
-The capture already carries every patch's layer. For a truthful manual or historical
-single-patch import, declare the layer explicitly. Direct `--patch` is an input
+The capture already carries every patch's layer. Ordinary member submissions use
+`current_codex_skill`. Manual/historical imports are local preparation for the
+existing authenticated administrator submission route, not member upload options.
+`historical_import` means production patches from before Codex was used;
+`manual_import` preserves other genuinely pre-existing product patches. Neither
+label can replace the current workflow for newly developed work. Codex packaging
+an old artifact today does not make its implementation new. For an administrator's
+truthful single-patch import, declare the layer explicitly. Direct `--patch` is an input
 shortcut for one pre-existing, verified product-source Git patch, not a bypass of
 source review or the capture route for current work. Do not relabel a patch
 newly generated from this Codex task's local product Git edits as an import.
@@ -136,11 +142,16 @@ or curation. An explicit upload-only request authorizes submission through the s
 role's entry, but not queue processing, review, or a knowledge write. An instruction
 not to add knowledge must never be expanded into curation.
 
-For an authorized ordinary-member submission:
+For an authorized ordinary-member submission of a `current_codex_skill` package:
 
 ```bash
 python3 "scripts/akbs_patch_submit.py" --profile <member_alias> --submit-latest
 ```
+
+Both `manual_import` and `historical_import` are refused by this member upload
+route. Keep a genuine imported package unchanged for the administrator's existing
+`submit-local-patch` route; do not relabel it to pass. Local prepare/validate does
+not require administrator login and remains available for that preparation.
 
 Submission preserves the generated package bytes. Retry the same package after an
 uncertain transport failure with `--submit-latest --run-id <original-run-id>`;

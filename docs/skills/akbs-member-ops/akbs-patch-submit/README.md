@@ -28,6 +28,10 @@ Evidence 的 `kind` 只读取 evidence JSON 自身字段。
 
 本地 PASS 只说明包结构、引用和字节一致。服务端仍负责鉴权、授权、入库、去重和
 最终上传结果。网络结果不确定时重试同一个包，不要改名或重新生成身份。
+普通成员新开发只按 `current_codex_skill` 上传；`manual_import` 和
+`historical_import` 仅保留本地整理、校验，由管理员复用现有
+`submit-local-patch` 补录入口提交。历史导入指使用 Codex 前的量产补丁；
+今天由 Codex 整理老文件不等于今天开发，也不能把新开发改标为手工或历史导入。
 普通成员用 `--submit-latest --run-id <原包run_id>` 定位原包重试；不传
 `--run-id` 时仍选择最新包。显式指定的原包不存在或不唯一时，不会改传其他包。
 

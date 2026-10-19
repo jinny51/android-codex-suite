@@ -1,13 +1,13 @@
 # AKBS Member Ops
 
-Standalone AKBS member plugin, version 2.3.13. It owns member setup, knowledge
+Standalone AKBS member plugin, version 2.3.14. It owns member setup, knowledge
 search and merge review, personal daily/weekly reports, and Android change
 package handling without depending on the engineering or optional practices
 plugins at runtime.
 
-This patch release publishes the previous two accepted rounds of report generation,
-customer identity, uncertain-search, draft retry, and static-evidence classification
-fixes. It adds no new functionality.
+This patch release reserves manual/historical Patch imports for the existing
+authenticated administrator upload routes. Ordinary members submit newly developed
+Patches through the current workflow; shared local preparation remains available.
 
 ## Canonical Skills
 

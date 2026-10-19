@@ -1391,7 +1391,7 @@ def parse_args() -> argparse.Namespace:
         "--source-root",
         action="append",
         default=[],
-        help="Legacy local Git root for manual/historical import only. current_codex_skill rejects it.",
+        help="Legacy preflight-only source hint. Actual imports require existing --patch-artifact files; current_codex_skill rejects it.",
     )
     parser.add_argument(
         "--profile",
@@ -1570,6 +1570,17 @@ def parse_args() -> argparse.Namespace:
             parser.error("--source-root 与 --patch-artifact 不能混用")
         if args.patch_artifact and not args.patch_repo_path:
             parser.error("--patch-artifact 必须配套 --patch-repo-path")
+        if not args.preflight:
+            if args.source_root:
+                parser.error(
+                    "manual/historical import 禁止 --source-root 和当前 Git diff；"
+                    "只能整理已有的 --patch-artifact，并配套 --patch-repo-path"
+                )
+            if not args.patch_artifact or not args.patch_repo_path:
+                parser.error(
+                    "manual/historical import 必须提供已有的 --patch-artifact 和 --patch-repo-path；"
+                    "当前开发请使用 current_codex_skill 的 channel snapshot"
+                )
     args.policy_profile_name = ""
     args.policy_member_alias = ""
     if bool(args.search_receipt) != bool(args.search_receipt_sha256):
@@ -1627,10 +1638,8 @@ def main() -> int:
     snapshot_payload: dict[str, Any] | None = None
     if args.workflow_contract == "current_codex_skill":
         captures, snapshot_payload = collect_snapshot_captures(args, platform, feature)
-    elif args.patch_artifact:
-        captures = collect_patch_artifact_captures(args, platform, feature)
     else:
-        captures = collect_repository_captures(args, platform, feature)
+        captures = collect_patch_artifact_captures(args, platform, feature)
     patch_layers = capture_layers(
         captures,
         default_layer=args.component_layer,

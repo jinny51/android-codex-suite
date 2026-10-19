@@ -24,5 +24,8 @@ Extension 按项目配置优先于本地配置解析；选择 provider 后只从
 Canonical layer 只有 application/platform/native/hal/kernel/device/build。合格且已验证的产品源码变更先由 `android-patch-capture` 生成逐仓 patch 与工程证据，再由 `akbs-patch-submit` 构造、检查、准备并提交唯一的 `knowledge-incoming-package/2/android_change` 最终包。产品侧 APK 集成配置改动可按其产品源码仓单独采集；来源未明确时保留本地材料。七层分类由最终包的 `components[].layer` 记录，工程 capture 不另设上传格式或生命周期。
 
 既有且经核实的产品 Git 补丁可走 capture 的 `manual_import`，单份补丁也可走 submit 的 `manual_import` 直入；两者仍是同一个最终包合同。既有手工补丁不要求远端 snapshot，但应核对真实产品仓、可取得的 Git 修订和原补丁修改路径；混入独立 App 源码的原件不得静默删段后上传。本次由 Codex 在本地产品 Git 中做的改动不能仅因源码在本地就改标 `manual_import`；现行采集器还不支持该来源的 `current_codex_skill` 路线，材料暂留本地。
+这些导入方式只用于管理员补录的本地整理，不是普通成员新开发的提交选项。
+`historical_import` 限使用 Codex 前的量产补丁；手工导入也不能用来改标当前新开发。
+新开发按当前工作流提交，真实旧材料由现有管理员上传入口处理，不增加另一套流程。
 
 用户要求管理员提交本人 Patch 时，当前会话先由可用的 `akbs-curation-maintainer` 通过既有 `author-identity` 确认真实管理权限与服务端作者绑定，复用成员端 prepare/validate 后走管理入口，并连续完成知识比较和正式沉淀判断；不在上传成功后停下，也不要求另开会话或到 UI 操作。普通成员仍走成员通路，不探测管理凭据。仅制作、检查或暂存不代表提交授权；具体分流见 `akbs-patch-submit`。

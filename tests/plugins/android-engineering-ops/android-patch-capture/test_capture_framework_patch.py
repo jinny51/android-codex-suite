@@ -152,6 +152,64 @@ def test_capture_preserves_negated_scope_wording_as_warning(
     assert Path(result["package"]).is_dir()
 
 
+@pytest.mark.parametrize("workflow_contract", ["manual_import", "historical_import"])
+@pytest.mark.parametrize("source_argument", [False, True])
+def test_import_capture_never_generates_a_patch_from_current_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys,
+    workflow_contract: str, source_argument: bool,
+) -> None:
+    capture = load_capture()
+    monkeypatch.setattr(
+        capture, "collect_repository_captures",
+        lambda *args: pytest.fail("an import must not capture the current Git diff"),
+    )
+    output = tmp_path / "not-created"
+    argv = [str(CAPTURE), "--workflow-contract", workflow_contract,
+        "--platform", "rk14", "--component-layer", "platform",
+        "--feature", "rotation", "--summary", "旋转策略", "--out-dir", str(output)]
+    if source_argument:
+        argv += ["--source-root", str(tmp_path / "current-product-source")]
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(SystemExit) as failure:
+        capture.main()
+    assert failure.value.code == 2
+    assert "已有的 --patch-artifact" in capsys.readouterr().err
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("workflow_contract", ["manual_import", "historical_import"])
+def test_import_capture_keeps_existing_artifact_author_and_date(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys,
+    workflow_contract: str,
+) -> None:
+    capture = load_capture()
+    patch = tmp_path / "verified-product.patch"
+    original = (
+        "diff --git a/core/Example.java b/core/Example.java\n"
+        "--- a/core/Example.java\n+++ b/core/Example.java\n@@ -1 +1,2 @@\n-old();\n"
+        "+//legacy_author 20251016@\n+updated();\n"
+    ).encode("utf-8")
+    patch.write_bytes(original)
+    monkeypatch.setattr(
+        capture, "collect_repository_captures",
+        lambda *args: pytest.fail("existing artifact import must not read current Git"),
+    )
+    monkeypatch.setattr(sys, "argv", [str(CAPTURE), "--workflow-contract", workflow_contract,
+        "--implementation-origin", "codex", "--patch-artifact", str(patch),
+        "--patch-repo-path", "frameworks/base", "--platform", "rk14",
+        "--component-layer", "platform", "--feature", "rotation", "--summary", "旋转策略",
+        "--run-id", "20261019-existing-artifact", "--out-dir", str(tmp_path / "captures")])
+    assert capture.main() == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["local_check"]["errors"] == []
+    package = Path(result["package"])
+    manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["workflow_contract"] == workflow_contract
+    assert manifest["implementation_origin"] == "codex"
+    assert (package / manifest["patches"][0]["path"]).read_bytes() == original
+    assert patch.read_bytes() == original
+
+
 def test_controlled_patch_filename_rules() -> None:
     capture = load_capture()
     good = capture.RepositoryCapture(

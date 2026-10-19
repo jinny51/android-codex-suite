@@ -220,8 +220,12 @@ repository patches and evidence. Pass that capture directory to `akbs-patch-subm
 which constructs and validates the final `knowledge-incoming-package/2/android_change`
 package. A pre-existing, verified product-Git patch can instead use capture's
 `manual_import` artifact route or the submit Skill's direct single-patch
-`manual_import` route; the latter is an input shortcut, not a different package
-contract. Neither route requires a remote snapshot. Do not relabel current
+`manual_import` route for administrator local preparation; the latter is an input
+shortcut, not a different package contract. Neither route requires a remote
+snapshot. Both manual and historical imports are submitted through the existing
+authenticated administrator entry, not the ordinary member upload route.
+Historical import means pre-Codex production patches, not current work with a
+different label. Do not relabel current
 Codex-authored local Git work as `manual_import` merely because it is local:
 the current capture CLI does not yet support that source with
 `current_codex_skill`, so keep its Patch material local until a truthful

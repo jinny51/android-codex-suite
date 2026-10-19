@@ -699,8 +699,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                 choices=["current_codex_skill", "manual_import", "historical_import"],
                 default="",
                 help=(
-                    "explicit workflow for direct or legacy imports; current capture packages "
-                    "carry their own workflow contract"
+                    "explicit workflow for administrator local import preparation; ordinary member "
+                    "upload accepts current_codex_skill only; capture packages carry their workflow"
                 ),
             )
             sub.add_argument("--summary", default="Android 修改沉淀", help="summary for android_change incoming")

@@ -5,6 +5,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 PLUGIN_ROOT = REPO_ROOT / "plugins/android-engineering-ops"
@@ -209,6 +211,72 @@ def test_mixed_change_accepts_historical_marker_and_requires_current_pair() -> N
         "legacy_author",
         "member01",
     ]
+
+
+@pytest.mark.parametrize("layer,repo", [
+    ("application", "packages/apps/Settings"),
+    ("device", "device/vendor/product"),
+])
+def test_mixed_xml_only_change_keeps_marker_not_applicable_through_intake(
+    tmp_path: Path, layer: str, repo: str,
+) -> None:
+    module = load_capture_module()
+    patch = (
+        "diff --git a/res/values/config.xml b/res/values/config.xml\n"
+        "--- a/res/values/config.xml\n+++ b/res/values/config.xml\n"
+        "@@ -1 +1 @@\n-<bool name=\"policy\">false</bool>\n"
+        "+<bool name=\"policy\">true</bool>\n"
+    )
+    change = capture_for(module, patch)
+    change.repo_path = repo
+    result = module.coding_standard_check(
+        arguments(implementation_origin="mixed", component_layer=layer), [change],
+    )
+    assert result["result"] == "PASS"
+    repository = result["repositories"][0]
+    assert repository["marker_errors"] == []
+    assert repository["marker_pair_count"] == 0
+    assert repository["marker_files"][0]["result"] == "NOT_APPLICABLE"
+
+    # The same bytes also pass the existing final-package attribution reader.
+    member = REPO_ROOT / "plugins/akbs-member-ops"
+    for path in (member / "lib", member / "internal/incoming-v2/scripts"):
+        if str(path) not in sys.path:
+            sys.path.insert(0, str(path))
+    from akbs_intake.patch.assets import validate_patch_attribution
+
+    original = tmp_path / "rk14-settings@policy.patch"
+    original.write_text(patch, encoding="utf-8")
+    assert validate_patch_attribution(original) == []
+    assert original.read_text(encoding="utf-8") == patch
+
+
+def test_mixed_xml_repository_does_not_relax_another_repositorys_source_marker() -> None:
+    module = load_capture_module()
+    xml = capture_for(module,
+        "diff --git a/res/values/config.xml b/res/values/config.xml\n"
+        "--- a/res/values/config.xml\n+++ b/res/values/config.xml\n"
+        "@@ -1 +1 @@\n+<bool name=\"policy\">true</bool>\n",
+    )
+    xml.repo_path = "packages/apps/Settings"
+    xml.patch_rel = "patches/rk14-settings@policy.patch"
+    args = arguments(implementation_origin="mixed", component_layer="platform",
+                     repository_layers={xml.repo_path: "application"})
+    valid = capture_for(module, diff_with(
+        "//member01 20260828@{", "currentChange();", "//member01 20260828@}",
+    ))
+    result = module.coding_standard_check(args, [xml, valid])
+    assert result["result"] == "PASS"
+    assert result["repositories"][0]["marker_files"][0]["result"] == "NOT_APPLICABLE"
+    for added in (
+        ("//legacy_author 20251016@", "currentChange();"),
+        ("//someone_else 20260828@{", "currentChange();", "//someone_else 20260828@}"),
+        ("//member01 20260828@{", "currentChange();"),
+    ):
+        invalid = capture_for(module, diff_with(*added))
+        rejected = module.coding_standard_check(args, [xml, invalid])
+        assert rejected["result"] == "FAIL"
+        assert rejected["repositories"][1]["marker_errors"]
 
 
 def test_final_historical_import_rejects_missing_marker() -> None:

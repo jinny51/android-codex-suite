@@ -1271,6 +1271,7 @@ def coding_standard_check(args: argparse.Namespace, captures: list[RepositoryCap
         if (
             args.workflow_contract == "current_codex_skill"
             and args.implementation_origin == "mixed"
+            and any(item.analysis is not None for item in file_marker_analyses)
             and not any(
                 file_analysis.analysis is not None
                 and any(

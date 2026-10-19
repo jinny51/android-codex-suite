@@ -32,7 +32,9 @@ def test_change_workflow_keeps_ordered_engineering_gates() -> None:
         "akbs-patch-submit",
     ):
         assert skill in text
-    assert "optional integration" in text
+    assert "AKBS search is an optional engineering integration" in text
+    assert "its absence must not block source" in text
+    assert "this is not a `validated` upload package" in text
     assert "current user task runs final acceptance" in text
 
 

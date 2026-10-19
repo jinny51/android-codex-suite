@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -27,6 +28,60 @@ def intake_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+@pytest.mark.parametrize(("requested", "expected"), [
+    ("20261019-100000-patch", "20261019-100000-patch"),
+    (None, "20261019-100500-patch"),
+    ("20261019-090000-missing", None),
+], ids=["original-A", "default-latest-B", "missing-A-no-fallback"])
+def test_patch_retry_selects_original_pending_package(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys,
+    requested: str | None, expected: str | None,
+) -> None:
+    spec = importlib.util.spec_from_file_location(
+        "patch_retry_entry", PLUGIN / "skills/akbs-patch-submit/scripts/akbs_patch_submit.py",
+    )
+    assert spec and spec.loader
+    entry = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(entry)
+    module = sys.modules[entry.incoming_main.__module__]
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    config = {"member_alias": "auditmember", "role": "member", "allowed_modes": "patch",
+              "timezone": "Asia/Shanghai", "out_dir": str(tmp_path / "artifacts")}
+    monkeypatch.setattr(module, "load_config", lambda _profile: (config, []))
+    monkeypatch.setattr(module, "plugin_version_gate_check", lambda *args, **kwargs: {"blocking": False})
+    packages = {}
+    original_bytes = {}
+    for run_id, timestamp in (("20261019-100000-patch", 100), ("20261019-100500-patch", 200)):
+        package = tmp_path / "artifacts/pending/20261019/auditmember" / run_id
+        package.mkdir(parents=True)
+        manifest = package / "manifest.json"
+        manifest.write_text(json.dumps({"package_kind": "android_change", "member_alias": "auditmember",
+                                        "date": "2026-10-19", "run_id": run_id}), encoding="utf-8")
+        original_bytes[run_id] = manifest.read_bytes()
+        os.utime(package, (timestamp, timestamp))
+        packages[run_id] = package
+    submitted = []
+
+    def submit(package, _config):
+        submitted.append(package)
+        return {"status": "PASS", "package": str(package)}
+
+    monkeypatch.setattr(module, "submit_package", submit)
+    argv = ["--profile", "auditmember", "--submit-latest", "--date", "2026-10-19"]
+    if requested:
+        argv += ["--run-id", requested]
+    if expected is None:
+        with pytest.raises(SystemExit, match="没有找到.*pending"):
+            entry.main(argv)
+        assert submitted == []
+    else:
+        assert entry.main(argv) == 0
+        assert submitted == [packages[expected]]
+        assert json.loads(capsys.readouterr().out)["status"] == "PASS"
+    assert all((package / "manifest.json").read_bytes() == original_bytes[run_id]
+               for run_id, package in packages.items())
 
 
 @pytest.mark.parametrize(("command", "action", "reason", "status", "family_blocking", "allowed"), [

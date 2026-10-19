@@ -95,7 +95,10 @@ def member_identity_check(config: dict[str, str], *, check_remote: bool) -> dict
     return result
 
 
-def latest_pending(report_type: str, config: dict[str, str], date: dt.date | None = None) -> Path:
+def latest_pending(
+    report_type: str, config: dict[str, str], date: dt.date | None = None,
+    run_id: str | None = None,
+) -> Path:
     candidates: list[Path] = []
     manifest_paths = [
         manifest_path
@@ -132,9 +135,14 @@ def latest_pending(report_type: str, config: dict[str, str], date: dt.date | Non
             continue
         if date and str(manifest.get("date")) != date.isoformat():
             continue
+        if run_id and manifest.get("run_id") != run_id:
+            continue
         candidates.append(manifest_path.parent)
     if not candidates:
-        raise SystemExit(f"没有找到 {report_type} pending 工作包")
+        requested = f" (run_id={run_id})" if run_id else ""
+        raise SystemExit(f"没有找到 {report_type} pending 工作包{requested}")
+    if run_id and len(candidates) != 1:
+        raise SystemExit(f"找到多份 {report_type} pending 工作包 (run_id={run_id})，无法确定原包")
     return max(candidates, key=lambda path: path.stat().st_mtime)
 
 

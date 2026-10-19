@@ -143,7 +143,10 @@ python3 "scripts/akbs_patch_submit.py" --profile <member_alias> --submit-latest
 ```
 
 Submission preserves the generated package bytes. Retry the same package after an
-uncertain transport failure; do not rename it or change its identity.
+uncertain transport failure with `--submit-latest --run-id <original-run-id>`;
+do not rename it or change its identity. Without `--run-id`, the command keeps
+its usual latest-package selection; an explicit missing or ambiguous run ID
+never falls back to another package.
 Do not relabel an independent App as product source, or a manual artifact as a
 remote snapshot. If product-source ownership is uncertain, keep the package local
 until the source can be clarified; do not infer eligibility from its layer.

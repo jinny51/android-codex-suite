@@ -621,8 +621,11 @@ from akbs_intake.submit import (  # noqa: E402
 )
 
 
-def latest_pending(report_type: str, config: dict[str, str], date: dt.date | None = None) -> Path:
-    return _intake_latest_pending(report_type, config, date)
+def latest_pending(
+    report_type: str, config: dict[str, str], date: dt.date | None = None,
+    run_id: str | None = None,
+) -> Path:
+    return _intake_latest_pending(report_type, config, date, run_id)
 
 
 def doctor_strict_checks(
@@ -674,7 +677,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         sub = subparsers.add_parser(report_type)
         sub.set_defaults(report_type=report_type)
         sub.add_argument("--date", help="YYYY-MM-DD, defaults to today")
-        sub.add_argument("--run-id", help="override run id, format YYYYMMDD-HHMMSS[-suffix]")
+        sub.add_argument("--run-id", help=(
+            "override run id, format YYYYMMDD-HHMMSS[-suffix]; with patch --submit-latest, select that exact pending package"
+            if report_type == "patch" else "override run id, format YYYYMMDD-HHMMSS[-suffix]"
+        ))
         sub.add_argument("--schema-version", choices=[INCOMING_SCHEMA_VERSION], default="", help="incoming package schema version")
         if report_type == "patch":
             sub.add_argument("--patch", dest="patches", action="append", default=[], help="explicit manual_import/historical_import patch file; repeatable")
@@ -787,7 +793,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "daily" and not getattr(args, "daily_facts", ""):
             require_report_session_consent(config, dates, synthetic=synthetic_mode(config))
     if args.command == "patch" and args.submit_latest:
-        patch_submit_pending = latest_pending("patch", config, parse_date_arg(args.date, config) if args.date else None)
+        patch_submit_pending = latest_pending(
+            "patch", config, parse_date_arg(args.date, config) if args.date else None,
+            args.run_id,
+        )
 
     local_patch_version_warning = None
     patch_information_action = bool(

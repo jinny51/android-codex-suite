@@ -135,11 +135,16 @@ terminal outcome wins.
 - `lost`: `125`
 
 The runner writes commands through a file and sources them in the fixed Bash
-runner from the canonical root. Exported variables, functions, and Android
-`envsetup`/`lunch` state therefore survive later command IDs and client
-reconnects. Protocol shell options, private umask, and signal handlers are
-restored after each command. The channel never injects keystrokes into whichever
-pane happens to be active.
+runner from the canonical root. Successful commands' exported variables, functions,
+and Android `envsetup`/`lunch` state therefore survive later command IDs and client
+reconnects. A command controls its own `errexit` policy: an explicit `set -e` is
+not suppressed or added by the channel. If it exits the runner on an unhandled
+failure, the exit handler records `failed` with the original nonzero code and the
+process releases its locks. A later ensure restarts the runner and consumes safe
+queued commands without replaying the failed ID; the exited shell's environment
+must be initialized again. For commands that return, protocol shell options,
+private umask, and signal handlers are restored. The channel never injects
+keystrokes into whichever pane happens to be active.
 
 Runner reuse also proves the fixed `runner.0` pane is alive, its pane PID equals
 `runner.pid`, and `runner.active.sha256` equals the expected payload digest. An

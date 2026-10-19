@@ -700,7 +700,11 @@ run_one() {
     cd "\$CANONICAL_ROOT" || rc=2
     if [ "\$rc" -eq 0 ]; then
       # shellcheck disable=SC1090
-      source "\$base.line" || rc=\$?
+      # Do not put source in an OR-list: Bash would then ignore a command
+      # body's explicit set -e. An errexit exits this runner and on_exit
+      # records the original failure; successful commands keep shell state.
+      source "\$base.line"
+      rc=\$?
     fi
   } >"\$base.log" 2>&1
   if [ "\$lock_mode" = exclusive ]; then

@@ -31,6 +31,7 @@ def make_fake_remote(
     root: Path,
     *,
     remote_root_name: str = "android source",
+    real_locks: bool = False,
 ) -> tuple[dict[str, str], Path]:
     fake_bin = root / "bin"
     fake_bin.mkdir()
@@ -62,12 +63,15 @@ def make_fake_remote(
     )
 
     flock = fake_bin / "flock"
+    real_flock = shutil.which("flock")
+    if real_locks and real_flock is None:
+        raise unittest.SkipTest("real flock is required for lock-release acceptance")
     flock.write_text(
         "#!/usr/bin/env bash\n"
         "if [ \"${1:-}\" = -n ] && [ -f \"$FAKE_REMOTE_HOME/.fake-runner-lock-held\" ]; then\n"
         "  exit 1\n"
         "fi\n"
-        "exit 0\n",
+        + (f"exec {shlex.quote(real_flock)} \"$@\"\n" if real_locks else "exit 0\n"),
         encoding="utf-8",
     )
 
@@ -513,6 +517,102 @@ class RemoteChannelV2Tests(unittest.TestCase):
                 self.assertEqual(reused.returncode, 0, reused.stderr)
                 self.assertIn("ok|fn:ok", reused.stdout)
                 self.assertIn("state=completed rc=0", reused.stdout)
+            finally:
+                stop_runner(env, remote_root)
+
+    def test_explicit_errexit_fails_once_releases_lock_and_preserves_queue(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env, remote_root = make_fake_remote(root, real_locks=True)
+            counter = remote_root / "errexit-counter"
+            skipped = remote_root / "must-not-run"
+            resumed = remote_root / "queued-after-failure"
+            command = (
+                f"set -e; printf x >> {shlex.quote(str(counter))}; sleep 2; "
+                f"bash -c 'exit 23'; printf wrong > {shlex.quote(str(skipped))}"
+            )
+            queued_command = f"printf resumed > {shlex.quote(str(resumed))}"
+            try:
+                first = run_channel(
+                    env, remote_root, "run", command_id="explicit-errexit",
+                    command=command, lock="exclusive", no_wait=True,
+                )
+                self.assertEqual(first.returncode, 0, first.stderr)
+                state = state_root(root)
+                commands = state / "commands"
+                wait_for(commands / "explicit-errexit.running")
+                queued = run_channel(
+                    env, remote_root, "run", command_id="after-errexit",
+                    command=queued_command, lock="exclusive", no_wait=True,
+                )
+                self.assertEqual(queued.returncode, 0, queued.stderr)
+                wait_for(commands / "explicit-errexit.terminal")
+                self.assertEqual((commands / "explicit-errexit.terminal").read_text().strip(), "failed")
+                self.assertEqual((commands / "explicit-errexit.exit").read_text().strip(), "23")
+                self.assertFalse(skipped.exists())
+                # The terminal commit precedes on_exit's runner cleanup.
+                deadline = time.monotonic() + 5
+                while (state / "runner.ready").exists() and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                self.assertFalse((state / "busy").exists())
+                self.assertFalse((state / "runner.ready").exists())
+
+                project_lock = next((root / "remote-home/.codex/android-remote-locks").glob("*.lock"))
+                lock_probe = subprocess.run(
+                    [shutil.which("flock"), "-w", "5", str(project_lock), "true"],
+                    check=False,
+                )
+                self.assertEqual(lock_probe.returncode, 0, "failed runner retained the project lock")
+                attached = run_channel(
+                    env, remote_root, "run", command_id="explicit-errexit",
+                    command=command, lock="exclusive",
+                )
+                self.assertEqual(attached.returncode, 23, attached.stdout + attached.stderr)
+                self.assertIn("COMMAND_ATTACHED id=explicit-errexit", attached.stdout)
+                self.assertEqual(counter.read_text(), "x")
+                recovered = run_channel(
+                    env, remote_root, "run", command_id="after-errexit",
+                    command=queued_command, lock="exclusive",
+                )
+                self.assertEqual(recovered.returncode, 0, recovered.stdout + recovered.stderr)
+                self.assertEqual(resumed.read_text(), "resumed")
+                self.assertEqual((commands / "explicit-errexit.terminal").read_text().strip(), "failed")
+            finally:
+                stop_runner(env, remote_root)
+
+    def test_command_controls_errexit_without_losing_successful_shell_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env, remote_root = make_fake_remote(root)
+            try:
+                no_errexit = run_channel(
+                    env, remote_root, "run", command_id="without-errexit",
+                    command="false; export CODEX_NO_ERREXIT=kept; printf continued",
+                )
+                handled = run_channel(
+                    env, remote_root, "run", command_id="handled-errexit",
+                    command=(
+                        "set -e; false || :; export CODEX_HANDLED=kept; "
+                        "handled_fn() { printf '%s/%s' \"$CODEX_NO_ERREXIT\" \"$CODEX_HANDLED\"; }; "
+                        "printf handled"
+                    ),
+                )
+                reused = run_channel(
+                    env, remote_root, "run", command_id="reuse-handled-state",
+                    command="handled_fn",
+                )
+                trailing_failure = run_channel(
+                    env, remote_root, "run", command_id="non-errexit-final-failure",
+                    command="printf before-final-failure; false",
+                )
+                self.assertEqual(no_errexit.returncode, 0, no_errexit.stderr)
+                self.assertIn("continued", no_errexit.stdout)
+                self.assertEqual(handled.returncode, 0, handled.stderr)
+                self.assertEqual(reused.returncode, 0, reused.stderr)
+                self.assertIn("kept/kept", reused.stdout)
+                self.assertEqual(trailing_failure.returncode, 1, trailing_failure.stderr)
+                self.assertIn("state=failed rc=1", trailing_failure.stdout)
+                self.assertTrue((state_root(root) / "runner.ready").exists())
             finally:
                 stop_runner(env, remote_root)
 

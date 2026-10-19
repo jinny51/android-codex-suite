@@ -105,8 +105,12 @@ fails closed.
 
 Use `--lock exclusive` for source edits, Git/repo writes, checkpoints, patch
 capture, and builds. Read-only searches can use `none`. The fixed runner sources
-commands in one persistent Bash environment, so exported variables, functions,
-`envsetup`, and lunch state survive later command IDs and client reconnects.
+commands in one persistent Bash environment, so successful commands' exported
+variables, functions, `envsetup`, and lunch state survive later command IDs and
+client reconnects. It does not force `set -e` on command bodies. If a body explicitly
+enables it and an unhandled failure exits the runner, the existing exit handler
+records that command as failed with its exit code. Ensure can then restart the
+runner for queued work; shell state from the terminated lifetime is not preserved.
 
 ## WSL/macOS Entry
 

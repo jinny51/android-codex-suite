@@ -106,12 +106,13 @@ def attention_scope_key(
     app_name: Any = "",
     gms_release_type: Any = "",
     gms_target: Any = "",
-) -> tuple[str, str, str, str]:
+    customer: Any = "",
+) -> tuple[str, str, str, str, str]:
     normalized_type = clean_text(work_type)
     normalized_app = clean_text(app_name).casefold() if normalized_type == "App" else ""
     release_type = clean_text(gms_release_type).upper() if normalized_type == "GMS" else ""
     target = clean_text(gms_target).casefold() if normalized_type == "GMS" else ""
-    return normalized_type, normalized_app, release_type, target
+    return normalized_type, normalized_app, release_type, target, str(customer or "").strip()
 
 
 def daily_scope_attention(daily_meta: dict[str, Any], row: dict[str, Any]) -> dict[str, list[str]]:
@@ -124,6 +125,7 @@ def daily_scope_attention(daily_meta: dict[str, Any], row: dict[str, Any]) -> di
             row.get("app_name"),
             row.get("gms_release_type"),
             row.get("gms_target"),
+            row.get("customer") or row.get("customer_name"),
         )
     )
     if not isinstance(value, dict):
@@ -143,6 +145,7 @@ def daily_scope_plan(daily_meta: dict[str, Any], row: dict[str, Any]) -> list[st
                 row.get("app_name"),
                 row.get("gms_release_type"),
                 row.get("gms_target"),
+                row.get("customer") or row.get("customer_name"),
             )
         )
         if value is not None:
@@ -849,7 +852,8 @@ def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[
             app_name = clean_text(raw_project.get("app_name"))
             gms_fields = normalize_gms_fields(raw_project)
             scope = attention_scope_key(
-                work_type, app_name, gms_fields.get("gms_release_type"), gms_fields.get("gms_target")
+                work_type, app_name, gms_fields.get("gms_release_type"), gms_fields.get("gms_target"),
+                raw_project.get("customer") or raw_project.get("customer_name"),
             )
             downstream_customer = clean_text(
                 raw_project.get("downstream_customer")
@@ -877,6 +881,7 @@ def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[
                     app_name,
                     gms_fields.get("gms_release_type"),
                     gms_fields.get("gms_target"),
+                    raw_project.get("customer") or raw_project.get("customer_name"),
                 ),
                 {"key_points": [], "dependencies": []},
             )
@@ -904,6 +909,7 @@ def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[
                         app_name.casefold() if work_type == "App" else "",
                         clean_text(gms_fields.get("gms_release_type")).upper() if work_type == "GMS" else "",
                         clean_text(gms_fields.get("gms_target")).casefold() if work_type == "GMS" else "",
+                        str(raw_project.get("customer") or raw_project.get("customer_name") or "").strip(),
                         item_key(text) or text,
                     )
                 )
@@ -913,6 +919,8 @@ def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[
                     "progress": result,
                     "work_type": work_type,
                     "app_name": app_name,
+                    "customer": str(raw_project.get("customer") or raw_project.get("customer_name") or "").strip(),
+                    "downstream_customer": downstream_customer,
                 }
                 record.update(gms_fields)
                 records.setdefault(project, {})[record_key] = record
@@ -932,6 +940,7 @@ def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[
             scope = attention_scope_key(
                 raw_plan.get("work_type"), raw_plan.get("app_name"),
                 raw_plan.get("gms_release_type"), raw_plan.get("gms_target"),
+                raw_plan.get("customer") or raw_plan.get("customer_name"),
             )
             planned_identities = project_meta.setdefault("planned_identity_by_scope", {})
             planned_identities[scope] = {
@@ -946,6 +955,7 @@ def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[
                         raw_plan.get("app_name"),
                         raw_plan.get("gms_release_type"),
                         raw_plan.get("gms_target"),
+                        raw_plan.get("customer") or raw_plan.get("customer_name"),
                     )
                 ] = plans
     return metadata, {project: list(project_records.values()) for project, project_records in records.items()}
@@ -1248,18 +1258,26 @@ def _history_project_row(
 
     identity_by_scope = daily_meta.get("identity_by_scope", {})
     planned_identities = daily_meta.get("planned_identity_by_scope", {})
+    record_customers = {
+        str(record.get("customer") or "").strip()
+        for record in daily_records if str(record.get("customer") or "").strip()
+    }
+    scope_customer = str(prior.get("customer") or prior.get("customer_name") or "").strip()
+    if not scope_customer and len(record_customers) == 1:
+        scope_customer = next(iter(record_customers))
     identity_scope = attention_scope_key(
         work_type, prior.get("app_name"),
         latest_gms_fields.get("gms_release_type") or prior.get("gms_release_type"),
         latest_gms_fields.get("gms_target") or prior.get("gms_target"),
+        scope_customer,
     )
     daily_identity = identity_by_scope.get(identity_scope, planned_identities.get(identity_scope, {}))
     if not identity_by_scope and not planned_identities:
         daily_identity = daily_meta
     customer = clean_text(prior.get("customer") or daily_identity.get("customer"), "需成员补充客户名")
     downstream_customer = clean_text(
-        prior.get("downstream_customer")
-        if "downstream_customer" in prior else daily_identity.get("downstream_customer")
+        daily_identity.get("downstream_customer")
+        if "downstream_customer" in daily_identity else prior.get("downstream_customer")
     )
     summary = weekly_summary("", completed_items, current_remaining)
     blocked = [record["text"] for record in daily_records if re.search(r"阻塞|失败|等待|依赖", record.get("progress", ""))]
@@ -1278,7 +1296,7 @@ def _history_project_row(
         last_progress = max(recorded_dates) if recorded_dates else period_start - dt.timedelta(days=1)
         if (as_of - last_progress).days > 3:
             add_unique(risks, f"超过 3 天无进展：{item}（最后记录 {last_progress.isoformat()}）")
-    scope_row = {**prior, **latest_gms_fields}
+    scope_row = {**prior, **latest_gms_fields, "customer": customer}
     attention = daily_scope_attention(daily_meta, scope_row)
     key_points = clean_list(attention.get("key_points"))
     dependencies = clean_list(prior.get("dependencies"))
@@ -1498,10 +1516,17 @@ def assign_daily_records_to_scopes(
         record_app_name = clean_text(record.get("app_name"))
         record_gms_release_type = clean_text(record.get("gms_release_type")).upper()
         record_gms_target = clean_text(record.get("gms_target")).casefold()
+        record_customer = str(record.get("customer") or "").strip()
+        customer_candidates = [
+            index for index, row in enumerate(prior_rows)
+            if not record_customer
+            or str(row.get("customer") or row.get("customer_name") or "").strip() == record_customer
+        ]
         exact_candidates = [
             index
             for index, row in enumerate(prior_rows)
-            if record_work_type
+            if index in customer_candidates
+            and record_work_type
             and clean_text(row.get("work_type")) == record_work_type
             and (
                 record_work_type != "App"
@@ -1521,11 +1546,12 @@ def assign_daily_records_to_scopes(
         if record_work_type:
             ambiguous = True
             continue
-        if len(prior_rows) == 1:
-            assigned[0].append(record)
+        if len(customer_candidates) == 1:
+            assigned[customer_candidates[0]].append(record)
             continue
         candidates: list[int] = []
-        for index, row in enumerate(prior_rows):
+        for index in customer_candidates:
+            row = prior_rows[index]
             app_name = clean_text(row.get("app_name"))
             known_items = [
                 *clean_list(row.get("completed_items")),
@@ -1544,7 +1570,7 @@ def assign_daily_records_to_scopes(
 
 def daily_scope_seed_rows(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    seen: set[tuple[str, str, str, str]] = set()
+    seen: set[tuple[str, str, str, str, str]] = set()
     for record in records:
         work_type = clean_text(record.get("work_type"))
         app_name = clean_text(record.get("app_name"))
@@ -1554,6 +1580,7 @@ def daily_scope_seed_rows(records: list[dict[str, Any]]) -> list[dict[str, Any]]
             app_name,
             gms_fields.get("gms_release_type"),
             gms_fields.get("gms_target"),
+            record.get("customer"),
         )
         if work_type not in PROJECT_WORK_TYPES or key in seen:
             continue
@@ -1561,6 +1588,8 @@ def daily_scope_seed_rows(records: list[dict[str, Any]]) -> list[dict[str, Any]]
         row = {
                 "work_type": work_type,
                 "app_name": app_name,
+                "customer": str(record.get("customer") or "").strip(),
+                "downstream_customer": clean_text(record.get("downstream_customer")),
                 "project_role": "需成员确认",
                 "requirement_date": "需成员确认",
                 "requirement_source": "需成员确认",
@@ -1672,6 +1701,7 @@ def build_weekly_facts(
                     attention_scope_key(
                         row.get("work_type"), row.get("app_name"),
                         row.get("gms_release_type"), row.get("gms_target"),
+                        row.get("customer") or row.get("customer_name"),
                     )
                     for row in prior_rows
                 }
@@ -1682,6 +1712,7 @@ def build_weekly_facts(
                         if attention_scope_key(
                             row.get("work_type"), row.get("app_name"),
                             row.get("gms_release_type"), row.get("gms_target"),
+                            row.get("customer") or row.get("customer_name"),
                         ) not in existing_scopes
                     ],
                 ]

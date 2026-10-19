@@ -120,8 +120,7 @@ def weekly_scope_identity(row: dict[str, Any]) -> tuple[str, ...]:
     work_type = clean_text(row.get("work_type"))
     return (
         clean_text(row.get("project")).upper(),
-        clean_text(row.get("customer")),
-        clean_text(row.get("downstream_customer")),
+        str(row.get("customer") or row.get("customer_name") or "").strip(),
         work_type,
         clean_text(row.get("app_name")).casefold() if work_type == "App" else "",
         clean_text(row.get("gms_release_type")).upper() if work_type == "GMS" else "",

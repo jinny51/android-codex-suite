@@ -398,7 +398,7 @@ def weekly_project_identity_consistency_errors(
         if any(len(chains) != 1 for chains in by_project.values()):
             return [f"{rel} project_inference.project_customers 必须明确各工作范围的客户身份"]
         actual = {
-            (project, "", "", "", ""): next(iter(chains))
+            report_scope_key({"project": project, "customer": next(iter(chains))[0]}): next(iter(chains))
             for project, chains in by_project.items()
         }
     if actual == expected:

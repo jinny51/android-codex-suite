@@ -278,7 +278,8 @@ def report_scope_key(row: dict[str, Any]) -> tuple[str, ...]:
     work_type = clean_scope_text(row.get("work_type"))
     app_name = clean_scope_text(row.get("app_name")).casefold() if work_type == "App" else ""
     release_type, target = gms_scope_identity(row) if work_type == "GMS" else ("", "")
-    return clean_scope_text(row.get("project")).upper(), work_type, app_name, release_type, target
+    customer = str(row.get("customer") or row.get("customer_name") or "").strip()
+    return clean_scope_text(row.get("project")).upper(), work_type, app_name, release_type, target, customer
 
 
 def report_scope_customer_context(

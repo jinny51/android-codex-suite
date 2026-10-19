@@ -72,12 +72,26 @@ def test_view_identity_allows_independent_patch_and_app_chains() -> None:
     assert validation.report_project_customer_errors("view", rows, "projects", allow_work_scopes=False)
 
 
-@pytest.mark.parametrize("changed", [False, True])
-def test_same_scope_duplicate_or_conflict_still_rejected(changed: bool) -> None:
+@pytest.mark.parametrize("changed_downstream", [False, True])
+def test_same_scope_duplicate_or_conflict_still_rejected(changed_downstream: bool) -> None:
     first = identity("App")
-    second = {**first, "customer": "CustomerB", "customer_name": "CustomerB"} if changed else dict(first)
+    second = {**first, "downstream_customer": "Factory"} if changed_downstream else dict(first)
     errors = validation.report_project_customer_errors("view", [first, second], "projects", allow_work_scopes=True)
     assert any("统计对象重复" in error for error in errors)
+
+
+@pytest.mark.parametrize("work_type", ["Patch", "App", "GMS"])
+def test_direct_customer_is_a_scope_dimension_but_downstream_is_not(work_type: str) -> None:
+    first, second = identity(work_type), identity(work_type, "CustomerB")
+    if work_type == "GMS":
+        first.update(gms_release_type="IR", gms_target="A14")
+        second.update(gms_release_type="IR", gms_target="A14")
+    assert scope.report_scope_key(first) != scope.report_scope_key(second)
+    assert scope.report_scope_key(first) == scope.report_scope_key({**first, "downstream_customer": "Factory"})
+    assert validation.report_project_customer_errors("view", [first, second], "projects", allow_work_scopes=True) == []
+    contexts = scope.report_customer_contexts_from_rows([first, second])
+    assert PROJECT not in contexts
+    assert validation.weekly_project_identity_consistency_errors("view", [first, second], [second, first]) == []
 
 
 def test_distinct_apps_and_gms_targets_use_existing_scope_key() -> None:
@@ -210,9 +224,94 @@ def test_explicit_type_cannot_be_text_matched_into_wrong_scope() -> None:
     assert ambiguous
 
 
+def test_same_named_daily_work_keeps_customer_attention_plan_and_prior_assignment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first, second = daily_row("App"), daily_row("App", "CustomerB")
+    first.update(key_points=["客户甲接口确认"], dependencies=["等待客户甲设备"])
+    second.update(key_points=["客户乙接口确认"], dependencies=["等待客户乙账号"])
+    second["work_items"][0].update(status="处理中", result="接口仍在核查")
+    daily = [
+        {"package_key": "synthetic/daily-a", "report_date": "2026-10-06", "report_view": {
+            "projects": [first], "tomorrow_plan": {"projects": [
+                {**identity("App"), "plan_items": ["客户甲继续验收"]}]} }},
+        {"package_key": "synthetic/daily-b", "report_date": "2026-10-07", "report_view": {
+            "projects": [second], "tomorrow_plan": {"projects": [
+                {**identity("App", "CustomerB"), "plan_items": ["客户乙继续核查"]}]} }},
+    ]
+    metadata, records = weekly_facts._daily_project_records(daily)
+    assert len(records[PROJECT]) == 2
+    seeds = weekly_facts.daily_scope_seed_rows(records[PROJECT])
+    assigned, ambiguous = weekly_facts.assign_daily_records_to_scopes(seeds, records[PROJECT])
+    assert not ambiguous and [len(rows) for rows in assigned] == [1, 1]
+    for prior, rows in zip(seeds, assigned):
+        assert rows[0]["customer"] == prior["customer"]
+    monkeypatch.setattr(weekly_facts, "load_history", lambda *args: (daily, [], {"source": "synthetic_fixture"}))
+    monkeypatch.setattr(weekly_facts, "local_now", lambda config: dt.datetime(2026, 10, 11))
+    result = weekly_facts.build_weekly_facts({}, dt.date(2026, 10, 5), dt.date(2026, 10, 11), WEEK)
+    rows = {row["customer"]: row for row in result.projects}
+    assert set(rows) == {"CustomerA", "CustomerB"}
+    assert rows["CustomerA"]["completed_this_week_total"] == 1
+    assert rows["CustomerB"]["completed_this_week_total"] == 0
+    assert rows["CustomerA"]["key_points"] == ["客户甲接口确认"]
+    assert rows["CustomerB"]["key_points"] == ["客户乙接口确认"]
+    assert rows["CustomerA"]["dependencies"] == ["等待客户甲设备"]
+    assert rows["CustomerB"]["dependencies"] == ["等待客户乙账号"]
+    assert rows["CustomerA"]["next_week_plan"] == ["客户甲继续验收"]
+    assert rows["CustomerB"]["next_week_plan"] == ["客户乙继续核查"]
+    # A record with an explicit different customer cannot borrow the sole old scope.
+    assignment, ambiguous = weekly_facts.assign_daily_records_to_scopes([seeds[0]], assigned[1])
+    assert assignment == [[]] and ambiguous
+    legacy_record = {**assigned[1][0], "work_type": ""}
+    assignment, ambiguous = weekly_facts.assign_daily_records_to_scopes([seeds[0]], [legacy_record])
+    assert assignment == [[]] and ambiguous
+    assignment, ambiguous = weekly_facts.assign_daily_records_to_scopes(seeds, [legacy_record])
+    assert not ambiguous and assignment == [[], [legacy_record]]
+    # A historical row with no customer keeps the existing unique-scope fallback.
+    legacy_record.pop("customer")
+    assignment, ambiguous = weekly_facts.assign_daily_records_to_scopes([seeds[0]], [legacy_record])
+    assert not ambiguous and assignment == [[legacy_record]]
+
+
+def test_downstream_supplement_cannot_reopen_existing_ledger_or_reset_total(tmp_path: Path) -> None:
+    previous_raw = weekly_raw_row("App")
+    previous_raw.update(project_role="主责", work_total=10, completed_this_week=2, remaining=8,
+                        completed_items=["完成两个接口"], remaining_items=["核查剩余接口"],
+                        next_week_plan=["继续核查剩余接口"])
+    previous_raw["ledger"].update(opening=True, project_completed=2)
+    previous = weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, [previous_raw], "20260928-20261004"),
+                                               "20260928-20261004")[0]
+    previous.update(_package_key="synthetic/previous", _week_range="20260928-20261004")
+    previous_projects = {PROJECT: [previous]}
+    current = weekly_raw_row("App", downstream="Factory")
+    current.update(project_role="主责", work_total=1, completed_this_week=1, remaining=0,
+                   completed_items=["核查接口"], remaining_items=[])
+    current["ledger"].update(opening=True, project_completed=1)
+    with pytest.raises(SystemExit, match="不得重新开项或重置总量"):
+        weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, [current]), WEEK,
+                                         previous_projects=previous_projects)
+    current.update(work_total=10, remaining=7, remaining_items=["核查剩余接口"],
+                   next_week_plan=["继续核查剩余接口"])
+    current["ledger"].update(opening=False, baseline_package_key="synthetic/previous",
+                             baseline_week_range="20260928-20261004")
+    rows = weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, [current]), WEEK,
+                                           previous_projects=previous_projects)
+    assert rows[0]["work_total"] == 10 and rows[0]["remaining_total"] == 7
+    assert rows[0]["downstream_customer"] == "Factory"
+    assert rows[0]["ledger"]["baseline"]["total"] == 10
+    # A genuinely different direct customer is an independent new scope.
+    current.update(customer="CustomerB", customer_name="CustomerB", work_total=1,
+                   remaining=0, remaining_items=[], next_week_plan=[])
+    current["ledger"].update(opening=True, baseline_package_key="", baseline_week_range="")
+    rows = weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, [current]), WEEK,
+                                           previous_projects=previous_projects)
+    assert rows[0]["ledger"]["opening"] is True and rows[0]["work_total"] == 1
+
+
 @pytest.mark.parametrize("report_type", ["daily", "weekly"])
+@pytest.mark.parametrize("same_work_type", [False, True])
 def test_builder_preserves_scope_identity_in_view_and_source_evidence(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, report_type: str,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, report_type: str, same_work_type: bool,
 ) -> None:
     date = dt.date.today() - dt.timedelta(days=2)
     _, _, _, week = report_dates(report_type, date)
@@ -235,12 +334,12 @@ def test_builder_preserves_scope_identity_in_view_and_source_evidence(
     })
     if report_type == "weekly":
         facts = explicit_weekly(tmp_path, [weekly_raw_row("App", "CustomerA", "Factory"),
-                                          weekly_raw_row("Patch", "CustomerB")], week)
+                                          weekly_raw_row("App" if same_work_type else "Patch", "CustomerB")], week)
         kwargs = {"weekly_facts_path": str(facts)}
     else:
         facts = tmp_path / "daily-facts.json"
         write_json(facts, {"schema": daily_facts.DAILY_FACTS_SCHEMA, "report_date": date.isoformat(),
-                           "projects": [daily_row("App", "CustomerA", "Factory"), daily_row("Patch", "CustomerB")],
+                           "projects": [daily_row("App", "CustomerA", "Factory"), daily_row("App" if same_work_type else "Patch", "CustomerB")],
                            "documents": [], "standalone_work": [], "tomorrow_plan": daily_facts.empty_tomorrow_plan()})
         kwargs = {"daily_facts_path": str(facts)}
 
@@ -251,10 +350,11 @@ def test_builder_preserves_scope_identity_in_view_and_source_evidence(
     source = json.loads((package / "materials/evidence/project_inference.json").read_text())["payload"]
     view = json.loads((package / "materials/display/report_view.json").read_text())["payload"]
     assert "customer_name" not in source and "downstream_customer" not in source
-    assert {r["work_type"]: (r["customer_name"], r.get("downstream_customer", ""))
-            for r in source["project_customers"]} == {"App": ("CustomerA", "Factory"), "Patch": ("CustomerB", "")}
-    assert {r["work_type"]: (r["customer"], r.get("downstream_customer", ""))
-            for r in view["projects"]} == {"App": ("CustomerA", "Factory"), "Patch": ("CustomerB", "")}
+    expected = {"CustomerA": ("App", "Factory"), "CustomerB": ("App" if same_work_type else "Patch", "")}
+    assert {r["customer_name"]: (r["work_type"], r.get("downstream_customer", ""))
+            for r in source["project_customers"]} == expected
+    assert {r["customer"]: (r["work_type"], r.get("downstream_customer", ""))
+            for r in view["projects"]} == expected
     assert "CustomerA" in view["material_name"] and "CustomerB" in view["material_name"]
     assert "需成员补充客户名" not in view["material_name"]
     check = json.loads((package / "local-check.json").read_text())

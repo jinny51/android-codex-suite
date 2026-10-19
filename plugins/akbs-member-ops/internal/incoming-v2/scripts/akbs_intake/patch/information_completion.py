@@ -23,7 +23,9 @@ ALLOWED_COMPLETION_FIELDS = patch_information_completion_fields()
 MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_TOTAL_BYTES = patch_information_attachment_limits()
 
 
-def inspect_information_request(config: dict[str, str], request_id: str) -> dict[str, Any]:
+def inspect_information_request(
+    config: dict[str, str], request_id: str, *, allow_replay: bool = False,
+) -> dict[str, Any]:
     member = require_member(config)
     request_id = require_text(request_id, "information request id")
     base_url = submission_api_base_url(config).rstrip("/")
@@ -47,7 +49,7 @@ def inspect_information_request(config: dict[str, str], request_id: str) -> dict
     source_package_key = require_text(payload.get("package_key"), "source package_key")
     if patch_package_id == source_package_key:
         raise SystemExit("[patch_package_identity_mismatch] package_key 只能标识物理来源，不能充当补丁包业务身份。")
-    if str(payload.get("queue_state") or "") != "information_required":
+    if not allow_replay and str(payload.get("queue_state") or "") != "information_required":
         raise SystemExit("[queue_state_not_reviewable] 补充资料请求不在 information_required 阶段。")
     patch_sha = str(information.get("patch_set_sha256") or "")
     if len(patch_sha) != 64:
@@ -59,7 +61,10 @@ def inspect_information_request(config: dict[str, str], request_id: str) -> dict
 def complete_information_request(config: dict[str, str], response_path: Path) -> dict[str, Any]:
     response = read_response(response_path)
     request_id = require_text(response.get("request_id"), "request_id")
-    detail = inspect_information_request(config, request_id)
+    # A successful submission may have advanced while its response was lost.
+    # Read the same request, then let the existing server idempotency check
+    # decide whether this exact key/body is a replay; never infer success here.
+    detail = inspect_information_request(config, request_id, allow_replay=True)
     information = detail["information_request"]
     patch_package_id = str(detail["patch_package_id"])
     body = {
@@ -102,8 +107,10 @@ def complete_information_request(config: dict[str, str], response_path: Path) ->
         raise SystemExit("[information_request_identity_mismatch] 服务端补充结果没有绑定原请求。")
     if str(result.get("patch_package_id") or "") != patch_package_id:
         raise SystemExit("[patch_package_identity_mismatch] 服务端补充结果改变了补丁包业务身份。")
-    if str(result.get("queue_state") or "") != "information_review":
-        raise SystemExit("[queue_state_not_reviewable] 补充资料提交后未进入 information_review 阶段。")
+    state = str(result.get("queue_state") or "")
+    was_open = str(detail.get("queue_state") or "") == "information_required"
+    if not state or ((not was_open or state != "information_review") and result.get("replay") is not True):
+        raise SystemExit("[queue_state_not_reviewable] 补充资料未进入待复核，且服务端未确认同请求的幂等回放。")
     result.setdefault("request_id", request_id)
     result.setdefault("server_request_id", str(metadata.get("request_id") or ""))
     return result

@@ -32,6 +32,7 @@ from akbs_member_ops.http_client import (  # noqa: E402
     request_json,
 )
 from akbs_intake.incoming_contract import error_reason_codes, patch_queue_reason_codes  # noqa: E402
+from akbs_intake.patch import information_completion  # noqa: E402
 from validate_incoming_contract_gate import verify_public_contract  # noqa: E402
 
 
@@ -334,3 +335,150 @@ def test_contract_content_drift_still_fails_closed(tmp_path: Path, drift: str) -
 
     with pytest.raises(AssertionError):
         verify_public_contract(system_root, REPO_ROOT)
+
+
+def information_detail(queue_state: str) -> dict[str, object]:
+    return {
+        "request_id": "information-request-test",
+        "patch_package_id": "patch-package-test",
+        "package_key": "20261019/member/20261019-120000-patch",
+        "queue_state": queue_state,
+        "information_request": {
+            "request_id": "information-request-test",
+            "patch_set_sha256": "a" * 64,
+        },
+    }
+
+
+def information_response_file(tmp_path: Path, **changes: object) -> Path:
+    path = tmp_path / "response.json"
+    path.write_text(json.dumps({
+        "schema": information_completion.COMPLETION_SCHEMA,
+        "request_id": "information-request-test",
+        "statement": "Existing source evidence clarification",
+        **changes,
+    }), encoding="utf-8")
+    return path
+
+
+def json_http_response(payload: dict[str, object]) -> io.BytesIO:
+    response = io.BytesIO(json.dumps(payload).encode("utf-8"))
+    response.headers = Message()
+    response.headers["X-Request-ID"] = REQUEST_ID
+    return response
+
+
+def test_information_completion_retries_lost_response_with_exact_original_request(tmp_path: Path) -> None:
+    response_path = information_response_file(tmp_path)
+    state = "information_required"
+    posts = []
+
+    def transport(request, **_kwargs):
+        nonlocal state
+        assert request.get_header("X-akbs-user") == "member"
+        if request.get_method() == "GET":
+            return json_http_response(information_detail(state))
+        posts.append((request.data, request.get_header("Idempotency-key")))
+        assert json.loads(request.data)["patch_set_sha256"] == "a" * 64
+        if len(posts) == 1:
+            state = "information_review"
+            raise TimeoutError("response lost after server acceptance")
+        assert posts[1] == posts[0]
+        return json_http_response({**information_detail(state), "replay": True})
+
+    config = {"member_alias": "member", "submission_api_base_url": "http://akbs.invalid/akbs/api"}
+    with patch("urllib.request.urlopen", side_effect=transport):
+        with pytest.raises(SystemExit, match="transport_unavailable"):
+            information_completion.complete_information_request(config, response_path)
+        result = information_completion.complete_information_request(config, response_path)
+    assert result["replay"] is True
+    assert result["queue_state"] == "information_review"
+    assert len(posts) == 2
+
+
+@pytest.mark.parametrize("state", ["information_review", "admitted", "closed"])
+def test_information_completion_accepts_only_existing_server_replay_after_progress(
+    tmp_path: Path, state: str,
+) -> None:
+    response_path = information_response_file(tmp_path, idempotency_key="same-key")
+    config = {"member_alias": "member", "submission_api_base_url": "http://akbs.invalid/akbs/api"}
+    for replay in (False, True):
+        with patch("urllib.request.urlopen", side_effect=[
+            json_http_response(information_detail(state)),
+            json_http_response({**information_detail(state), "replay": replay}),
+        ]) as transport:
+            if replay:
+                result = information_completion.complete_information_request(config, response_path)
+                assert result["queue_state"] == state
+            else:
+                with pytest.raises(SystemExit, match="queue_state_not_reviewable"):
+                    information_completion.complete_information_request(config, response_path)
+        assert transport.call_count == 2
+        post = transport.call_args_list[1].args[0]
+        assert post.get_header("Idempotency-key") == "same-key"
+
+
+@pytest.mark.parametrize(("code", "status"), [
+    ("idempotency_conflict", 409),
+    ("information_request_closed", 409),
+    ("patch_set_proof_mismatch", 409),
+    ("information_request_member_mismatch", 403),
+])
+def test_information_completion_replay_does_not_hide_server_rejection(
+    tmp_path: Path, code: str, status: int,
+) -> None:
+    response_path = information_response_file(tmp_path, idempotency_key="original-key", statement="changed content")
+    detail = information_detail("information_review")
+    if code == "patch_set_proof_mismatch":
+        detail["information_request"]["patch_set_sha256"] = "b" * 64
+    with patch("urllib.request.urlopen", side_effect=[
+        json_http_response(detail),
+        make_http_error(status=status, code=code),
+    ]) as transport:
+        with pytest.raises(SystemExit, match=code):
+            information_completion.complete_information_request({"member_alias": "member"}, response_path)
+    assert transport.call_count == 2
+    post = transport.call_args_list[1].args[0]
+    assert post.get_header("Idempotency-key") == "original-key"
+    assert json.loads(post.data)["statement"] == "changed content"
+    assert json.loads(post.data)["patch_set_sha256"] == detail["information_request"]["patch_set_sha256"]
+
+
+@pytest.mark.parametrize("replay", [None, False])
+def test_information_completion_normal_first_submission_still_succeeds(tmp_path: Path, replay: bool | None) -> None:
+    response_path = information_response_file(tmp_path)
+    result = information_detail("information_review")
+    if replay is not None:
+        result["replay"] = replay
+    with patch("urllib.request.urlopen", side_effect=[
+        json_http_response(information_detail("information_required")), json_http_response(result),
+    ]):
+        actual = information_completion.complete_information_request({"member_alias": "member"}, response_path)
+    assert actual["queue_state"] == "information_review"
+
+
+def test_inspection_still_requires_open_request_and_failed_identity_never_posts(tmp_path: Path) -> None:
+    config = {"member_alias": "member"}
+    with patch("urllib.request.urlopen", return_value=json_http_response(information_detail("admitted"))) as transport:
+        with pytest.raises(SystemExit, match="queue_state_not_reviewable"):
+            information_completion.inspect_information_request(config, "information-request-test")
+    assert transport.call_count == 1
+
+    response_path = information_response_file(tmp_path)
+    wrong_detail = information_detail("information_review")
+    wrong_detail["request_id"] = "another-request"
+    with patch("urllib.request.urlopen", return_value=json_http_response(wrong_detail)) as transport:
+        with pytest.raises(SystemExit, match="information_request_identity_mismatch"):
+            information_completion.complete_information_request(config, response_path)
+    assert transport.call_count == 1
+
+
+@pytest.mark.parametrize("field", ["request_id", "patch_package_id"])
+def test_information_completion_replay_still_checks_returned_identity(tmp_path: Path, field: str) -> None:
+    response_path = information_response_file(tmp_path)
+    result = {**information_detail("admitted"), "replay": True, field: "another-identity"}
+    with patch("urllib.request.urlopen", side_effect=[
+        json_http_response(information_detail("admitted")), json_http_response(result),
+    ]):
+        with pytest.raises(SystemExit, match="identity_mismatch"):
+            information_completion.complete_information_request({"member_alias": "member"}, response_path)

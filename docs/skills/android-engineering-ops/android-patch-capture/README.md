@@ -4,7 +4,7 @@
 
 > GitHub 说明页。Runtime Skill 位于 [../../../../plugins/android-engineering-ops/skills/android-patch-capture](../../../../plugins/android-engineering-ops/skills/android-patch-capture)。
 
-把已完整验证的 Android 变更整理为 `$CODEX_HOME/artifacts/android-patch-capture/packages` 下的工程 capture，再由 `akbs-patch-submit` 构造 `knowledge-incoming-package/2/android_change` 最终包。`components[]` 只记录 application/platform/native/hal/kernel/device/build layer 与对应 patch 路径；每个 patch 必须恰好分类一次。未完成、失败或仅部分验证的工作留在工程任务或报告中，不生成上传包。
+把已完整验证的 Android 变更整理为 `$CODEX_HOME/artifacts/android-patch-capture/packages` 下的工程 capture，再由 `akbs-patch-submit` 构造 `knowledge-incoming-package/2/android_change` 最终包。`components[]` 只记录 application/platform/native/hal/kernel/device/build layer 与对应 patch 路径；每个 patch 必须恰好分类一次。已有采集路线和身份配置可用时，未完成或仅部分验证的材料可按真实 `draft`/`candidate` 状态保留本地，或留在工程任务/报告中；它们不能冒称已验证上传包，不新增离线格式或采集能力。
 
 一个功能可以同时涉及多个 layer 和多个 Git 仓库，并继续作为一个功能包归档；但 patch 必须按实际 Git 仓库分别生成。跨仓库 patch 可以使用相同的 `@change-id`，文件名前半段按各自仓库区分。手工或历史导入也必须逐仓库提供 patch 与仓库路径，不能用 Android 源码顶层 `.` 代替仓库。
 
@@ -30,6 +30,6 @@
 `--search-receipt`、`--search-receipt-sha256`。采集及提交保留回执原字节和结构化查询结果，
 不按同日日志合并或改写；回执不是产品源码归属证明，也不是复用成功证明。
 真实开发前搜索的用途仍为 `unknown` 时保留事实并提示，不因此把已验证的补丁降为
-`candidate`。开发前搜索未发生或回执被伪造时仍停止当前工作流的已验证采集。
+`candidate`。开发前搜索未发生时仍停止当前工作流的已验证采集；本地阶段材料保留真实缺失事实。已提供的回执被伪造、hash 不符或环境冲突时，不因状态是草稿而放行。
 
 旧 `android-framework-patch-capture` 和 `framework_change` 历史材料只读兼容，不复制或改写。当前 capture 生成工程材料目录；将整个目录交给 `akbs-patch-submit`，由后者构造、检查、准备或提交唯一的 `knowledge-incoming-package/2/android_change` 最终包。

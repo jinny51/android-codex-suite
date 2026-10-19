@@ -99,9 +99,13 @@ SAMBA_PASSWORD="$SERVER_PASSWORD" "$SKILL_DIR/scripts/mount-platform.sh" \
 
 ## Verify Project
 
+Check mount metadata only. Reuse the SDK identity returned by
+`inspect-android-sdk.sh` above; it inspects source through `android-remote-channel`.
+If identity needs refreshing, rerun that inspector, not a directory probe of the
+mounted Android tree.
+
 ```bash
 findmnt -T "$LOCAL_PROJECT"
-test -d "$LOCAL_PROJECT/build" -o -d "$LOCAL_PROJECT/frameworks" -o -d "$LOCAL_PROJECT/.repo"
 ```
 
 ## Remember For Recovery

@@ -13,6 +13,13 @@ platform/framework.
 
 ## Remote-Only Source Contract
 
+Inherit each repository's source authority from `android-change-workflow` and
+`references/domain-routing.md`. The remote-only rules in this section apply to
+`registered_remote_tree`, not to every Framework repository. A genuine
+`local_project` uses its real local Git root, project instructions, and normal
+local source/build tools. Never relabel a mounted remote tree as local. This
+distinction does not add current local-Git capture support or an import bypass.
+
 The mounted Android path has exactly two consumers:
 
 - a human using an editor, IDE, Finder, or shell for source CRUD
@@ -51,7 +58,7 @@ It coordinates with adjacent Android skills:
 
 - `akbs-knowledge-search` searches prior cases, platform variants, archived patches, search anchors, and validation evidence before re-analysis or re-implementation. Use it as the pre-analysis knowledge gate when the team knowledge repository is available.
 - `android-source-access` records the SSH/remote-root mapping and optionally maintains the human/artifact mount; it does not authorize Codex to operate on source through that mount.
-- `android-remote-channel` is the mandatory source execution gateway for analysis, search, edits, `git`, `repo`, checkpoints, patch capture, and builds.
+- `android-remote-channel` is the mandatory source execution gateway for a `registered_remote_tree`: analysis, search, edits, `git`, `repo`, checkpoints, patch capture, and builds.
 - `android-remote-build-deploy` uses `android-remote-channel` for remote build work and uses the mounted path only as a confirmed product-output artifact bridge for local `adb` delivery.
 - `android-patch-capture` turns one implemented, failed, blocked, or stage-worthy Android change into a change README, repository-level patches, and evidence after this workflow has produced concrete material. Use it before `akbs-patch-submit` whenever such a change should be preserved, regardless of Android layer.
 - `akbs-patch-submit` owns strict v2 local validation, byte-preserving prepare, and
@@ -61,6 +68,10 @@ It coordinates with adjacent Android skills:
 ## Core Contract
 
 Follow this ownership boundary:
+
+The remote access/build steps below apply when the repository and selected build
+route are remote. A genuine `local_project` retains the workflow's existing
+`local_project_command` route; final acceptance remains here in either case.
 
 ```text
 akbs-knowledge-search
@@ -110,14 +121,14 @@ Use scripts in `scripts/` as optional helpers. Prefer them for log slicing, heal
 
 Before editing behavior:
 
-0. Resolve `SSH_HOST` and `REMOTE_ROOT`, ensure the stable remote channel is healthy, and keep the mounted path out of the Codex workspace. Stop if the channel is unavailable.
+0. Inherit the repository's source authority. For `registered_remote_tree`, resolve `SSH_HOST`/`REMOTE_ROOT`, require a healthy channel, and keep the mount out of the Codex workspace. For `local_project`, confirm its real Git root and project instructions; do not require SSH for that local repository.
 1. Identify whether the request is a new requirement, behavior change, bug/regression, verification task, or failure recovery.
 2. For Android Framework implementation work, use `akbs-knowledge-search` before source edits when configured. Pass the actual project, chip platform, Android version and Patch layer; search feature words and independent subsystem/code anchors. A Case describes the function boundary; an Implementation describes the concrete solution. Read the existing full Case detail and chosen Implementation, then retrieve its exact bound originals with that Implementation selector before deciding reuse. Keep separately declared environments intact and preserve the server grade; platform/version/project differences affect applicability, not function identity. Record `reuse` or `adapt` only for a selected Implementation with closed required implementation evidence, or a more conservative `reference_only`/`not_applicable`/`unknown`. `not_found` requires at least two distinct queries, complete healthy responses and no results; one miss or unavailable search is `unknown`. Preserve the current immutable receipt path/SHA256 and pass `--search-receipt`/`--search-receipt-sha256` to capture, not an aggregated same-day guess. Reading originals or choosing reuse is not successful application: final target verification and the actual outcome remain part of this engineering task.
 3. For direct requirements, capture acceptance criteria, negative cases, product/device/variant scope, and expected owner subsystem. Load `references/requirements-implementation.md`.
 4. For bugs or regressions, capture visible symptom, reproduction, expected behavior, and evidence source.
 5. Identify likely owner process and subsystem: app, SystemUI, launcher, system_server, WM/ATM, PMS, input, resources/overlays, display/surface/compositor, native service, or build config.
 6. Identify affected artifact: `framework.jar`, `services.jar`, `framework-res.apk`, `SystemUI.apk`, Launcher APK, permission/config XML, overlay APK, native binary, or mixed artifacts.
-7. Check source/build/deploy readiness. Use `android-source-access` first if source access is broken and `android-remote-build-deploy` later for build/delivery.
+7. Check source/build/deploy readiness for the selected route. Recover registered remote access with `android-source-access`; use `android-remote-build-deploy` only for its supported remote build/delivery route. Local projects keep their documented local build entry.
 8. Check dirty files before editing and preserve unrelated user work.
 9. Choose mode: direct requirement, analysis only, diagnostics, behavior change, build/deploy coordination, final verification, or failure recovery.
 10. Decide the expected knowledge outcome early: no code change, `draft`, `candidate`, `validated`, `failed`, or `blocked`. This is a working expectation, not a final claim.
@@ -172,10 +183,12 @@ Temporary diagnostics must:
 
 For visual or timing-sensitive behavior, capture recording or screenshots and align visible frames with logs before deciding the implementation path or root cause.
 
-Before final completion, audit diagnostics through the remote channel with
+Before final completion, audit the bounded changed-file diagnostics and decide
+remove, guard, downgrade, or keep with reason. For a registered remote tree, use
 `scripts/diagnostic_log_audit.py --ssh-host <host> --remote-root <root> --path
-<changed-file>` and decide remove, guard, downgrade, or keep with reason. Repeat
-`--path` for the bounded changed-file set; the helper never reads mounted source.
+<changed-file>` through the channel. Repeat `--path` for the bounded changed-file
+set; the helper never reads mounted source. For a genuine local project, perform
+the equivalent focused source review with local tools, not the remote-only helper.
 
 ## Gate 3: Change
 
@@ -199,7 +212,10 @@ Change with framework discipline:
 
 ## Gate 4: Build And Delivery
 
-Use the core `android-remote-build-deploy` skill for remote build and local push mechanics on WSL or macOS.
+Follow the build route already selected by `android-change-workflow`. Use the core
+`android-remote-build-deploy` Skill for supported remote builds and local push on
+WSL/macOS; other remote project commands still use the channel. A genuine local
+project uses its own documented build/delivery tools without SSH.
 
 Require it to return:
 
@@ -228,11 +244,16 @@ For UI/windowing/input/surface changes, use repeated mixed interactions and visu
 
 ## Gate 6: Material Capture And Incoming
 
-This workflow is not complete after code and verification when the work produced reviewable or cautionary Framework engineering material. Member-side Codex should preserve materials automatically first and rank by package status later. It must not produce curation decisions or claim that the material has entered the knowledge repository.
+Preserve reviewable or cautionary Framework material through the existing capture
+capability when available, with its truthful status. Local `draft`/`candidate`
+material is not a `validated` upload package. Missing AKBS search does not prevent
+engineering work, but must not be hidden or retroactively invented to meet formal
+validated capture/submission requirements. This workflow must not produce curation
+decisions or claim that local material has entered the knowledge repository.
 
 After Gate 5:
 
-1. Confirm that the requirement is met, build/deploy passed, target behavior is
+1. For a `validated` package, confirm that the requirement is met, build/deploy passed, target behavior is
    verified, and no blocking nearby regression remains.
 2. If the intended source changes are isolated, invoke `android-patch-capture` with
    the platform/version input, project, change ID, summary, implementation origin,
@@ -242,8 +263,10 @@ After Gate 5:
    directory to `akbs-patch-submit` to construct, check, prepare, or submit the
    single final incoming v2 `android_change` package. There is one upload format
    and one patch upload lifecycle.
-4. Failed, blocked, draft, or partially verified work is not an upload package. Keep
-   its honest diagnostics in the engineering task or daily/weekly report.
+4. Failed, blocked, draft, or partially verified work is not a validated upload
+   package. Keep honest diagnostics in the engineering task, an existing local
+   stage capture where supported, or the daily/weekly report. Do not invent a new
+   offline format or change workflow provenance to make it submit-ready.
 5. If no package can be made, state exactly why. Do not claim capture or upload.
 6. Do not upload unrelated diffs, credentials, sensitive logs, mixed task changes, or
    material without full verification.

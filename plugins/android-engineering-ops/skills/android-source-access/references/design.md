@@ -103,14 +103,14 @@ Keep the pipeline linear:
 2. Plan only path-derived connection basics: `remote_user`, initial `SSH_HOST`, and `remote_root`.
 3. Resolve SSH candidates from explicit IP or SSH config. Stop if no IP/HostName is available.
 4. Choose a reachable SSH candidate by checking the remote SDK root exists.
-5. Inspect the remote SDK root to infer platform and project name.
+5. Inspect the remote SDK root through `android-remote-channel` to infer platform and project name.
 6. If platform or project name is still missing, stop and ask for the missing value.
 7. Build the final local path: `/home/<wsl-user>/work/<platform>/<sdk_name>`.
 8. Use project-level mounting by default: mount the remote SDK root to `/home/<wsl-user>/work/<platform>/<sdk_name>`.
 9. Discover an existing Samba share covering the remote SDK root.
 10. If missing, create a project-level Samba share for the remote SDK root. Parent/platform shares are explicit exceptions only.
 11. Before mounting, verify the local platform directory is not itself a mount point and the exact target directory is empty or absent. Refuse to mount over non-empty directories.
-12. Mount, verify Android markers, remember recovery metadata, and hand off to build/deploy work.
+12. Mount, verify mount metadata without probing mounted source, reuse the remote-channel SDK facts, remember recovery metadata, and hand off to build/deploy work.
 
 ## Credential Scope
 

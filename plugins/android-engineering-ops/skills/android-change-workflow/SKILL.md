@@ -133,9 +133,14 @@ search receipt path/SHA256 for capture rather than selecting a same-day record b
 Pass them as `--search-receipt` and `--search-receipt-sha256` so the current
 capture→submit chain preserves the exact original per-query receipt.
 Downloading originals or choosing reuse is not proof of successful target verification.
-AKBS search is an optional integration: its absence
-must not break source access, implementation, verification, or local capture. Record the
-absence truthfully; a later submit flow may apply its own stricter server gate.
+AKBS search is an optional engineering integration: its absence must not block source
+access, implementation, or verification. Record the absence truthfully. Where the
+existing capture route and required profile are available, local `draft` or `candidate`
+material may preserve that limitation; this is not a `validated` upload package.
+A current `validated` capture requires genuine pre-change search evidence, and formal
+submission retains its existing stricter gate. Do not fabricate a receipt or relabel
+current work as an import. Missing source/profile/capture capability leaves material
+in the engineering task rather than creating another packaging route.
 For independent App work, do not invent a Patch layer for search.
 
 For a `registered_remote_tree`, use the host platform's `android-source-access` entry

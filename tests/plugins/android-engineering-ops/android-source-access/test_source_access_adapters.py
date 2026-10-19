@@ -108,6 +108,35 @@ def test_manual_recovery_redirects_only_after_machine_install_gate() -> None:
             assert "--plugin-root" in block, reference
 
 
+def test_recovery_uses_mount_metadata_and_channel_identity_not_mounted_source_markers() -> None:
+    roots = (
+        PLUGIN / "skills/android-source-access/references",
+        PLUGIN / "adapters/source-access/wsl/skills/android-source-access/references",
+    )
+    for root in roots:
+        manual = (root / "manual-recovery.md").read_text(encoding="utf-8")
+        verify = manual.split("## Verify Project", 1)[1].split("\n## ", 1)[0]
+        assert 'findmnt -T "$LOCAL_PROJECT"' in verify
+        assert "inspect-android-sdk.sh" in verify
+        assert "android-remote-channel" in verify
+        for source_dir in ("build", "frameworks", ".repo"):
+            assert f"$LOCAL_PROJECT/{source_dir}" not in verify
+        design = (root / "design.md").read_text(encoding="utf-8")
+        assert "Mount, verify Android markers" not in design
+        assert "verify mount metadata without probing mounted source" in design
+
+
+def test_macos_reference_describes_the_in_plugin_adapter_not_another_installation() -> None:
+    reference = (PLUGIN / "skills/android-source-access/references/macos-source-access.md").read_text(
+        encoding="utf-8",
+    )
+    assert "single public `android-source-access` Skill" in reference
+    assert "No separate platform plugin is installed" in reference
+    assert "Both in-plugin platform adapters" in reference
+    assert "before this platform plugin" not in reference
+    assert "requires version 1.0.167" not in reference
+
+
 def test_dispatch_preserves_arguments_and_injects_target_environment() -> None:
     host = detect_source_access_host(
         system="Linux", release="microsoft-standard-WSL2", version="#1", environ={},

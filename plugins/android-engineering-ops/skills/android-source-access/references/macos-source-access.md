@@ -1,12 +1,11 @@
 # macOS Source Access Adapter
 
-Use this skill to access Android remote build server source trees on macOS through Samba/SMB. Like the WSL platform skill, it maps each project to `$HOME/work/<platform>/<project>` by default. It owns Samba share discovery, macOS native SMB mounting, project verification, and project mapping registry.
-
-This plugin provides the public macOS Skill and command paths. The implementation is
-owned once inside `android-engineering-ops`; every command here is a fail-closed shim that
-locates the installed core, requires version 1.0.167 or newer, verifies macOS before side
-effects, and dispatches the matching internal adapter. The core is a required dependency:
-install or upgrade it before this platform plugin, then continue in a new Codex session.
+This reference describes the macOS adapter inside `android-engineering-ops`, reached
+through the single public `android-source-access` Skill and its command dispatcher.
+No separate platform plugin is installed. The dispatcher verifies the actual host
+before selecting the matching in-plugin adapter. Like the WSL adapter, it maps each
+project to `$HOME/work/<platform>/<project>` by default and owns Samba share discovery,
+native SMB mounting, mount metadata validation, and project mapping registration.
 
 ## Remote-Only Source Contract
 
@@ -42,7 +41,7 @@ Do not use this skill for:
 
 ## Platform Difference from WSL
 
-Both platform plugins use the same local project shape for the human/artifact mount: `$HOME/work/<platform>/<project>`. The differences are implementation details:
+Both in-plugin platform adapters use the same local project shape for the human/artifact mount: `$HOME/work/<platform>/<project>`. The differences are implementation details:
 
 - WSL mounts with `mount.cifs` and local sudo; macOS mounts with native SMB and normally needs no sudo.
 - WSL keeps verified local credentials in its platform state; macOS stores passwords in Keychain.

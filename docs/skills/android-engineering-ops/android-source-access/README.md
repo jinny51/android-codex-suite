@@ -7,3 +7,5 @@
 统一的 Android source-access 入口。它先从本机事实识别 WSL 或 macOS，再只调用随插件安装的对应 adapter。普通 Linux、错误平台命令或缺失 adapter 在副作用前失败；不复制凭据，也不把 mounted source 当作 Codex 源码执行面。
 
 纯帮助、主机识别和命令列表可以先运行；读取凭据/registry 或执行网络、挂载、登记、文件操作前必须通过 target-only install-family gate。
+
+WSL/macOS 都是本工程插件内的适配器，不再另装平台插件。挂载恢复只核验 mount metadata；项目与平台事实复用远端通道检查结果，不从挂载目录探测源码标记。

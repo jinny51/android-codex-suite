@@ -10,6 +10,11 @@ coherent change. It creates an engineering capture directory; `akbs-patch-submit
 then turns that directory into the single final
 `knowledge-incoming-package/2/android_change` package.
 
+The existing local `draft`/`candidate` statuses can preserve stage material when
+the source route and required profile are available. They do not establish feature
+verification or authorize uploading it as `validated`. No separate stage format is
+introduced, and unsupported current local-Git capture remains unsupported.
+
 ## Task startup
 
 Before a new engineering task starts, set `PLUGIN_ROOT` to the directory two levels
@@ -171,10 +176,13 @@ their own recorded facts; submit must not select a same-day record for them.
 
 ## Hard stops
 
-Do not publish a capture when the change is not verified, a patch is empty, unrelated
-changes are mixed in, the member marker policy fails, project/platform facts conflict,
-a patch has no layer, current-workflow search evidence is fabricated or missing, or
-the change combines unrelated functional goals.
+For every status, refuse empty patches, unrelated changes or functional goals,
+failed member marker policy, conflicting project/platform facts, or a missing layer.
+A supplied search receipt that is fabricated or invalid is always refused.
+A `validated` current Codex capture additionally requires verified feature behavior
+and genuine pre-change search evidence; missing evidence cannot be invented later.
+An honest local `draft`/`candidate` must retain that missing or unverified fact and
+does not bypass final submission requirements.
 
 One functional goal may legitimately span several repositories and layers, so it stays
 in one package. Its patch files are still generated separately per Git repository;

@@ -484,6 +484,18 @@ def test_explicit_unknown_does_not_relax_missing_pre_change_search() -> None:
     assert any("未发生" in error for error in errors)
 
 
+@pytest.mark.parametrize("status", ["draft", "candidate"])
+def test_existing_stage_capture_retains_missing_search_without_validated_claim(status: str) -> None:
+    capture = load_capture()
+    missing = {"searched": False, "decision": "unknown", "reuse_decision": "unknown"}
+    errors, warnings = capture.validate_search_decision_for_status(
+        argparse.Namespace(status=status, workflow_contract="current_codex_skill"), missing,
+    )
+    assert errors == warnings == []
+    assert missing["searched"] is False
+    assert missing["decision"] == "unknown"
+
+
 def test_capture_instructions_keep_unknown_non_blocking_without_dropping_search_requirements() -> None:
     skill = (PLUGIN / "skills/android-patch-capture/SKILL.md").read_text()
     docs = (ROOT / "docs/skills/android-engineering-ops/android-patch-capture/README.md").read_text()
@@ -491,6 +503,9 @@ def test_capture_instructions_keep_unknown_non_blocking_without_dropping_search_
     assert "不因此把已验证的补丁降为" in docs
     assert "keep it as `candidate` until" not in skill
     assert "the use decision is closed; do not submit it as `validated`" not in skill
-    assert "current-workflow search evidence is fabricated or missing" in skill
+    assert "A supplied search receipt that is fabricated or invalid is always refused" in skill
+    assert "A `validated` current Codex capture" in skill
+    assert "genuine pre-change search evidence" in skill
     assert "retrospectively fabricate one" in skill
-    assert "开发前搜索未发生或回执被伪造时仍停止" in docs
+    assert "开发前搜索未发生时仍停止当前工作流的已验证采集" in docs
+    assert "不因状态是草稿而放行" in docs

@@ -78,6 +78,29 @@ def test_source_authority_and_build_routes_cover_remote_and_local_projects() -> 
     assert "not a generic Gradle" in build_deploy
 
 
+def test_framework_reference_inherits_source_authority_instead_of_requiring_remote_everywhere() -> None:
+    framework = (WORKFLOW / "references/framework-domain-workflow.md").read_text(encoding="utf-8")
+    for section in ("## Remote-Only Source Contract", "## Start Triage", "## Gate 4: Build And Delivery"):
+        content = framework.split(section, 1)[1].split("\n## ", 1)[0]
+        assert "local" in content
+    assert "Inherit each repository's source authority" in framework
+    assert "`registered_remote_tree`, not to every Framework repository" in framework
+    assert "Never relabel a mounted remote tree as local" in framework
+    assert "does not add current local-Git capture support" in framework
+
+
+def test_optional_knowledge_does_not_promise_validated_capture_without_prechange_search() -> None:
+    workflow = (WORKFLOW / "SKILL.md").read_text(encoding="utf-8")
+    optional = workflow.split("AKBS search is an optional engineering integration:", 1)[1].split(
+        "For independent App work", 1,
+    )[0]
+    assert "implementation, or verification" in optional
+    assert "local `draft` or `candidate`" in optional
+    assert "not a `validated` upload package" in optional
+    assert "current `validated` capture requires genuine pre-change search evidence" in optional
+    assert "relabel" in optional and "import" in optional
+
+
 def test_manifest_publishes_five_canonical_skills() -> None:
     manifest = (ROOT / "manifests/android-engineering-ops.toml").read_text(
         encoding="utf-8"

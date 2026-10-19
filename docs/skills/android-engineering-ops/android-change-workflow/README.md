@@ -19,6 +19,10 @@ Extension 按项目配置优先于本地配置解析；选择 provider 后只从
 可能比 Framework 更大，最终仍需目标环境验证。服务失败或单次空结果不能宣称库里没有解法。
 将搜索回执路径/hash传给 capture，保留“开发前判断”与“实施后验证”的区别。
 
+AKBS 不可用不阻断源码接入、实现和工程验证。已有采集路线与身份配置可用时，可以按真实 `draft`/`candidate` 状态保留本地阶段材料；它不是已验证上传包。当前 `validated` 采集及正式提交仍须真实开发前检索证据，不能事后补造或改标导入；现有不支持的本地当前源码采集能力不会因此新增。
+
+Framework 引用继承逐仓库源码权威：`registered_remote_tree` 必须走远端通道，真正的 `local_project` 使用正常本地工程工具。挂载的远端源码不能被改称本地仓库。
+
 产品源码通常在远端服务器通过 SSH 定制，独立 App 通常在本地开发后推至 SysPros。先按实际 Git 仓库判断改动是否属于目标 Android 产品源码；是否连过 SSH 不单独决定 Patch 资格。七层只给合格的 Patch 分类，独立 App 源码即使生成的 APK 被产品采用，也不能改标为 `application` 后上传。
 
 Canonical layer 只有 application/platform/native/hal/kernel/device/build。合格且已验证的产品源码变更先由 `android-patch-capture` 生成逐仓 patch 与工程证据，再由 `akbs-patch-submit` 构造、检查、准备并提交唯一的 `knowledge-incoming-package/2/android_change` 最终包。产品侧 APK 集成配置改动可按其产品源码仓单独采集；来源未明确时保留本地材料。七层分类由最终包的 `components[].layer` 记录，工程 capture 不另设上传格式或生命周期。

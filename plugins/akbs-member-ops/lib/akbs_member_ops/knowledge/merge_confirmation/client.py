@@ -25,7 +25,21 @@ def member_request_headers() -> dict[str, str]:
 
 
 def merge_api_error(exc: BaseException) -> str:
-    return failure_result(exc).safe_summary("merge confirmation API unavailable")
+    failure = failure_result(exc)
+    summary = failure.safe_summary("merge confirmation API unavailable")
+    hint = {
+        "confirmation_not_found": "未找到这次确认，请刷新列表后使用最新确认单编号。",
+        "confirmation_member_mismatch": "该确认单不属于当前成员，请核对当前成员配置。",
+        "confirmation_not_pending": "这次确认已处理或替换，请刷新列表查看最新结果。",
+        "dispute_reason_required": "请填写异议理由或成员评估后再提交。",
+        "dispute_idempotency_conflict": "这次确认已提交过不同内容的异议，请刷新查看处理进展。",
+        "target_case_hash_conflict": "目标知识已变化，请等待管理员重新核对。",
+        "target_implementation_hash_conflict": "目标技术实现已变化，请等待管理员重新核对。",
+        "confirmation_not_actionable": "这次确认暂不能操作，请刷新状态，等待前一条完成或管理员复核。",
+        "merge_comparison_unavailable": "目标知识或比较依据不完整，请刷新；仍失败时联系管理员。",
+        "curation_confirmation_rejected": "这次确认未通过校验，请刷新；仍失败时联系管理员。",
+    }.get(failure.code)
+    return f"{summary}；{hint}" if hint else summary
 
 
 def _validate_typed_confirmation(
@@ -149,10 +163,18 @@ def fetch_merge_confirmation_payload(
     action: str = "",
     *,
     timeout: float = 3.0,
+    page: int = 1,
+    page_size: int = 50,
 ) -> dict[str, Any]:
+    if page < 1 or not 1 <= page_size <= 100:
+        raise ValueError("confirmation list requires page >= 1 and page_size between 1 and 100")
     headers = member_request_headers()
     request = urllib.request.Request(
-        member_merge_confirmations_url(confirmation_id, action),
+        (
+            member_merge_confirmations_url(page=page, page_size=page_size)
+            if not confirmation_id
+            else member_merge_confirmations_url(confirmation_id, action)
+        ),
         headers=headers,
         method="GET",
     )

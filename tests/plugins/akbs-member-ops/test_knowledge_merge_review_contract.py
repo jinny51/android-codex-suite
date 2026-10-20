@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import importlib.util
+import io
 import json
 from pathlib import Path
 import sys
+import urllib.error
+import urllib.parse
 from unittest import mock
 
 import pytest
@@ -14,6 +18,7 @@ sys.path.insert(0, str(ROOT / "plugins/akbs-member-ops/lib"))
 from akbs_member_ops.http_client import HttpClientFailure
 from akbs_member_ops.knowledge.merge_confirmation import client
 from akbs_member_ops.knowledge_search import cli
+from akbs_member_ops.knowledge_search import config
 
 
 def typed_payload(action: str = "attach_evidence") -> dict:
@@ -258,9 +263,10 @@ def analysis_payload(action: str) -> dict:
     return payload
 
 
-def test_compare_explicit_empty_counter_evidence_overrides_old_detail() -> None:
-    detail = {"counter_evidence": ["旧详情的差异文案"]}
-    assert cli.merge_detail_from_payloads(detail, {}, {"counter_evidence": []})["counter_evidence"] == []
+def test_authoritative_empty_counter_evidence_is_not_replaced_by_a_display_difference() -> None:
+    detail = analysis_payload("attach_evidence")
+    detail["counter_evidence"] = ["旧详情的差异文案"]
+    assert cli.build_merge_analysis(detail)["counter_evidence"] == []
     assert detail["counter_evidence"] == ["旧详情的差异文案"]
 
 
@@ -268,8 +274,7 @@ def test_compare_explicit_empty_counter_evidence_overrides_old_detail() -> None:
 def test_typed_analysis_does_not_treat_the_proposed_action_as_counter_evidence(action: str) -> None:
     detail = analysis_payload(action)
     original = copy.deepcopy(detail)
-    compare = {"member_agent_context": detail["member_agent_context"], "counter_evidence": []}
-    result = cli.build_merge_analysis(detail, {}, compare)
+    result = cli.build_merge_analysis(detail)
     assert result["counter_evidence"] == []
     assert "当前未看到明确反向证据" in result["recommendation"]
     assert "反向证据：" not in result["dispute_reason_draft"]
@@ -287,7 +292,7 @@ def test_typed_analysis_preserves_real_counter_evidence_and_readonly_state() -> 
     detail = analysis_payload("attach_evidence")
     detail["member_agent_context"]["counter_evidence"] = ["确切实现没有覆盖这个验证环境"]
     detail["actions"]["can_submit_dispute"] = False
-    result = cli.build_merge_analysis(detail, {}, {})
+    result = cli.build_merge_analysis(detail)
     assert result["counter_evidence"] == ["确切实现没有覆盖这个验证环境"]
     assert result["dispute_reason_draft"] == ""
     assert "只能作为只读分析材料" in result["recommendation"]
@@ -301,7 +306,7 @@ def test_default_typed_output_explains_the_exact_proposal_and_effect(action: str
         {"patch_asset_id": f"asset-more-{index}", "binding_role": "verification_only"}
         for index in range(3)
     )
-    result = cli.build_merge_analysis(detail, {}, {})
+    result = cli.build_merge_analysis(detail)
     assert "asset-more-2" in json.dumps(result, ensure_ascii=False)
     for output in (
         cli.format_merge_analysis(result),
@@ -334,14 +339,150 @@ def test_typed_analyze_only_reads_the_confirmation_and_never_submits(capsys) -> 
         "--merge-confirmation", "analyze", "--merge-confirmation-id", "confirmation-example",
     ])
     with (
-        mock.patch.object(cli, "fetch_merge_confirmation_payload", side_effect=[detail, {}, {"counter_evidence": []}]) as read,
+        mock.patch.object(cli, "fetch_merge_confirmation_payload", return_value=detail) as read,
         mock.patch.object(cli, "post_merge_dispute") as dispute,
     ):
         assert cli.handle_merge_confirmation_command(args) == 0
         assert read.call_args_list == [
             mock.call("confirmation-example", timeout=args.server_timeout),
-            mock.call("confirmation-example", "target", timeout=args.server_timeout),
-            mock.call("confirmation-example", "compare", timeout=args.server_timeout),
         ]
         dispute.assert_not_called()
     assert "implementation-example" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("state,review_state", [
+    ("pending", "recheck_required"),
+    ("pending", "waiting_for_prior"),
+    ("confirmed", "not_pending"),
+])
+def test_analyze_uses_one_authoritative_state_and_capability_snapshot(state: str, review_state: str, capsys) -> None:
+    detail = analysis_payload("attach_evidence")
+    detail["confirmation_status"] = state
+    detail["member_agent_context"].update(confirmation_status=state, review_state=review_state)
+    detail["actions"]["can_submit_dispute"] = False
+    args = cli.build_parser().parse_args([
+        "--merge-confirmation", "analyze", "--merge-confirmation-id", "confirmation-example", "--json",
+    ])
+    with mock.patch.object(cli, "fetch_merge_confirmation_payload", return_value=detail) as read:
+        assert cli.handle_merge_confirmation_command(args) == 0
+        read.assert_called_once_with("confirmation-example", timeout=args.server_timeout)
+    result = json.loads(capsys.readouterr().out)
+    assert result["confirmation_status"] == state
+    assert result["member_agent_context"]["review_state"] == review_state
+    assert result["can_submit_dispute"] is False
+    assert result["dispute_reason_draft"] == ""
+
+
+def review_entrypoint():
+    path = ROOT / "plugins/akbs-member-ops/skills/akbs-knowledge-merge-review/scripts/akbs_knowledge_merge_review.py"
+    spec = importlib.util.spec_from_file_location("review_entrypoint_fixture", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_public_review_timeout_matches_core_and_preserves_explicit_budget() -> None:
+    entry = review_entrypoint()
+    args = entry.build_parser().parse_args(["analyze", "--confirmation-id", "confirmation-example"])
+    forwarded = cli.build_parser().parse_args(entry.search_arguments(args))
+    assert args.server_timeout == forwarded.server_timeout == cli.build_parser().parse_args([]).server_timeout == 15.0
+    explicit = entry.build_parser().parse_args(["list", "--server-timeout", "0.25"])
+    assert cli.build_parser().parse_args(entry.search_arguments(explicit)).server_timeout == 0.25
+
+
+@pytest.mark.parametrize("action", ["target", "compare"])
+def test_independent_target_and_compare_remain_readonly_and_show_nested_identity(action: str, capsys) -> None:
+    detail = analysis_payload("attach_evidence")
+    # This is the real target/compare endpoint shape: identity is nested.
+    payload = {
+        "review_id": "review-example", "package_key": detail["package_key"],
+        "target_knowledge": detail["target_knowledge"], "member_agent_context": detail["member_agent_context"],
+    }
+    args = cli.build_parser().parse_args([
+        "--merge-confirmation", action, "--merge-confirmation-id", "confirmation-example",
+    ])
+    with (
+        mock.patch.object(cli, "fetch_merge_confirmation_payload", return_value=payload) as read,
+        mock.patch.object(cli, "post_merge_dispute") as dispute,
+    ):
+        assert cli.handle_merge_confirmation_command(args) == 0
+        read.assert_called_once_with("confirmation-example", action, timeout=args.server_timeout)
+        dispute.assert_not_called()
+    output = capsys.readouterr().out
+    assert "confirmation_id: confirmation-example" in output
+    assert "patch_package_id: patch-package-example" in output
+    assert "source package_key: source-package-example" in output
+    assert "implementation-example" in output
+
+
+@pytest.mark.parametrize("code,hint", [
+    ("confirmation_not_found", "最新确认单编号"),
+    ("confirmation_member_mismatch", "不属于当前成员"),
+    ("confirmation_not_pending", "已处理或替换"),
+    ("dispute_reason_required", "理由或成员评估"),
+    ("dispute_idempotency_conflict", "已提交过不同内容"),
+    ("target_case_hash_conflict", "管理员重新核对"),
+    ("target_implementation_hash_conflict", "管理员重新核对"),
+    ("confirmation_not_actionable", "等待前一条完成或管理员复核"),
+    ("merge_comparison_unavailable", "比较依据不完整"),
+    ("curation_confirmation_rejected", "未通过校验"),
+    ("unexpected_server_code", "kind=unknown"),
+])
+def test_merge_business_errors_have_fixed_safe_hints_and_keep_the_request_id(code: str, hint: str) -> None:
+    request_id = "req_" + "1" * 32
+    secret = "fixture-secret-must-not-be-echoed"
+    envelope = {
+        "schema": "akbs-error-envelope-v1", "code": code, "request_id": request_id,
+        "message": secret, "detail": secret,
+    }
+    error = urllib.error.HTTPError(
+        "http://akbs.example/dispute", 409, "Conflict", {"X-Request-ID": request_id},
+        io.BytesIO(json.dumps(envelope).encode("utf-8")),
+    )
+    output = client.merge_api_error(error)
+    assert hint in output
+    assert f"code={code}" in output
+    assert request_id in output
+    assert secret not in output
+
+
+def test_public_list_forwards_page_two_to_the_existing_api(capsys) -> None:
+    entry = review_entrypoint()
+    response = {"page": 2, "page_size": 50, "total": 101, "items": [typed_payload("add_implementation")]}
+    with (
+        mock.patch.object(entry, "installed_plugin_family_status", return_value={"blocking": False}),
+        mock.patch.object(config, "member_api_base_url", return_value=("http://akbs.example", "fixture")),
+        mock.patch.object(client, "member_request_headers", return_value={"X-AKBS-User": "lincong"}),
+        mock.patch.object(client, "request_json", return_value=response) as request,
+        mock.patch.object(client, "post_merge_dispute") as dispute,
+    ):
+        assert entry.main(["list", "--page", "2", "--page-size", "50", "--json"]) == 0
+        sent = request.call_args.args[0]
+        assert sent.get_method() == "GET"
+        assert urllib.parse.parse_qs(urllib.parse.urlsplit(sent.full_url).query) == {"page": ["2"], "page_size": ["50"]}
+        assert request.call_args.kwargs["timeout"] == 15.0
+        dispute.assert_not_called()
+    assert json.loads(capsys.readouterr().out) == response
+    output = cli.format_merge_list(response)
+    assert "total: 101" in output
+    assert "当前第 2 页，每页 50 条，本页 1 条" in output
+    assert "list --page 3 --page-size 50" in output
+
+
+@pytest.mark.parametrize("arguments", [
+    ["--page", "0"], ["--page-size", "0"], ["--page-size", "101"],
+])
+def test_invalid_list_paging_is_rejected_before_any_server_read(arguments: list[str]) -> None:
+    args = cli.build_parser().parse_args(["--merge-confirmation", "list", *arguments])
+    with mock.patch.object(cli, "fetch_merge_confirmation_payload") as read:
+        with pytest.raises(SystemExit, match="--page"):
+            cli.handle_merge_confirmation_command(args)
+        read.assert_not_called()
+
+
+def test_empty_later_page_does_not_claim_the_member_has_no_confirmations() -> None:
+    output = cli.format_merge_list({"page": 4, "page_size": 50, "total": 101, "items": []})
+    assert "total: 101" in output
+    assert "本页没有确认项" in output
+    assert "暂无需要 Codex 分析" not in output
+    assert "下一页" not in output

@@ -237,11 +237,15 @@ def member_api_base_url() -> tuple[str, str]:
     return DEFAULT_AKBS_API_BASE_URL, "default"
 
 
-def member_merge_confirmations_url(confirmation_id: str = "", action: str = "") -> str:
+def member_merge_confirmations_url(
+    confirmation_id: str = "", action: str = "", *, page: int = 1, page_size: int = 50,
+) -> str:
     base, _source = member_api_base_url()
     path = MEMBER_MERGE_CONFIRMATIONS_PATH
     if confirmation_id:
         path += "/" + urllib.parse.quote(confirmation_id, safe="")
     if action:
         path += "/" + action.strip("/")
+    if not confirmation_id:
+        path += "?" + urllib.parse.urlencode({"page": page, "page_size": page_size})
     return base.rstrip("/") + path

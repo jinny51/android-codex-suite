@@ -25,7 +25,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dispute-reason", default="")
     parser.add_argument("--member-assessment", default="")
     parser.add_argument("--evidence-ref", action="append", default=[])
-    parser.add_argument("--server-timeout", type=float, default=3.0)
+    parser.add_argument("--server-timeout", type=float, default=15.0)
+    parser.add_argument("--page", type=int, default=1, help="List page (default: 1).")
+    parser.add_argument("--page-size", type=int, default=50, help="List page size, 1-100 (default: 50).")
     parser.add_argument("--json", action="store_true")
     return parser
 
@@ -43,6 +45,7 @@ def search_arguments(args: argparse.Namespace) -> list[str]:
     for evidence_ref in args.evidence_ref:
         values.extend(("--evidence-ref", evidence_ref))
     values.extend(("--server-timeout", str(args.server_timeout)))
+    values.extend(("--page", str(args.page), "--page-size", str(args.page_size)))
     if args.json:
         values.append("--json")
     return values

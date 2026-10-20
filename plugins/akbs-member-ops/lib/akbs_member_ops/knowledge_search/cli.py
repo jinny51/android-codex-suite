@@ -553,17 +553,6 @@ def merge_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return [item for item in items if isinstance(item, dict)]
 
 
-def merge_detail_from_payloads(detail: dict[str, Any], target: dict[str, Any], compare: dict[str, Any]) -> dict[str, Any]:
-    merged = dict(detail)
-    for key, value in target.items():
-        if value not in (None, "", [], {}) and key not in merged:
-            merged[key] = value
-    for key, value in compare.items():
-        if value not in (None, "", [], {}) or (key == "counter_evidence" and isinstance(value, list)):
-            merged[key] = value
-    return merged
-
-
 def compact_evidence_items(value: Any, limit: int = 5) -> list[str]:
     items = value if isinstance(value, list) else []
     lines: list[str] = []
@@ -576,8 +565,10 @@ def compact_evidence_items(value: Any, limit: int = 5) -> list[str]:
     return [line for line in lines if line]
 
 
-def build_merge_analysis(detail: dict[str, Any], target: dict[str, Any], compare: dict[str, Any]) -> dict[str, Any]:
-    combined = merge_detail_from_payloads(detail, target, compare)
+def build_merge_analysis(detail: dict[str, Any]) -> dict[str, Any]:
+    # Detail already contains the target, comparison and action capabilities
+    # from one server read snapshot. Do not mix it with later GET responses.
+    combined = detail
     context = combined.get("member_agent_context") if isinstance(combined.get("member_agent_context"), dict) else {}
     target_knowledge = combined.get("target_knowledge") if isinstance(combined.get("target_knowledge"), dict) else {}
     if not target_knowledge and isinstance(context.get("target_case"), dict):
@@ -616,7 +607,7 @@ def build_merge_analysis(detail: dict[str, Any], target: dict[str, Any], compare
         "patch_package_id": str(combined.get("patch_package_id") or ""),
         "review_id": str(combined.get("review_id") or ""),
         "source_package_key": str(combined.get("package_key") or ""),
-        "confirmation_status": str(combined.get("confirmation_status") or context.get("merge_status") or ""),
+        "confirmation_status": str(combined.get("confirmation_status") or context.get("confirmation_status") or context.get("merge_status") or ""),
         "material_title": str(combined.get("material_display_title") or ""),
         "target_knowledge": target_knowledge,
         "curation_action": action,
@@ -633,15 +624,24 @@ def build_merge_analysis(detail: dict[str, Any], target: dict[str, Any], compare
 
 def format_merge_list(payload: dict[str, Any]) -> str:
     items = merge_items(payload)
+    page = int(payload.get("page") or 1)
+    page_size = int(payload.get("page_size") or 50)
+    total = int(payload.get("total", len(items)))
     lines = [
         "# 合并确认列表",
         "",
-        f"- total: {payload.get('total', len(items))}",
+        f"- total: {total}",
+        f"- 当前第 {page} 页，每页 {page_size} 条，本页 {len(items)} 条",
         "- source: server_merge_confirmation",
         "",
     ]
+    if page * page_size < total:
+        lines.extend([
+            f"- 下一页: python3 scripts/akbs_knowledge_merge_review.py list --page {page + 1} --page-size {page_size}",
+            "",
+        ])
     if not items:
-        lines.append("暂无需要 Codex 分析的合并确认项。")
+        lines.append("本页没有确认项。" if total else "暂无需要 Codex 分析的合并确认项。")
         return "\n".join(lines)
     for index, item in enumerate(items, start=1):
         target = item.get("target_knowledge") if isinstance(item.get("target_knowledge"), dict) else {}
@@ -712,12 +712,14 @@ def typed_curation_lines(context: dict[str, Any], target: dict[str, Any]) -> lis
 def format_merge_payload(title: str, payload: dict[str, Any]) -> str:
     target = payload.get("target_knowledge") if isinstance(payload.get("target_knowledge"), dict) else {}
     context = payload.get("member_agent_context") if isinstance(payload.get("member_agent_context"), dict) else {}
+    identity = context.get("confirmation_identity") if isinstance(context.get("confirmation_identity"), dict) else {}
+    proposal = context.get("proposal") if isinstance(context.get("proposal"), dict) else {}
     lines = [
         f"# {title}",
         "",
-        f"- confirmation_id: {text_or_unknown(payload.get('confirmation_id'))}",
-        f"- patch_package_id: {text_or_unknown(payload.get('patch_package_id'))}",
-        f"- source package_key: {text_or_unknown(payload.get('package_key'))}",
+        f"- confirmation_id: {text_or_unknown(payload.get('confirmation_id') or identity.get('confirmation_id'))}",
+        f"- patch_package_id: {text_or_unknown(payload.get('patch_package_id') or proposal.get('patch_package_id'))}",
+        f"- source package_key: {text_or_unknown(payload.get('package_key') or identity.get('package_key'))}",
     ]
     if payload.get("dispute_id") or payload.get("state"):
         lines.append(f"- dispute/state: {text_or_unknown(payload.get('dispute_id'))} / {text_or_unknown(payload.get('state'))}")
@@ -820,6 +822,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Read or explicitly dispute member merge confirmations instead of running knowledge search.",
     )
     parser.add_argument("--merge-confirmation-id", help="confirmation_id event identifier for merge confirmation detail, target, compare, analyze, or dispute.")
+    parser.add_argument("--page", type=int, default=1, help="Merge-confirmation list page (default: 1).")
+    parser.add_argument("--page-size", type=int, default=50, help="Merge-confirmation list page size, 1-100 (default: 50).")
     parser.add_argument("--send-dispute", action="store_true", help="Actually POST a member merge dispute. Required with --merge-confirmation dispute.")
     parser.add_argument("--dispute-reason", default="", help="Human reason for a merge dispute. Only sent with --send-dispute.")
     parser.add_argument("--member-assessment", default="", help="Member/Codex assessment for a merge dispute. Only sent with --send-dispute.")
@@ -850,6 +854,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def handle_merge_confirmation_command(args: argparse.Namespace) -> int:
     action = args.merge_confirmation
+    if args.page < 1 or not 1 <= args.page_size <= 100:
+        raise SystemExit("--page must be >= 1 and --page-size must be between 1 and 100")
+    if action != "list" and (args.page != 1 or args.page_size != 50):
+        raise SystemExit("--page/--page-size apply only to the confirmation list")
     identifier = (args.merge_confirmation_id or " ".join(args.query)).strip()
     if action != "list" and not identifier:
         raise SystemExit("--merge-confirmation-id is required for this merge confirmation action")
@@ -857,7 +865,9 @@ def handle_merge_confirmation_command(args: argparse.Namespace) -> int:
         raise SystemExit("--merge-confirmation-id requires the confirmation_id event identifier, not a source package_key")
     try:
         if action == "list":
-            payload = fetch_merge_confirmation_payload(timeout=args.server_timeout)
+            payload = fetch_merge_confirmation_payload(
+                timeout=args.server_timeout, page=args.page, page_size=args.page_size,
+            )
             output = payload if args.json else format_merge_list(payload)
         elif action in {"detail", "target", "compare"}:
             endpoint_action = "" if action == "detail" else action
@@ -865,9 +875,7 @@ def handle_merge_confirmation_command(args: argparse.Namespace) -> int:
             output = payload if args.json else format_merge_payload(f"合并确认 {action}", payload)
         elif action == "analyze":
             detail = fetch_merge_confirmation_payload(identifier, timeout=args.server_timeout)
-            target = fetch_merge_confirmation_payload(identifier, "target", timeout=args.server_timeout)
-            compare = fetch_merge_confirmation_payload(identifier, "compare", timeout=args.server_timeout)
-            analysis = build_merge_analysis(detail, target, compare)
+            analysis = build_merge_analysis(detail)
             output = analysis if args.json else format_merge_analysis(analysis)
         elif action == "dispute":
             if not args.send_dispute:

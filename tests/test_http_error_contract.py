@@ -353,6 +353,8 @@ def information_detail(queue_state: str) -> dict[str, object]:
 @pytest.mark.parametrize("fields", [
     {"platform": "not-a-platform"},
     {"platform": {"oops": 1}},
+    {"platform": {}},
+    {"summary": []},
     {"summary": {"oops": 1}},
     {"project": 123},
     {"android_version": 14},

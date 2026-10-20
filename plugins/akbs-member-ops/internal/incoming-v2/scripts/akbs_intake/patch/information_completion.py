@@ -139,7 +139,7 @@ def completion_fields(value: Any) -> dict[str, Any]:
         if field not in ALLOWED_COMPLETION_FIELDS:
             raise SystemExit(f"[information_fields_unsupported] 不支持补充字段：{field or '<empty>'}")
         normalized = item.strip() if isinstance(item, str) else item
-        if not field or normalized in (None, "", [], {}):
+        if not field or normalized in (None, ""):
             continue
         if field == "projects":
             if not isinstance(normalized, (str, list)) or (

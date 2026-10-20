@@ -9,6 +9,7 @@ import urllib.request
 from typing import Any
 
 from akbs_member_ops.http_client import HttpClientFailure, request_json_with_metadata
+from akbs_member_ops.knowledge_rules import VALID_FRAMEWORK_PLATFORMS
 
 from ..config import submission_api_base_url
 from ..incoming_contract import (
@@ -140,6 +141,20 @@ def completion_fields(value: Any) -> dict[str, Any]:
         normalized = item.strip() if isinstance(item, str) else item
         if not field or normalized in (None, "", [], {}):
             continue
+        if field == "projects":
+            if not isinstance(normalized, (str, list)) or (
+                isinstance(normalized, list)
+                and any(not isinstance(project, str) for project in normalized)
+            ):
+                raise SystemExit("[information_fields_invalid] projects 必须是文字或纯文字数组。")
+            if isinstance(normalized, list):
+                normalized = [project.strip() for project in normalized if project.strip()]
+                if not normalized:
+                    continue
+        elif not isinstance(normalized, str):
+            raise SystemExit(f"[information_fields_invalid] {field} 必须是文字。")
+        if field == "platform" and normalized not in VALID_FRAMEWORK_PLATFORMS:
+            raise SystemExit("[information_fields_invalid] platform 只能是 mtk、rk 或 unisoc。")
         result[field] = normalized
     return result
 

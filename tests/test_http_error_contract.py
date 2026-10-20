@@ -350,6 +350,36 @@ def information_detail(queue_state: str) -> dict[str, object]:
     }
 
 
+@pytest.mark.parametrize("fields", [
+    {"platform": "not-a-platform"},
+    {"platform": {"oops": 1}},
+    {"summary": {"oops": 1}},
+    {"project": 123},
+    {"android_version": 14},
+    {"projects": ["TVE1086U", {"oops": 1}]},
+    {"projects": 123},
+])
+def test_information_completion_rejects_invalid_field_values(fields: dict[str, object]) -> None:
+    with pytest.raises(SystemExit, match="information_fields_invalid"):
+        information_completion.completion_fields(fields)
+
+
+@pytest.mark.parametrize("platform", ["mtk", "rk", "unisoc"])
+def test_information_completion_preserves_valid_text_and_projects(platform: str) -> None:
+    assert information_completion.completion_fields({
+        "platform": f" {platform} ", "project": " TVE1086U ",
+        "android_version": " 14 ", "summary": " 新增现场证据 ",
+        "projects": [" TVE1086U ", "", "TVE8402M"],
+    }) == {
+        "platform": platform, "project": "TVE1086U", "android_version": "14",
+        "summary": "新增现场证据", "projects": ["TVE1086U", "TVE8402M"],
+    }
+    assert information_completion.completion_fields({"projects": " TVE1086U,TVE8402M "}) == {
+        "projects": "TVE1086U,TVE8402M",
+    }
+    assert information_completion.completion_fields({"summary": "", "platform": None}) == {}
+
+
 def information_response_file(tmp_path: Path, **changes: object) -> Path:
     path = tmp_path / "response.json"
     path.write_text(json.dumps({

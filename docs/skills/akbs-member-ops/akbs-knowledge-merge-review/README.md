@@ -15,11 +15,15 @@
 `list`、`detail`、`target`、`compare` 和 `analyze` 都是只读操作。服务端不可用时明确失败，
 不能回退成本地搜索后伪造合并依据。只有成员明确要求发送异议，并同时提供
 `--send-dispute` 和理由/评估时，才允许 POST dispute。
+异议理由、成员评估和显式提供的证据引用会完整整理到服务端现有的一个 `reason` 字段，
+不再发送服务端不保存的附加字段；内部运行说明不充当成员异议。
 
 `add_implementation` 是同一功能下新增一种技术实现；`attach_evidence` 是为确切已有实现
 补充证据或适用环境。读取时核对 confirmation、成员、动作、决定身份和 Case/Implementation
 精确绑定；预期 hash 与当前 hash 不同时保留两者供复核，不静默换目标。
 初次提议仍有成员确认/异议流程；管理员复审异议后直接闭合，不再次索要同一异议的确认。
+默认分析文字会说明具体动作、目标实现、本次提议和确认后的变化；“新增实现”等动作说明
+不是反向证据。服务端明确返回没有反向证据时，不用旧详情的差异文案替代它。
 
 ```bash
 python3 "scripts/akbs_knowledge_merge_review.py" analyze \

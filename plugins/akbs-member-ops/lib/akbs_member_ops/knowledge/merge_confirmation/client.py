@@ -183,12 +183,17 @@ def post_merge_dispute(
     agent_notes: dict[str, Any],
     timeout: float = 3.0,
 ) -> dict[str, Any]:
-    payload = {
-        "reason": reason,
-        "member_assessment": member_assessment,
-        "evidence_refs": evidence_refs,
-        "agent_notes": agent_notes,
-    }
+    # The server persists one reason, not separate assessment/evidence fields.
+    # Keep the user's complete text together; internal agent notes are not an
+    # objection from the member and must not be folded into that reason.
+    if not reason.strip() and not member_assessment.strip():
+        raise ValueError("a dispute reason or member assessment is required")
+    parts = [reason] if reason.strip() else []
+    if member_assessment.strip():
+        parts.append("成员评估：\n" + member_assessment)
+    if evidence_refs:
+        parts.append("证据引用：\n" + "\n".join(evidence_refs))
+    payload = {"reason": "\n\n".join(parts)}
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     headers = member_request_headers()
     headers["Content-Type"] = "application/json"

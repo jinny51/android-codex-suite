@@ -559,7 +559,7 @@ def merge_detail_from_payloads(detail: dict[str, Any], target: dict[str, Any], c
         if value not in (None, "", [], {}) and key not in merged:
             merged[key] = value
     for key, value in compare.items():
-        if value not in (None, "", [], {}):
+        if value not in (None, "", [], {}) or (key == "counter_evidence" and isinstance(value, list)):
             merged[key] = value
     return merged
 
@@ -582,19 +582,32 @@ def build_merge_analysis(detail: dict[str, Any], target: dict[str, Any], compare
     target_knowledge = combined.get("target_knowledge") if isinstance(combined.get("target_knowledge"), dict) else {}
     if not target_knowledge and isinstance(context.get("target_case"), dict):
         target_knowledge = context["target_case"]
+    action = str(combined.get("curation_action") or context.get("action") or "")
+    typed = action in {"add_implementation", "attach_evidence"}
     supporting = compact_evidence_items(combined.get("merge_basis") or context.get("supporting_evidence"))
-    counter = compact_evidence_items(combined.get("counter_evidence") or context.get("counter_evidence"))
+    # A typed context's explicit empty list means no counter-evidence. Old
+    # detail projections may still expose a display difference as a counter.
+    counter_source = context if typed and "counter_evidence" in context else combined
+    counter = compact_evidence_items(counter_source.get("counter_evidence", context.get("counter_evidence")))
     matched_anchors = combined.get("matched_anchors") or context.get("matched_anchors") or []
     code_anchors = context.get("code_anchors") if isinstance(context.get("code_anchors"), dict) else {}
     can_dispute = bool((combined.get("actions") if isinstance(combined.get("actions"), dict) else {}).get("can_submit_dispute"))
     has_counter = bool(counter)
     recommendation = "建议先核对反向证据；如目标知识与实际修改目标不一致，再发送异议。" if has_counter else "当前未看到明确反向证据；默认建议先确认合并依据，不自动提出异议。"
+    if typed and not has_counter:
+        recommendation = "当前未看到明确反向证据；请核对本次提议及确认后的变化，不自动提交确认或异议。"
     if not can_dispute:
         recommendation = "当前状态不允许成员提交异议；只能作为只读分析材料。"
     draft = ""
     if can_dispute:
         title = target_knowledge.get("title") or combined.get("material_display_title") or merge_identifier_from_payload(combined)
-        draft = f"我认为该材料不应合并到“{title}”。请复核目标知识、代码锚点和反向证据。"
+        if action == "add_implementation":
+            draft = f"我对在“{title}”下新增这份技术实现有异议，请复核具体方案和依据。"
+        elif action == "attach_evidence":
+            implementation = target_knowledge.get("implementation") or {}
+            draft = f"我对为“{title}”中的实现“{implementation.get('implementation_id', '')}”补充这份证据有异议，请复核证据与实现的对应关系。"
+        else:
+            draft = f"我认为该材料不应合并到“{title}”。请复核目标知识、代码锚点和反向证据。"
         if counter:
             draft += " 反向证据：" + "；".join(counter[:3])
     return {
@@ -606,6 +619,7 @@ def build_merge_analysis(detail: dict[str, Any], target: dict[str, Any], compare
         "confirmation_status": str(combined.get("confirmation_status") or context.get("merge_status") or ""),
         "material_title": str(combined.get("material_display_title") or ""),
         "target_knowledge": target_knowledge,
+        "curation_action": action,
         "why_merged": supporting,
         "matched_anchors": matched_anchors if isinstance(matched_anchors, list) else [],
         "code_anchors": code_anchors,
@@ -647,6 +661,54 @@ def format_merge_list(payload: dict[str, Any]) -> str:
     return "\n".join(lines).rstrip()
 
 
+def typed_curation_lines(context: dict[str, Any], target: dict[str, Any]) -> list[str]:
+    action = str(context.get("action") or "")
+    label = {
+        "add_implementation": "在已有功能下新增技术实现",
+        "attach_evidence": "为已有技术实现补充证据或适用环境",
+    }.get(action)
+    if not label:
+        return []
+
+    def brief(value: Any, limit: int = 180) -> str:
+        text = " ".join(text_or_unknown(value).split())
+        return text[:limit] + "…" if len(text) > limit else text
+
+    lines = [f"- 本次动作: {label} ({action})"]
+    implementation = target.get("implementation")
+    if isinstance(implementation, dict):
+        lines.append(
+            f"- 目标具体实现: {text_or_unknown(implementation.get('implementation_id'))} / "
+            f"{brief(implementation.get('implementation_summary'))}"
+        )
+        if implementation.get("approach"):
+            lines.append(f"- 目标实现做法: {brief(implementation['approach'])}")
+    proposal = context.get("proposal") if isinstance(context.get("proposal"), dict) else {}
+    proposed_implementation = proposal.get("implementation")
+    if isinstance(proposed_implementation, dict):
+        lines.append(f"- 新增实现摘要: {brief(proposed_implementation.get('implementation_summary'))}")
+        if proposed_implementation.get("approach"):
+            lines.append(f"- 新增实现做法: {brief(proposed_implementation['approach'])}")
+    applicability = proposal.get("applicability")
+    if isinstance(applicability, list) and applicability:
+        environments = [
+            f"项目 {brief(item.get('project'), 60)} / 平台 {brief(item.get('platform'), 60)} / "
+            f"Android {brief(item.get('android_version'), 60)}"
+            for item in applicability if isinstance(item, dict)
+        ]
+        lines.append(f"- 提议适用环境: {compact_list(environments, 3)}")
+    bindings = proposal.get("evidence_bindings")
+    if isinstance(bindings, list) and bindings:
+        references = [
+            brief(item.get("patch_asset_id") or item.get("binding_id"), 96)
+            for item in bindings if isinstance(item, dict)
+        ]
+        lines.append(f"- 提议证据绑定: {len(bindings)} 条；引用 {compact_list(references, 3)}")
+    lines.append(f"- 确认后的变化: {brief(context.get('effect_if_confirmed'))}")
+    lines.append("- 以上为摘要，完整内容见 --json。")
+    return lines
+
+
 def format_merge_payload(title: str, payload: dict[str, Any]) -> str:
     target = payload.get("target_knowledge") if isinstance(payload.get("target_knowledge"), dict) else {}
     context = payload.get("member_agent_context") if isinstance(payload.get("member_agent_context"), dict) else {}
@@ -672,17 +734,25 @@ def format_merge_payload(title: str, payload: dict[str, Any]) -> str:
         lines.append("- 合并依据: " + "；".join(compact_evidence_items(payload.get("merge_basis"))))
     if payload.get("matched_anchors"):
         lines.append(f"- 相同锚点: {compact_list(payload.get('matched_anchors'), 8)}")
-    if payload.get("counter_evidence"):
-        lines.append("- 反向证据: " + "；".join(compact_evidence_items(payload.get("counter_evidence"))))
+    counter = (
+        context.get("counter_evidence")
+        if context.get("action") in {"add_implementation", "attach_evidence"} and "counter_evidence" in context
+        else payload.get("counter_evidence")
+    )
+    if counter:
+        lines.append("- 反向证据: " + "；".join(compact_evidence_items(counter)))
     if context:
         lines.append(f"- Codex 分析证据: schema={text_or_unknown(context.get('schema'))}, reuse_grade={text_or_unknown(context.get('reuse_grade'))}")
+    lines.extend(typed_curation_lines(context, target))
     return "\n".join(lines)
 
 
 def format_merge_analysis(analysis: dict[str, Any]) -> str:
     target = analysis.get("target_knowledge") if isinstance(analysis.get("target_knowledge"), dict) else {}
+    context = analysis.get("member_agent_context") if isinstance(analysis.get("member_agent_context"), dict) else {}
+    typed_lines = typed_curation_lines(context, target)
     lines = [
-        "# 合并确认 Codex 分析摘要",
+        "# 知识沉淀确认 Codex 分析摘要" if typed_lines else "# 合并确认 Codex 分析摘要",
         "",
         "## 人看摘要",
         "",
@@ -694,6 +764,7 @@ def format_merge_analysis(analysis: dict[str, Any]) -> str:
         f"- 目标知识: {text_or_unknown(target.get('case_id'))} / {text_or_unknown(target.get('title'))}",
         f"- 是否可提交异议: {'yes' if analysis.get('can_submit_dispute') else 'no'}",
         f"- 建议: {analysis.get('recommendation')}",
+        *typed_lines,
         "",
         "## Codex 分析证据",
         "",
@@ -801,9 +872,9 @@ def handle_merge_confirmation_command(args: argparse.Namespace) -> int:
         elif action == "dispute":
             if not args.send_dispute:
                 raise SystemExit("--merge-confirmation dispute is read-only unless --send-dispute is also set")
-            reason = args.dispute_reason.strip()
-            assessment = args.member_assessment.strip()
-            if not reason and not assessment:
+            reason = args.dispute_reason
+            assessment = args.member_assessment
+            if not reason.strip() and not assessment.strip():
                 raise SystemExit("--dispute-reason or --member-assessment is required when sending a dispute")
             result = post_merge_dispute(
                 identifier,

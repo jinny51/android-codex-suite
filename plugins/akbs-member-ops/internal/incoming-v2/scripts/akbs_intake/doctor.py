@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import re
 import subprocess
 import urllib.request
 from pathlib import Path
@@ -87,6 +88,21 @@ def member_identity_check(config: dict[str, str], *, check_remote: bool) -> dict
         result.update(status="identity_mismatch", message="服务器确认的成员与本地配置不一致；未修改本地身份。")
         return result
     result.update({key: identity[key] for key in (*text_fields, *policy_fields)})
+    # Contacts are optional server-owned display data, never local identity inputs
+    # or an additional prerequisite for member readiness.
+    email = identity.get("email")
+    if isinstance(email, str) and re.fullmatch(r"[^\s@]+@[^\s@]+", email):
+        result["email"] = email
+    linchub = identity.get("linchub")
+    if (
+        isinstance(linchub, dict)
+        and linchub.get("host") == "git.lincos.ai"
+        and type(linchub.get("user_id")) is int
+        and linchub["user_id"] > 0
+        and isinstance(linchub.get("username"), str)
+        and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", linchub["username"])
+    ):
+        result["linchub"] = {key: linchub[key] for key in ("host", "user_id", "username")}
     result.update(
         authenticated=True,
         status="server_confirmed",

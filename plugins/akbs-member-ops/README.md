@@ -1,6 +1,6 @@
 # AKBS Member Ops
 
-Standalone AKBS member plugin, version 2.3.18. It owns member setup, knowledge
+Standalone AKBS member plugin, version 2.3.19. It owns member setup, knowledge
 search and merge review, personal daily/weekly reports, and Android change
 package handling without depending on the engineering or optional practices
 plugins at runtime.
@@ -8,6 +8,10 @@ plugins at runtime.
 This patch release reserves manual/historical Patch imports for the existing
 authenticated administrator upload routes. Ordinary members submit newly developed
 Patches through the current workflow; shared local preparation remains available.
+
+Setup displays optional server-owned email and LincHub identity without writing
+contacts locally or back to AKBS. New-member email belongs to the existing
+administrator account-opening process; existing profiles and bindings are unchanged.
 
 ## Canonical Skills
 

@@ -216,6 +216,77 @@ class DoctorIdentityTest(unittest.TestCase):
         self.assertNotIn("private", json.dumps(identity))
         self.assertNotIn("secret", json.dumps(identity))
 
+    def test_confirmed_contacts_are_read_only_whitelisted_server_data(self) -> None:
+        self.open.return_value = Response(server_identity(
+            email="contributor@example.com",
+            linchub={"host": "git.lincos.ai", "user_id": 34,
+                     "username": "contributor_git", "token": "secret"},
+        ))
+        original = dict(self.configuration)
+        result = self.run_doctor(check_remote=True)
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["member_identity"]["email"], "contributor@example.com")
+        self.assertEqual(result["member_identity"]["linchub"], {
+            "host": "git.lincos.ai", "user_id": 34, "username": "contributor_git",
+        })
+        self.assertEqual(self.configuration, original)
+        self.assertEqual(self.open.call_count, 1)
+        self.assertEqual(self.open.call_args.args[0].get_method(), "GET")
+        self.assertIsNone(self.open.call_args.args[0].data)
+        self.assertNotIn("secret", json.dumps(result))
+
+    def test_older_server_without_contacts_still_passes(self) -> None:
+        result = self.run_doctor(check_remote=True)
+        self.assertEqual(result["status"], "PASS")
+        self.assertNotIn("email", result["member_identity"])
+        self.assertNotIn("linchub", result["member_identity"])
+
+    def test_email_without_linchub_is_not_a_readiness_failure(self) -> None:
+        self.open.return_value = Response(server_identity(email="contributor@example.com"))
+        result = self.run_doctor(check_remote=True)
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["member_identity"]["email"], "contributor@example.com")
+        self.assertNotIn("linchub", result["member_identity"])
+
+    def test_malformed_optional_contacts_do_not_block_valid_identity(self) -> None:
+        contacts = [
+            {"email": None, "linchub": None},
+            {"email": "not an email", "linchub": []},
+            {"email": "name@example.com\nunsafe", "linchub": {
+                "host": "other.example", "user_id": 34, "username": "valid_name"}},
+            {"email": 1, "linchub": {
+                "host": "git.lincos.ai", "user_id": True, "username": "valid_name"}},
+            {"email": {}, "linchub": {
+                "host": "git.lincos.ai", "user_id": 34, "username": "../invalid"}},
+        ]
+        for fields in contacts:
+            with self.subTest(fields=fields):
+                self.open.return_value = Response(server_identity(**fields))
+                result = self.run_doctor(check_remote=True)
+                self.assertEqual(result["status"], "PASS")
+                self.assertNotIn("email", result["member_identity"])
+                self.assertNotIn("linchub", result["member_identity"])
+
+    def test_local_contacts_are_not_identity_authority_or_uploaded(self) -> None:
+        self.configuration.update(email="old@example.com", linchub="stale local value")
+        result = self.run_doctor(check_remote=True)
+        self.assertEqual(result["status"], "PASS")
+        self.assertNotIn("email", result["member_identity"])
+        self.assertNotIn("linchub", result["member_identity"])
+        request = self.open.call_args.args[0]
+        self.assertIsNone(request.data)
+        self.assertNotIn("old@example.com", str(request.header_items()))
+
+    def test_unconfirmed_identity_does_not_display_contacts(self) -> None:
+        self.open.return_value = Response(server_identity(
+            member_alias="other", email="other@example.com",
+            linchub={"host": "git.lincos.ai", "user_id": 35, "username": "other"},
+        ))
+        identity = self.run_doctor(check_remote=True)["member_identity"]
+        self.assertEqual(identity["status"], "identity_mismatch")
+        self.assertNotIn("email", identity)
+        self.assertNotIn("linchub", identity)
+
     def test_server_confirmation_cannot_hide_existing_local_or_install_failure(self) -> None:
         self.configuration["member_name"] = ""
         self.gate.return_value = {"status": "FAIL", "blocking": True, "message": "installation invalid"}
@@ -241,6 +312,10 @@ class DoctorIdentityTest(unittest.TestCase):
         profile = self.home / "akbs-member-ops.toml"
         profile.write_text("unchanged member settings\n")
         original = {path.relative_to(self.home): path.read_bytes() for path in self.home.rglob("*") if path.is_file()}
+        self.open.return_value = Response(server_identity(
+            email="contributor@example.com",
+            linchub={"host": "git.lincos.ai", "user_id": 34, "username": "contributor_git"},
+        ))
         self.run_doctor(check_remote=True)
         after = {path.relative_to(self.home): path.read_bytes() for path in self.home.rglob("*") if path.is_file()}
         self.assertEqual(after, original)

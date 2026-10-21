@@ -57,11 +57,20 @@ Local doctor reports `configured_unverified`, not authenticated identity. With
 `--check-remote`, it reads `/akbs/api/member/me/identity`; only an authenticated
 response matching the configured alias yields `server_confirmed`. An unavailable
 server, unsupported identity endpoint, rejection or mismatch is not confirmation.
+After confirmation, display the optional server-returned `email` and LincHub
+`host`/`user_id`/`username`. Missing contact data or an unlinked LincHub account does
+not fail doctor. Do not infer an account from email, query LincHub, write contacts
+back, or add them to local identity configuration. New members provide their company
+email through the administrator's existing account-opening process; the server is
+the contact authority. Existing members do not need to re-enter or rebind contacts.
 Keep server-returned member status, ranking eligibility and daily/weekly obligations
 separate from local configuration and business permissions. An administrator who
 also contributes uses an ordinary member profile; administrator privileges are not
 required for development, search or contribution. Do not rewrite identity or grant
 privileges to make a diagnostic pass.
+An administrator's existing management Skill reads their own authenticated author
+profile. Do not create a member account, downgrade the administrator, or collect
+management credentials merely to display contact information in setup.
 
 If `$CODEX_HOME/akbs-member-ops.toml` is present, it is the sole AKBS config
 authority: do not discover or read any legacy member/search/report config, even

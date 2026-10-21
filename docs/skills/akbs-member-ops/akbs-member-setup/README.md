@@ -35,6 +35,12 @@ checkout 只能作为开发证据。
 服务器返回的在职状态、是否参与排名、日报/周报是否应交分别展示，不推断成全部业务权限。
 管理员参与开发、检索和贡献时也使用普通成员 profile，不需要管理员权限。
 
+新成员将公司邮箱随原开通信息交给管理员登记。Setup 仅回显服务器已确认的姓名、
+可选邮箱和 LincHub 账号，不写回、不保存第二套联系人资料，也不直接访问 LincHub。
+尚未登记邮箱、尚未关联 LincHub 或旧服务器没有返回这些字段，都不增加 doctor 门槛。
+现有成员不需要重填或重绑；管理员本人由已有管理 Skill 读取其认证作者资料，
+不为回显联系人而新建成员账号或更改登录权限。
+
 首次配置读取共享内核中的唯一
 `plugins/akbs-member-ops/internal/incoming-v2/references/member-setup-prompt.md`，避免维护两套身份和 endpoint 规则。
 现行入口统一为 `akbs-member-setup doctor`。

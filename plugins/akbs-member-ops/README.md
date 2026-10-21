@@ -1,6 +1,6 @@
 # AKBS Member Ops
 
-Standalone AKBS member plugin, version 2.3.15. It owns member setup, knowledge
+Standalone AKBS member plugin, version 2.3.17. It owns member setup, knowledge
 search and merge review, personal daily/weekly reports, and Android change
 package handling without depending on the engineering or optional practices
 plugins at runtime.
@@ -45,6 +45,12 @@ $CODEX_HOME/artifacts/akbs-member-ops
 
 The old `$CODEX_HOME/artifacts/android-knowledge-intake` tree remains a permanent
 read-only compatibility source. Historical packages are not moved or rewritten.
+
+Weekly display dates use the packaged read-only 2026 work calendar, exported from
+system `calendar_policy.py` at `93925749aa8a89dee9cbfeeb73d7e08532f07016`.
+The server remains its maintenance authority; release updates compare that source
+when calendar data changes. Date calculation adds no network dependency. Missing,
+damaged or uncovered-year data stops generation before a package is written.
 
 ## Incoming contracts
 

@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 import datetime as dt
 import hashlib
 import json
 import os
 import re
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -33,6 +35,7 @@ from android_engineering_ops.knowledge_rules import (
     template_leak_errors,
 )
 from android_engineering_ops.artifact_paths import require_safe_artifact_path
+from android_engineering_ops.atomic_package import publish_tree_atomic
 from android_engineering_ops.json_io import write_json
 from android_engineering_ops.patch_analysis import (
     BANNED_LOG_PATTERNS,
@@ -1613,7 +1616,7 @@ def require_current_package_root(path: Path) -> Path:
     return resolved
 
 
-def main() -> int:
+def _main(cleanup: ExitStack) -> int:
     args = parse_args()
     platform_token, platform_name, android_version = parse_platform_arg(args.platform)
     if not platform_token:
@@ -1668,9 +1671,11 @@ def main() -> int:
         out_root = Path.cwd() / out_root
     if args.workflow_contract == "current_codex_skill":
         out_root = require_current_package_root(out_root)
-    package_dir = require_safe_artifact_path(out_root / run_id, purpose="patch package output")
-    if package_dir.exists():
-        raise SystemExit(f"输出目录已存在: {package_dir}")
+    final_dir = require_safe_artifact_path(out_root / run_id, purpose="patch package output")
+    if final_dir.exists():
+        raise SystemExit(f"输出目录已存在: {final_dir}")
+    staging = cleanup.enter_context(tempfile.TemporaryDirectory(prefix="akbs-capture-"))
+    package_dir = Path(staging) / "package"
 
     patch_dir = package_dir / "patches"
     evidence_dir = package_dir / "evidence"
@@ -1899,6 +1904,10 @@ def main() -> int:
         write_json(evidence_dir / "search-before-change.json", search_payload)
     write_json(evidence_dir / "package-check.json", package_check)
 
+    # A completed diagnostic FAIL is still a useful package. Only generation
+    # exceptions discard staging; never remove a destination after publication.
+    package_dir = publish_tree_atomic(package_dir, final_dir)
+    readme_path = package_dir / "README.md"
     result = {
         "package": str(package_dir),
         "patches": [str(package_dir / capture.patch_rel) for capture in captures],
@@ -1909,6 +1918,11 @@ def main() -> int:
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if not errors else 1
+
+
+def main() -> int:
+    with ExitStack() as cleanup:
+        return _main(cleanup)
 
 
 if __name__ == "__main__":

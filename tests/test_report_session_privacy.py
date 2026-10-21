@@ -43,6 +43,72 @@ SECRET_VALUES = (
 )
 
 
+@pytest.mark.parametrize("project_allowed", [False, True])
+def test_cross_day_metadata_precedes_events_without_future_identity_or_old_work(
+    tmp_path: Path, project_allowed: bool,
+) -> None:
+    config = base_config(tmp_path)
+    date = dt.date(2026, 10, 12)
+    old = date - dt.timedelta(days=1)
+    fields = ["work_summary"] + (["project_hint", "work_scope_hint"] if project_allowed else [])
+    consent(config, date, *fields)
+    path = session_path(Path(config["codex_home"]), old)
+    rows = [
+        {"timestamp": f"{old}T09:00:00+08:00", "type": "session_meta",
+         "payload": {"id": SESSION_ID, "cwd": "/home/member/work/rk/TVE1086U"}},
+        {"timestamp": f"{old}T09:01:00+08:00", "type": "response_item",
+         "payload": {"type": "message", "role": "user", "content": "完成昨天的专用旧工作"}},
+        # Deliberately out of physical order: time, not file position, binds identity.
+        {"timestamp": f"{date}T15:00:00+08:00", "type": "session_meta",
+         "payload": {"id": SESSION_ID, "cwd": "/home/member/work/rk/TVI2343R"}},
+        {"timestamp": f"{date}T10:00:00+08:00", "type": "response_item",
+         "payload": {"type": "message", "role": "user", "content": "完成上午的接口修复"}},
+        {"timestamp": f"{date}T16:00:00+08:00", "type": "response_item",
+         "payload": {"type": "message", "role": "user", "content": "完成下午的显示验证"}},
+    ]
+    path.write_text("\n".join(json.dumps(row) for row in rows))
+    works = report_sessions.parse_sessions(config, {date})
+    assert len(works) == 2
+    assert all(work.cwd == "" for work in works)
+    assert [work.project for work in works] == (
+        ["TVE1086U", "TVI2343R"] if project_allowed else ["需成员补充项目名"] * 2
+    )
+    assert "上午" in works[0].messages[0] and "下午" in works[1].messages[0]
+    assert "昨天" not in json.dumps([work.__dict__ for work in works], ensure_ascii=False)
+
+
+def test_old_metadata_alone_never_creates_today_work(tmp_path: Path) -> None:
+    config = base_config(tmp_path)
+    date = dt.date(2026, 10, 12)
+    old = date - dt.timedelta(days=1)
+    consent(config, date, "work_summary", "project_hint")
+    write_synthetic_session_fixture(Path(config["codex_home"]), old, Path("/work/TVE1086U"))
+    assert report_sessions.parse_sessions(config, {date}) == []
+
+
+@pytest.mark.parametrize("kind,expected_count", [("android_feature_patch", 1), ("framework_feature_patch", 1), ("unknown", 0)])
+def test_report_patch_discovery_recognizes_types_without_import_side_effects(
+    tmp_path: Path, kind: str, expected_count: int,
+) -> None:
+    from akbs_intake.reports.session_summary import discover_patches
+    from types import SimpleNamespace
+    config = base_config(tmp_path)
+    config["include_patches"] = "true"
+    root = Path(config["out_dir"]).parent / "capture"
+    root.mkdir()
+    (root / "original.patch").write_text("original bytes")
+    write_json(root / "manifest.json", {"package_type": kind, "created_at": "2026-10-12T09:00:00+08:00",
+               "project": "TVE1086U", "patches": [{"path": "original.patch"}]})
+    before = {str(path.relative_to(root)): path.read_bytes() for path in root.rglob("*") if path.is_file()}
+    works = [report_sessions.SessionWork(project="TVE1086U", messages=["已完成修复"])]
+    found = discover_patches(config, works, dt.date(2026, 10, 12), dt.date(2026, 10, 12),
+                            patch_info_factory=lambda path, name, project: SimpleNamespace(name=name, project=project))
+    assert len(found) == expected_count
+    assert {str(path.relative_to(root)): path.read_bytes() for path in root.rglob("*") if path.is_file()} == before
+    config["include_patches"] = "false"
+    assert discover_patches(config, works, dt.date(2026, 10, 12), dt.date(2026, 10, 12), patch_info_factory=Mock()) == []
+
+
 def base_config(root: Path) -> dict[str, str]:
     return {
         "member_alias": "member01",

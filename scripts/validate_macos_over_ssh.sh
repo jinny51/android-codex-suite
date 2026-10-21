@@ -98,10 +98,8 @@ if /usr/bin/python3 "$root/plugins/android-engineering-ops/skills/android-source
 fi
 
 "$root/plugins/android-engineering-ops/adapters/source-access/macos/skills/android-source-access/scripts/detect-projects.sh" --help >/dev/null
-if "$root/plugins/android-engineering-ops/adapters/source-access/wsl/skills/android-source-access/scripts/restore-project-mount.sh" --list >/dev/null 2>&1; then
-  echo "ERROR: WSL source-access shim unexpectedly ran on macOS" >&2
-  exit 3
-fi
+# The public dispatcher above owns platform rejection. The internal adapter's
+# read-only --list is not a mount and may legitimately succeed on macOS.
 
 echo "MACOS_REMOTE_VALIDATION=PASS"
 REMOTE

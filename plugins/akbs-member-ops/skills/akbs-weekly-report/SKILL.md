@@ -287,7 +287,12 @@ If it is non-project documentation, ask only for the concrete document name and
 use `Doc`. If it is non-project, non-document work, use `Other` with a concrete
 work name. Never create GMS without a company project and customer.
 
-The weekly display date is the last workday of the period. A late weekly submission still displays the weekly period date, not the upload day.
+The weekly display date is the last workday of the period, including official holidays
+and makeup workdays from the bundled read-only work calendar. It requires no runtime
+calendar request. Missing, damaged or uncovered-year data stops before package creation;
+update the plugin rather than guessing Friday. An all-rest week retains the period-end
+display fallback for explicit material, without creating a reporting obligation.
+A late weekly submission still displays the weekly period date, not the upload day.
 
 An explicit report request or a member-configured recurring task authorizes generation within its stated scope; a scheduled generate-only request does not need a new human request on each run. Use complete `--weekly-facts` or current effective daily reports/previous-week ledger directly without reading local sessions or requiring session-consent flags. If no report source exists and the instructions authorize session-derived supplementary work, pass `--session-consent --session-field work_summary` for this run's exact week window. Add other derived fields only when needed; `patch_discovery` requires `project_hint`. If the available facts are incomplete, ask only for the missing business facts, not blanket access to sessions. Existing date/field limits and privacy checks remain mandatory when sessions are actually read.
 

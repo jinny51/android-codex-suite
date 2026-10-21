@@ -23,6 +23,12 @@ from android_engineering_ops.source_access import (  # noqa: E402
 )
 
 
+def test_mac_validator_keeps_public_platform_guard_without_rejecting_readonly_internal_list() -> None:
+    script = (ROOT / "scripts/validate_macos_over_ssh.sh").read_text()
+    assert '--expected-host wsl list-commands' in script
+    assert 'restore-project-mount.sh" --list' not in script
+
+
 def test_host_detection_selects_wsl_or_macos_without_user_choice() -> None:
     assert detect_source_access_host(
         system="Linux",

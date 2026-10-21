@@ -96,8 +96,14 @@ python3 "scripts/akbs_patch_submit.py" --profile <member_alias> --prepare \
   --component-layer native \
   --workflow-contract manual_import \
   --project TVE8402M --platform rk --android-version 14 \
-  --summary "既有 native 补丁导入" --status validated
+  --summary "既有 native 补丁导入" --status candidate
 ```
+
+Direct-only input does not carry machine-verifiable acceptance evidence, so it
+stays a local candidate even if the artifact was previously verified. For an
+administrator submission, use the existing truthful manual/historical capture
+route with real verification evidence, then prepare with `--patch-package`.
+Do not invent PASS evidence or weaken the validated upload gate.
 
 ## Validate and submit
 

@@ -410,6 +410,38 @@ def parse_sessions(
     consent = require_report_session_consent(config, dates, synthetic=False)
     codex_home = expanded_path(config["codex_home"])
     sessions: list[SessionWork] = []
+
+    def finish_work(work: SessionWork, raw_cwd: str, project_id: str, project: str, file: Path) -> str | None:
+        if not work.messages and not work.outcomes:
+            return
+        if not work.session_id:
+            match = re.search(r"([0-9a-f]{8}-[0-9a-f-]{27,})", file.name)
+            work.session_id = match.group(1) if match else file.stem
+        raw_session_id = work.session_id
+        work.session_id = minimal_source_id(raw_session_id)
+        if raw_cwd:
+            if "work_scope_hint" in consent.fields:
+                source_scope = path_scope_inference(raw_cwd)
+                work.source_work_type_hint = source_scope.work_type
+                work.source_app_name_hint = source_scope.app_name
+                work.source_scope_basis = list(source_scope.basis)
+                work.source_scope_conflict = source_scope.conflict
+            if consent.fields & {"project_hint", "patch_discovery"}:
+                registered_mapping = registered_android_mapping(raw_cwd, config)
+                if registered_mapping:
+                    work.registered_android_mount = True
+                    work.project_id = project_id or str(registered_mapping.get("project_id") or "")
+                    work.project = project or work.project_id
+                else:
+                    work.project = find_company_project(project or project_id or raw_cwd) or work.project
+        elif "project_hint" in consent.fields:
+            work.project = find_company_project(project or project_id) or work.project
+        # cwd is only an in-memory hint, never a source/patch-discovery root.
+        if not should_skip_session(work):
+            work.project = project_name(work)
+            sessions.append(work)
+        return raw_session_id
+
     try:
         with session_extraction_workspace():
             for file in session_files(codex_home, dates, config.get("timezone", "Asia/Shanghai")):
@@ -417,18 +449,39 @@ def parse_sessions(
                 raw_cwd = ""
                 explicit_project_id = ""
                 explicit_project = ""
+                rows = []
                 for line in file.read_text(encoding="utf-8", errors="ignore").splitlines():
                     try:
                         row = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    if local_date(row.get("timestamp", ""), config) not in dates:
+                    if not isinstance(row, dict):
                         continue
-                    work.latest_at = max(work.latest_at, str(row.get("timestamp") or ""))
+                    row_date = local_date(str(row.get("timestamp") or ""), config)
+                    if row_date is None or row_date > max(dates):
+                        continue
+                    if row.get("type") != "session_meta" and row_date not in dates:
+                        continue
+                    try:
+                        timestamp = dt.datetime.fromisoformat(str(row["timestamp"]).replace("Z", "+00:00"))
+                        if timestamp.tzinfo is None:
+                            timestamp = timestamp.replace(tzinfo=ZoneInfo(config.get("timezone", "Asia/Shanghai")) if ZoneInfo else dt.timezone.utc)
+                    except (KeyError, ValueError, TypeError):
+                        continue
+                    rows.append((timestamp, row))
+                # Metadata may predate the report window, but never the event it describes.
+                for _, row in sorted(rows, key=lambda item: item[0]):
                     payload = row.get("payload") or {}
+                    if not isinstance(payload, dict):
+                        continue
                     if row.get("type") == "session_meta":
+                        raw_session_id = finish_work(work, raw_cwd, explicit_project_id, explicit_project, file)
+                        work = SessionWork(session_id=raw_session_id or work.session_id)
                         work.session_id = str(payload.get("id", "") or work.session_id)
                         if consent.fields & {"project_hint", "work_scope_hint", "patch_discovery"}:
+                            if payload.get("cwd") and str(payload["cwd"]) != raw_cwd:
+                                explicit_project_id = ""
+                                explicit_project = ""
                             raw_cwd = str(payload.get("cwd", "") or raw_cwd)
                             explicit_project_id = str(
                                 payload.get("project_id") or payload.get("projectId") or explicit_project_id
@@ -439,6 +492,7 @@ def parse_sessions(
                         continue
                     if row.get("type") != "response_item":
                         continue
+                    work.latest_at = max(work.latest_at, str(row.get("timestamp") or ""))
                     if payload.get("type") == "message" and "work_summary" in consent.fields:
                         role = payload.get("role")
                         raw_text = extract_input_text(payload.get("content"))
@@ -460,36 +514,7 @@ def parse_sessions(
                         if command:
                             work.commands.append(command)
 
-                if not work.session_id:
-                    match = re.search(r"([0-9a-f]{8}-[0-9a-f-]{27,})", file.name)
-                    work.session_id = match.group(1) if match else file.stem
-                work.session_id = minimal_source_id(work.session_id)
-                if raw_cwd:
-                    registered_mapping = registered_android_mapping(raw_cwd, config)
-                    if "work_scope_hint" in consent.fields:
-                        source_scope = path_scope_inference(raw_cwd)
-                        work.source_work_type_hint = source_scope.work_type
-                        work.source_app_name_hint = source_scope.app_name
-                        work.source_scope_basis = list(source_scope.basis)
-                        work.source_scope_conflict = source_scope.conflict
-                    if registered_mapping:
-                        work.registered_android_mount = True
-                        work.project_id = explicit_project_id or str(
-                            registered_mapping.get("project_id") or ""
-                        )
-                        work.project = explicit_project or work.project_id
-                        # Never retain the mounted cwd as a local patch-discovery root.
-                        work.cwd = ""
-                    elif consent.fields & {"project_hint", "patch_discovery"}:
-                        anchored = find_company_project(raw_cwd)
-                        if anchored:
-                            work.project = anchored
-                        # Use cwd only as this-function string input. Never retain,
-                        # stat, or reuse it as a local Git/patch discovery root.
-                if should_skip_session(work) or (not work.messages and not work.outcomes):
-                    continue
-                work.project = project_name(work)
-                sessions.append(work)
+                finish_work(work, raw_cwd, explicit_project_id, explicit_project, file)
     except (Exception, SystemExit):
         raise SystemExit("Codex session extraction failed safely; no raw session content or path was retained.") from None
     return sessions

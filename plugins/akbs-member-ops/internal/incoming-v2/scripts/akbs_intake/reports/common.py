@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -26,6 +27,39 @@ def ymd(date: dt.date) -> str:
 def week_bounds(date: dt.date) -> tuple[dt.date, dt.date]:
     start = date - dt.timedelta(days=date.weekday())
     return start, start + dt.timedelta(days=6)
+
+
+# Read-only export of system calendar_policy.py at 93925749aa8a89dee9cbfeeb73d7e08532f07016.
+WORK_CALENDAR_PATH = Path(__file__).resolve().parents[3] / "references/work-calendar-2026.json"
+
+
+def weekly_display_date(date: dt.date) -> str:
+    start, end = week_bounds(date)
+    try:
+        if start.year != 2026 or end.year != 2026:
+            raise ValueError("week outside published calendar")
+        calendar = json.loads(WORK_CALENDAR_PATH.read_text(encoding="utf-8"))
+        if not isinstance(calendar, dict):
+            raise ValueError("calendar must be an object")
+        for key in ("holidays", "makeup_workdays"):
+            values = calendar.get(key)
+            if not isinstance(values, list) or any(
+                not isinstance(value, str) or dt.date.fromisoformat(value).year != 2026
+                for value in values
+            ):
+                raise ValueError("invalid calendar dates")
+    except (OSError, ValueError, TypeError):
+        raise SystemExit("周报工作日历数据不足或损坏：需要覆盖完整周期的已发布日历，请更新插件后重试。") from None
+    holidays = set(calendar["holidays"])
+    makeup = set(calendar["makeup_workdays"])
+    day = end
+    while day >= start:
+        key = day.isoformat()
+        if key in makeup or (key not in holidays and day.weekday() < 5):
+            return key
+        day -= dt.timedelta(days=1)
+    # A wholly non-working week creates no obligation; explicit existing facts stay visible.
+    return end.isoformat()
 
 
 def report_dates(report_type: str, date: dt.date) -> tuple[set[dt.date], dt.date, dt.date, str]:

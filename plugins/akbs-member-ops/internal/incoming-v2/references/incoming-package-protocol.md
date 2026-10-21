@@ -1,6 +1,6 @@
 # Incoming Package Protocol
 
-## Public v1 compatibility gate
+## Incoming v2 compatibility gate
 
 The member Skill and the server share the same incoming v2 schema, three golden manifests, public reason-code contract, and `akbs-error-envelope-v1` schema. The member Skill owns package completeness before upload; the server independently repeats the deterministic contract only as a final safety boundary and never repairs or re-authors a package. The plugin mirror and its exact content-digest compatibility pin live in `contracts/incoming/v2/` at the marketplace repository root. The recorded system Git commit is audit provenance only: an unrelated server commit with identical contract/schema/fixture bytes remains compatible, while any public-contract, reason-code, schema, fixture, or error-envelope digest drift fails closed. Production plugin code and server runtime code do not import each other.
 
@@ -21,19 +21,23 @@ Only the user's local `akbs-curation-maintainer` skill and the AI knowledge loop
 
 The server does not run Codex and must not be the main AI reasoning layer. Project inference, patch problem summary, risk, verification status, search-before-change evidence, remote build evidence, and local device delivery evidence are produced by member-side Codex. Curation decisions, materialization plans, and knowledge validity are produced by the user's local curation maintainer skill, not by the member-side intake skill.
 
-## Server Merge Anchors
+## Upload Identity and Curation Anchors
 
-Member-side packages must provide enough deterministic anchors for the server to merge without AI inference:
+Member-side packages preserve deterministic upload identity and engineering evidence:
 
 - package identity: `date + member_alias + run_id`
-- framework identity: `case_id` and `variant_id`
-- variant natural key: `case_id + platform + android_version + project + repo_paths`
-- patch identity: patch file content `sha1`
+- server-assigned patch subject: `patch_package_id`; physical upload identity is not a replacement subject
+- patch integrity: the recorded patch content hashes and exact declared file paths
+- classification: `components[].layer`, not a new lifecycle
 - optional report link: `related_report_run_ids`
 - pre-change knowledge use evidence when it happened: search queries, matched object ids, decision (`reuse`, `adapt`, `reference_only`, `not_applicable`, `not_found`, or `unknown`), match/mismatch points, reason, and outcome
 - cross-machine verification evidence: remote build host/source root/profile/artifact plus local transfer, adb serial, device push/install/restart, and verification result
 
-The server may merge two android_change packages into the same variant when the natural key matches, even when the incoming `variant_id` differs. The server must not let a later `failed` or `blocked` package overwrite stronger existing evidence; that later package is retained as evidence.
+The server does not automatically merge knowledge by a variant natural key.
+After validated intake, the existing administrator curation flow decides new
+knowledge or a planned merge. Historical case/variant metadata remains readable;
+it does not authorize another subject or an automatic merge. Failed or blocked
+material stays local or in report context, not ordinary patch upload.
 
 ## Path
 
@@ -332,7 +336,7 @@ Manifest excerpt:
 {
   "kind": "patch_view",
   "payload": {
-    "material_kind_label": "补丁包",
+    "package_label": "补丁包",
     "display_title": "导航策略适配",
     "problem_summary": "要解决什么问题",
     "solution_summary": "补丁如何解决",
@@ -503,7 +507,11 @@ An open lightweight request is read with `--inspect-information-request`. A resp
 
 The completion client reads the server request again, verifies the same `patch_package_id`, and inserts the authoritative patch-set hash. The response file cannot define or override either identity. Text, allowed metadata and non-patch attachments may extend the current envelope; `.patch` files and `patches/` paths are rejected. Completion is addressed only by the causal `request_id` and must move the subject from `information_required` to `information_review`. If patch bytes or feature scope must change, reject intake and generate a new complete patch package instead. After admission, curation only decides new knowledge or planned merge.
 
-`materials/evidence/search_before_change.json` records member-side knowledge use before or during the change. It can come from an explicit patch capture package, or from same-day `akbs-knowledge-search` usage records (including the frozen legacy usage schema) only when those records match the current patch feature anchors. Same member and same day are not enough:
+`materials/evidence/search_before_change.json` preserves the search facts carried by
+the original capture. Current capture binds this task's original pre-change usage
+receipt bytes and SHA256. Preparation does not backfill a same-day search record,
+including for old captures or imports. Missing search stays missing; neither a
+matching member/day nor later feature similarity proves pre-change search:
 
 ```json
 {

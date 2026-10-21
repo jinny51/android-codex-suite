@@ -26,6 +26,64 @@ def load_capture():
     return module
 
 
+@pytest.mark.parametrize("failure", ["write", "diagnostic_fail", "after_publish"])
+def test_capture_final_directory_is_complete_or_absent_and_retry_does_not_overwrite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys, failure: str,
+) -> None:
+    capture = load_capture()
+    patch = tmp_path / "existing.patch"
+    patch.write_text(
+        "diff --git a/core/Example.java b/core/Example.java\n"
+        "--- a/core/Example.java\n+++ b/core/Example.java\n@@ -1 +1,2 @@\n-old();\n"
+        "+//legacy_author 20251016@\n+updated();\n"
+    )
+    output = tmp_path / "captures"
+    final = output / "fixed-run"
+    monkeypatch.setattr(sys, "argv", [str(CAPTURE), "--workflow-contract", "historical_import",
+        "--implementation-origin", "historical", "--patch-artifact", str(patch),
+        "--patch-repo-path", "frameworks/base", "--platform", "rk14", "--component-layer", "platform",
+        "--feature", "rotation", "--summary", "旋转策略", "--run-id", "fixed-run", "--out-dir", str(output)])
+    if failure == "write":
+        writer = capture.write_json
+        def interrupted(path, value):
+            if path.name == "patch-diff-facts.json":
+                raise OSError("synthetic generation interruption")
+            return writer(path, value)
+        monkeypatch.setattr(capture, "write_json", interrupted)
+        with pytest.raises(OSError, match="interruption"):
+            capture.main()
+        assert not final.exists()
+        monkeypatch.setattr(capture, "write_json", writer)
+        assert capture.main() == 0
+    elif failure == "diagnostic_fail":
+        monkeypatch.setattr(capture, "validate_feature_scope", lambda args: [])
+        monkeypatch.setattr(capture, "validate_patch_asset_names", lambda captures: ["synthetic local check failure"])
+        assert capture.main() == 1
+    else:
+        publisher = capture.publish_tree_atomic
+        def interrupted_after_publish(source, destination):
+            publisher(source, destination)
+            raise OSError("synthetic post-publish interruption")
+        monkeypatch.setattr(capture, "publish_tree_atomic", interrupted_after_publish)
+        with pytest.raises(OSError, match="post-publish"):
+            capture.main()
+    manifest = json.loads((final / "manifest.json").read_text())
+    assert (final / "README.md").is_file()
+    assert (final / "evidence/package-check.json").is_file()
+    assert all((final / row["path"]).is_file() for row in manifest["patches"])
+    if failure != "after_publish":
+        result = json.loads(capsys.readouterr().out)
+        assert result["package"] == str(final)
+        assert result["readme"] == str(final / "README.md")
+        assert all(str(final) in path for path in result["patches"])
+        assert result["local_check"]["status"] == ("FAIL" if failure == "diagnostic_fail" else "PASS")
+    before = (final / "manifest.json").read_bytes()
+    with pytest.raises(SystemExit, match="输出目录已存在"):
+        capture.main()
+    assert (final / "manifest.json").read_bytes() == before
+    assert not list(output.glob(".*staging*"))
+
+
 def test_diff_facts_extract_changed_android_facts() -> None:
     capture = load_capture()
     diff = """diff --git a/core/res/res/values/config.xml b/core/res/res/values/config.xml

@@ -10,6 +10,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 ENTRY_SKILL_DIR = REPO_ROOT / "plugins" / "android-engineering-ops" / "skills" / "android-source-access"
@@ -35,6 +37,53 @@ def run_script(script: str, *args: str, env: dict[str, str] | None = None) -> su
         stderr=subprocess.PIPE,
         env=merged_env,
     )
+
+
+@pytest.mark.parametrize("has_local", [False, True])
+def test_mount_credentials_use_ssh_account_samba_account_and_local_sudo_separately(
+    tmp_path: Path, has_local: bool,
+) -> None:
+    skill = tmp_path / "adapter/skills/android-source-access"
+    shutil.copytree(SKILL_DIR, skill)
+    shutil.copytree(SKILL_DIR.parents[1] / "lib", tmp_path / "adapter/lib")
+    scripts = skill / "scripts"
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    def executable(path: Path, body: str) -> None:
+        path.write_text("#!/usr/bin/env bash\nset -eu\n" + body)
+        path.chmod(0o700)
+    executable(fake_bin / "ssh", "if [ \"${1:-}\" = -G ]; then printf 'user alice\\nhostname physical-server\\n'; fi\nexit 0\n")
+    executable(fake_bin / "mountpoint", "exit 1\n")
+    executable(scripts / "discover-samba-share.sh",
+               "[ -f \"$FAKE_CONFIGURED\" ] || exit 1\nprintf 'SAMBA_PROJECT_URL=//share-server/project\\nSAMBA_SHARE_URL=//share-server/project\\n'\n")
+    executable(scripts / "ensure-samba-share.sh",
+               "[ \"$CODEX_REMOTE_SUDO_PASSWORD\" = remote-sudo ] || exit 71\ntouch \"$FAKE_CONFIGURED\"\nprintf 'REMOTE_SUDO_AUTH mode=password\\n'\n")
+    executable(scripts / "mount-platform.sh",
+               "[ \"$SAMBA_PASSWORD\" = samba-only ] || exit 72\n"
+               "[ \"$CODEX_LOCAL_SUDO_PASSWORD\" = \"$EXPECTED_LOCAL\" ] || exit 73\n"
+               "printf 'SAMBA_AUTH mode=password\\n'\n")
+    executable(scripts / "restore-project-mount.sh", "exit 0\n")
+    home = tmp_path / "home"
+    credentials = home / ".servers/credentials"
+    credentials.mkdir(parents=True)
+    def save(account: str, body: str) -> None:
+        (credentials / f"{hashlib.sha256(account.encode()).hexdigest()}.passwords.env").write_text(body)
+    save("alice@physical-server", "SAVED_SSH_PASSWORD=ssh-only\nSAVED_REMOTE_SUDO_PASSWORD=remote-sudo\nSAVED_LOCAL_SUDO_PASSWORD=wrong-account-local\n")
+    save("bob@share-server", "SAVED_SAMBA_PASSWORD=samba-only\nSAVED_REMOTE_SUDO_PASSWORD=wrong-samba-sudo\n")
+    save("bob@alias", "SAVED_REMOTE_SUDO_PASSWORD=wrong-path-account\n")
+    if has_local:
+        (credentials / "local-sudo.env").write_text("SAVED_LOCAL_SUDO_PASSWORD=local-only\n")
+    env = os.environ.copy()
+    env.update({"HOME": str(home), "PATH": f"{fake_bin}:{env['PATH']}", "SERVER_PASSWORD": "explicit-remote-default",
+                "FAKE_CONFIGURED": str(tmp_path / "configured"), "EXPECTED_LOCAL": "local-only" if has_local else ""})
+    result = subprocess.run([str(scripts / "mount-from-remote-path.sh"), "--remote-root", "/home/bob/product",
+                             "--ssh-host", "alias", "--server-name", "share-server", "--no-sdk-inspect",
+                             "--local-platform", "rk", "--sdk-name", "TVE1086U", "--no-save-passwords",
+                             "--no-save-credentials"], env=env, text=True, capture_output=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "MOUNT_FROM_REMOTE_PATH_OK" in result.stdout
+    for value in ("remote-sudo", "samba-only", "local-only", "wrong-account-local", "explicit-remote-default"):
+        assert value not in result.stdout + result.stderr
 
 
 def install_python_instrumentation(fake_bin: Path, prelude: str) -> None:

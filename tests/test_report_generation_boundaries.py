@@ -21,7 +21,7 @@ from akbs_intake.io_utils import write_json  # noqa: E402
 from akbs_intake.report_sessions import (  # noqa: E402
     SessionWork, project_customer_contexts_from_text, report_project_customers_from_clues,
 )
-from akbs_intake.reports import builder, daily_facts, weekly_facts  # noqa: E402
+from akbs_intake.reports import builder, common, daily_facts, weekly_facts  # noqa: E402
 from akbs_intake.reports.common import (  # noqa: E402
     ensure_report_not_duplicate, ensure_report_submit_allowed, report_dates, report_session_privacy_errors,
 )
@@ -31,6 +31,61 @@ from akbs_member_ops.http_client import HttpClientFailure, failure_result  # noq
 
 
 GIT_STATUS = "On branch TVI2343R_CRB2\nYour branch is up to date with origin/TVI2343R_CRB2."
+
+
+@pytest.mark.parametrize("date,expected", [
+    ("2026-10-12", "2026-10-16"), ("2026-06-15", "2026-06-18"),
+    ("2026-09-14", "2026-09-20"), ("2026-09-28", "2026-09-30"),
+    ("2026-02-16", "2026-02-22"),
+])
+def test_weekly_display_uses_packaged_work_calendar_offline(date: str, expected: str) -> None:
+    assert common.weekly_display_date(dt.date.fromisoformat(date)) == expected
+
+
+@pytest.mark.parametrize("contents", [None, "not-json", "[]", '{"holidays": [], "makeup_workdays": ["wrong"]}'])
+def test_missing_or_bad_calendar_stops_before_any_package_or_history_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, contents: str | None,
+) -> None:
+    calendar = tmp_path / "calendar.json"
+    if contents is not None:
+        calendar.write_text(contents)
+    monkeypatch.setattr(common, "WORK_CALENDAR_PATH", calendar)
+    monkeypatch.setattr(weekly_facts, "load_history", Mock(side_effect=AssertionError("no history HTTP")))
+    config = report_config(tmp_path)
+    with pytest.raises(SystemExit, match="工作日历数据不足"):
+        build("weekly", dt.date(2026, 10, 12), config)
+    assert not Path(config["out_dir"]).exists()
+
+
+@pytest.mark.parametrize("date", ["2025-12-31", "2026-12-31", "2027-01-05"])
+def test_weekly_calendar_does_not_guess_uncovered_years(date: str) -> None:
+    with pytest.raises(SystemExit, match="工作日历数据不足"):
+        common.weekly_display_date(dt.date.fromisoformat(date))
+
+
+def test_weekly_builder_passes_resolved_date_once_without_new_network(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, provenance: None,
+) -> None:
+    date = dt.date(2026, 9, 28)
+    config = report_config(tmp_path)
+    monkeypatch.setattr(weekly_facts, "load_history", lambda *args: ([], [], {"source": "local_submitted"}))
+    resolve = Mock(wraps=common.weekly_display_date)
+    monkeypatch.setattr(builder, "weekly_display_date", resolve)
+    package = build("weekly", date, config, weekly_facts_path=str(weekly_facts_file(tmp_path, date)))
+    resolve.assert_called_once_with(date)
+    view = json.loads((package / "materials/display/report_view.json").read_text())["payload"]
+    assert view["display_date"] == "2026-09-30"
+    assert view["week_range"] == "20260928-20261004"
+    assert view["report_date"] == "2026-09-28"
+    assert_fact_package(package, config, "explicit_weekly_facts")
+
+
+@pytest.mark.parametrize("manifest", [[], None, True, "bad-root", 23])
+def test_local_validate_non_object_manifest_returns_fail(tmp_path: Path, manifest) -> None:
+    write_json(tmp_path / "manifest.json", manifest)
+    result = intake.validate_package(tmp_path)
+    assert result["status"] == "FAIL"
+    assert result["errors"] == ["manifest.json 根节点必须是对象"]
 
 
 def report_config(tmp_path: Path) -> dict[str, str]:

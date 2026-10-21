@@ -203,7 +203,7 @@
                       "source_lineage_ref": {"type": "string", "minLength": 1},
                       "constraints": {"type": "array"},
                       "constraints_state": {
-                        "enum": ["known_empty", "typed", "invalid"]
+                        "enum": ["known_empty", "typed", "invalid", "unknown"]
                       },
                       "validation_state": {"type": "string", "minLength": 1},
                       "content_hash": {

@@ -174,8 +174,11 @@ If `tmux` is missing, install it only through the explicit action:
 ```
 
 `install-tmux` first tries passwordless sudo, then
-`CODEX_REMOTE_SUDO_PASSWORD`, then supported credentials already saved by
-`android-source-access`. It does not save new passwords. If no usable password
+`CODEX_REMOTE_SUDO_PASSWORD`, or the resolved SSH account's saved
+`SAVED_REMOTE_SUDO_PASSWORD` when no explicit password was supplied. Resolve
+`User@HostName` through `ssh -G`; SSH/Samba credentials and another account's
+passwords are not sudo fallbacks. A failed explicit password does not trigger
+password guessing. It does not save new passwords. If no usable password
 exists, it prints `REMOTE_SUDO_PASSWORD_REQUIRED`. macOS Keychain fallback is
 still tracked migration work; existing build servers already provide tmux.
 

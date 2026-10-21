@@ -24,14 +24,14 @@ Options:
                            uses the wrong platform name.
   --sdk-name NAME          Override local SDK/project directory name.
   --mount-root PATH        Local mount root. Default: $ANDROID_WORK_ROOT or $HOME/work.
-  --password-env NAME      Default fallback password env var. Default: SERVER_PASSWORD.
+  --password-env NAME      Remote-role fallback password env var. Default: SERVER_PASSWORD.
   --ssh-password-env NAME  SSH bootstrap password env var. Overrides saved/default.
   --samba-password-env NAME
                            Samba password env var. Overrides saved/default.
   --remote-sudo-password-env NAME
                            Remote sudo password env var. Overrides saved/default.
   --local-sudo-password-env NAME
-                           Local WSL sudo password env var. Overrides saved/default.
+                           Local WSL sudo password env var. Overrides local-sudo.env.
   --smb-conf PATH          Remote Samba config path. Default: /etc/samba/smb.conf.
   --server-name NAME       Override server name/IP used in //server/share URL.
   --project-level-mount    Mount the discovered project URL to the local project
@@ -54,8 +54,9 @@ Options:
   -h, --help               Show this help.
 
 Set SERVER_PASSWORD before running when the user supplied one bare/default
-password. Each password role prefers an explicit role env, then its saved typed
-fallback, then SERVER_PASSWORD as the shared default.
+password for remote roles. SSH/Samba/remote sudo prefer an explicit role env,
+then the same account's typed saved field, then that explicit remote default.
+Local WSL sudo uses only its explicit role env or local-sudo.env, never remote credentials.
 USAGE
 }
 
@@ -219,6 +220,18 @@ local_sudo_password_file() {
   printf "%s/.servers/credentials/local-sudo.env" "$HOME"
 }
 
+passwords_file_for_ssh_target() {
+  local target="$1" ssh_user="" ssh_hostname="" key value
+  while read -r key value _; do
+    case "$key" in
+      user) ssh_user="$value" ;;
+      hostname) ssh_hostname="$value" ;;
+    esac
+  done < <(ssh -G "$target" 2>/dev/null)
+  [ -n "$ssh_user" ] && [ -n "$ssh_hostname" ] || return 1
+  passwords_file_for_account "$ssh_user" "$ssh_hostname"
+}
+
 load_saved_passwords() {
   local file="$1"
   SAVED_SSH_PASSWORD=""
@@ -257,22 +270,24 @@ value_from_env_or_saved_or_default() {
   fi
 }
 
-save_all_passwords() {
+save_password_roles() {
   [ "$save_passwords" -eq 1 ] || return 0
-  if [ "$ssh_password_verified" -ne 1 ] && [ "$samba_password_verified" -ne 1 ] && [ "$remote_sudo_password_verified" -ne 1 ]; then
+  local file="$1" save_remote="$2" save_samba="$3"
+  if { [ "$save_remote" -ne 1 ] || { [ "$ssh_password_verified" -ne 1 ] && [ "$remote_sudo_password_verified" -ne 1 ]; }; } &&
+     { [ "$save_samba" -ne 1 ] || [ "$samba_password_verified" -ne 1 ]; }; then
     return 0
   fi
-  local file="$1"
-  local ssh_to_save="$stored_ssh_password"
-  local samba_to_save="$stored_samba_password"
-  local remote_sudo_to_save="$stored_remote_sudo_password"
-  if [ "$ssh_password_verified" -eq 1 ] && [ -n "$ssh_password" ]; then
+  load_saved_passwords "$file"
+  local ssh_to_save="$SAVED_SSH_PASSWORD"
+  local samba_to_save="$SAVED_SAMBA_PASSWORD"
+  local remote_sudo_to_save="$SAVED_REMOTE_SUDO_PASSWORD"
+  if [ "$save_remote" -eq 1 ] && [ "$ssh_password_verified" -eq 1 ] && [ -n "$ssh_password" ]; then
     ssh_to_save="$ssh_password"
   fi
-  if [ "$samba_password_verified" -eq 1 ] && [ -n "$samba_password" ]; then
+  if [ "$save_samba" -eq 1 ] && [ "$samba_password_verified" -eq 1 ] && [ -n "$samba_password" ]; then
     samba_to_save="$samba_password"
   fi
-  if [ "$remote_sudo_password_verified" -eq 1 ] && [ -n "$remote_sudo_password" ]; then
+  if [ "$save_remote" -eq 1 ] && [ "$remote_sudo_password_verified" -eq 1 ] && [ -n "$remote_sudo_password" ]; then
     remote_sudo_to_save="$remote_sudo_password"
   fi
   mkdir -p "$(dirname "$file")"
@@ -284,6 +299,15 @@ save_all_passwords() {
     printf "SAVED_REMOTE_SUDO_PASSWORD=%q\n" "$remote_sudo_to_save"
   } | atomic_state_write_private "$file"
   chmod 600 "$file"
+}
+
+save_all_passwords() {
+  if [ "$passwords_file" = "$samba_passwords_file" ]; then
+    save_password_roles "$passwords_file" 1 1
+  else
+    save_password_roles "$passwords_file" 1 0
+    save_password_roles "$samba_passwords_file" 0 1
+  fi
 }
 
 save_local_sudo_password() {
@@ -343,7 +367,7 @@ choose_ssh_host() {
   for i in "${!candidates[@]}"; do
     candidate="${candidates[$i]}"
     candidate_server="${servers[$i]:-${candidate#*@}}"
-    candidate_passwords_file="$(passwords_file_for_account "$REMOTE_USER" "$candidate_server")"
+    candidate_passwords_file="$(passwords_file_for_ssh_target "$candidate")" || continue
     load_saved_passwords "$candidate_passwords_file"
     ssh_password="$(value_from_env_or_saved_or_default "$ssh_password_env" "$SAVED_SSH_PASSWORD" "$provided_default_password")"
     if [ -z "$ssh_password" ]; then
@@ -370,6 +394,8 @@ choose_ssh_host() {
         return 0
       fi
     fi
+    echo "PASSWORD_REQUIRED env=$ssh_password_env reason=ssh_authentication_failed target=$candidate" >&2
+    return 2
   done
 
   echo "PASSWORD_REQUIRED env=$ssh_password_env reason=install_ssh_key candidates=${candidates[*]}" >&2
@@ -445,19 +471,19 @@ fi
 LOCAL_PLATFORM="${mount_root%/}/$PLATFORM"
 LOCAL_PROJECT="$LOCAL_PLATFORM/$SDK_NAME"
 
-passwords_file="$(passwords_file_for_account "$REMOTE_USER" "${server_name:-${SSH_HOST#*@}}")"
+passwords_file="$(passwords_file_for_ssh_target "$SSH_HOST")" || {
+  echo "PASSWORD_REQUIRED reason=ssh_account_unresolved target=$SSH_HOST" >&2
+  exit 2
+}
+samba_passwords_file="$(passwords_file_for_account "$SAMBA_USER" "${server_name:-${SSH_HOST#*@}}")"
 local_sudo_file="$(local_sudo_password_file)"
 load_saved_passwords "$passwords_file"
-account_level_local_sudo_password="$SAVED_LOCAL_SUDO_PASSWORD"
-stored_ssh_password="$SAVED_SSH_PASSWORD"
-stored_samba_password="$SAVED_SAMBA_PASSWORD"
-stored_remote_sudo_password="$SAVED_REMOTE_SUDO_PASSWORD"
-load_saved_local_sudo_password "$local_sudo_file"
-saved_local_sudo_password="${SAVED_LOCAL_SUDO_PASSWORD:-$account_level_local_sudo_password}"
 ssh_password="$(value_from_env_or_saved_or_default "$ssh_password_env" "$SAVED_SSH_PASSWORD" "$provided_default_password")"
-samba_password="$(value_from_env_or_saved_or_default "$samba_password_env" "$SAVED_SAMBA_PASSWORD" "$provided_default_password")"
 remote_sudo_password="$(value_from_env_or_saved_or_default "$remote_sudo_password_env" "$SAVED_REMOTE_SUDO_PASSWORD" "$provided_default_password")"
-local_sudo_password="$(value_from_env_or_saved_or_default "$local_sudo_password_env" "$saved_local_sudo_password" "$provided_default_password")"
+load_saved_passwords "$samba_passwords_file"
+samba_password="$(value_from_env_or_saved_or_default "$samba_password_env" "$SAVED_SAMBA_PASSWORD" "$provided_default_password")"
+load_saved_local_sudo_password "$local_sudo_file"
+local_sudo_password="$(value_from_env_or_saved_or_default "$local_sudo_password_env" "$SAVED_LOCAL_SUDO_PASSWORD" "")"
 
 export CODEX_REMOTE_SUDO_PASSWORD="$remote_sudo_password"
 export CODEX_LOCAL_SUDO_PASSWORD="$local_sudo_password"

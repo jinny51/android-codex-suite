@@ -9,6 +9,7 @@ from typing import Any, Callable
 from akbs_member_ops.knowledge_rules import find_company_project, find_company_projects
 
 from akbs_intake.config import expanded_path, parse_bool
+from akbs_intake.patch.capture_import import is_capture_package
 from akbs_intake.report_sessions import (
     NOISE_TEXT_RE,
     SessionWork,
@@ -531,7 +532,7 @@ def discover_patches(
                 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             except (OSError, ValueError, TypeError):
                 continue
-            if not isinstance(manifest, dict) or manifest.get("package_type") != "framework_feature_patch":
+            if not is_capture_package(manifest):
                 continue
             created_at = str(manifest.get("created_at") or "")
             try:

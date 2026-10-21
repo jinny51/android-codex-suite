@@ -31,6 +31,13 @@ COMPONENT_LAYERS = {
 }
 
 
+def is_capture_package(manifest: Any) -> bool:
+    """Type recognition only: safe for read-only report discovery."""
+    return isinstance(manifest, dict) and manifest.get("package_type") in {
+        "android_feature_patch", "framework_feature_patch",
+    }
+
+
 def capture_patch_layers(manifest: dict[str, Any], patch_paths: list[str]) -> dict[str, str]:
     if manifest.get("package_type") == "framework_feature_patch":
         return {path: "platform" for path in patch_paths}
@@ -124,10 +131,7 @@ def copy_patch_capture_packages(
     for raw in package_paths:
         capture_dir = Path(raw).expanduser().resolve()
         manifest = read_json_file(capture_dir / "manifest.json")
-        if manifest.get("package_type") not in {
-            "android_feature_patch",
-            "framework_feature_patch",
-        }:
+        if not is_capture_package(manifest):
             raise SystemExit(f"不是功能级 android-patch-capture 工作包: {capture_dir}")
         readme_rel = str(manifest.get("readme") or "")
         if not readme_rel:

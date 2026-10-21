@@ -282,26 +282,6 @@ printf 'TMUX_INSTALLED version=%s path=%s\n' "\$(tmux -V)" "\$(command -v tmux)"
 REMOTE
 }
 
-add_unique_password_file() {
-  local file="$1"
-  [[ -f "$file" ]] || return 0
-  local existing
-  for existing in "${PASSWORD_FILES[@]}"; do
-    [[ "$existing" == "$file" ]] && return 0
-  done
-  PASSWORD_FILES+=("$file")
-}
-
-add_unique_cred_file() {
-  local file="$1"
-  [[ -f "$file" ]] || return 0
-  local existing
-  for existing in "${CRED_FILES[@]}"; do
-    [[ "$existing" == "$file" ]] && return 0
-  done
-  CRED_FILES+=("$file")
-}
-
 account_hash() {
   if command -v sha256sum >/dev/null 2>&1; then
     printf "%s@%s" "$1" "$2" | sha256sum | awk '{print $1}'
@@ -314,85 +294,17 @@ account_hash() {
   fi
 }
 
-server_for_share() {
-  local share="$1"
-  share="${share#//}"
-  printf "%s" "${share%%/*}"
-}
-
-add_account_credential_candidates() {
-  local user="$1"
-  local server="$2"
-  [[ -n "$user" && -n "$server" ]] || return 0
-  local key credentials_dir
-  credentials_dir="${ANDROID_WSL_SOURCE_ACCESS_CREDENTIALS_DIR:-$HOME/.servers/credentials}"
-  key="$(account_hash "$user" "$server")"
-  add_unique_password_file "$credentials_dir/$key.passwords.env"
-  add_unique_cred_file "$credentials_dir/$key.cred"
-}
-
-ssh_host_matches() {
-  local candidate="$1"
-  [[ -z "$candidate" || "$candidate" == "$SSH_HOST" || "${candidate#*@}" == "${SSH_HOST#*@}" ]]
-}
-
-collect_wsl_source_access_credentials() {
-  local registry_dir remote_root_norm registry
-  registry_dir="${ANDROID_WSL_SOURCE_ACCESS_PROJECTS_DIR:-$HOME/.servers/projects}"
-  remote_root_norm="${REMOTE_ROOT%/}"
-  [[ -d "$registry_dir" ]] || return 0
-  for registry in "$registry_dir"/*.env; do
-    [[ -f "$registry" ]] || continue
-    while IFS=$'\t' read -r kind value extra; do
-      case "$kind" in
-        account) add_account_credential_candidates "$value" "$extra" ;;
-        cred) add_unique_cred_file "$value" ;;
-      esac
-    done < <(
-      SSH_HOST_VALUE="$SSH_HOST" REMOTE_ROOT_VALUE="$remote_root_norm" REGISTRY_FILE="$registry" bash -c '
-set +u
-SAMBA_USER=""
-SAMBA_CREDENTIALS_FILE=""
-REMOTE_SSH_HOSTS=()
-REMOTE_ROOTS=()
-SAMBA_PROJECT_SHARES=()
-source "$REGISTRY_FILE" 2>/dev/null || exit 0
-for i in "${!REMOTE_ROOTS[@]}"; do
-  root="${REMOTE_ROOTS[$i]%/}"
-  host="${REMOTE_SSH_HOSTS[$i]-}"
-  if [ "$root" = "$REMOTE_ROOT_VALUE" ] && { [ -z "$host" ] || [ "$host" = "$SSH_HOST_VALUE" ] || [ "${host#*@}" = "${SSH_HOST_VALUE#*@}" ]; }; then
-    share="${SAMBA_PROJECT_SHARES[$i]-}"
-    if [ -n "$SAMBA_USER" ] && [ -n "$share" ]; then
-      share_body="${share#//}"
-      server="${share_body%%/*}"
-      printf "account\t%s\t%s\n" "$SAMBA_USER" "$server"
-    fi
-    if [ -n "$SAMBA_CREDENTIALS_FILE" ]; then
-      printf "cred\t%s\t\n" "$SAMBA_CREDENTIALS_FILE"
-    fi
-  fi
-done
-'
-    )
-  done
-}
-
-collect_ssh_config_credentials() {
-  local ssh_user ssh_hostname host_part user_part
-  host_part="${SSH_HOST#*@}"
-  user_part=""
-  if [[ "$SSH_HOST" == *@* ]]; then
-    user_part="${SSH_HOST%@*}"
-  fi
+ssh_account_password_file() {
+  local ssh_user="" ssh_hostname="" key value credentials_dir
   while read -r key value _; do
     case "$key" in
       user) ssh_user="$value" ;;
       hostname) ssh_hostname="$value" ;;
     esac
   done < <(ssh -G "$SSH_HOST" 2>/dev/null || true)
-  [[ -n "${user_part:-}" ]] && add_account_credential_candidates "$user_part" "$host_part"
-  [[ -n "${ssh_user:-}" && -n "${host_part:-}" ]] && add_account_credential_candidates "$ssh_user" "$host_part"
-  [[ -n "${ssh_user:-}" && -n "${ssh_hostname:-}" ]] && add_account_credential_candidates "$ssh_user" "$ssh_hostname"
+  [[ -n "$ssh_user" && -n "$ssh_hostname" ]] || return 1
+  credentials_dir="${ANDROID_WSL_SOURCE_ACCESS_CREDENTIALS_DIR:-$HOME/.servers/credentials}"
+  printf '%s/%s.passwords.env' "$credentials_dir" "$(account_hash "$ssh_user" "$ssh_hostname")"
 }
 
 read_saved_password_var() {
@@ -408,12 +320,6 @@ SAVED_LOCAL_SUDO_PASSWORD=""
 source "$1" 2>/dev/null || exit 0
 printf "%s" "${!VAR_NAME-}"
 ' bash "$file"
-}
-
-read_cred_password() {
-  local file="$1"
-  [[ -f "$file" ]] || return 0
-  awk -F= '$1=="password"{sub(/^password=/,""); gsub(/\r$/,""); print; exit}' "$file"
 }
 
 try_tmux_password_candidate() {
@@ -438,23 +344,10 @@ try_tmux_password_candidate() {
 }
 
 try_saved_source_access_passwords() {
-  PASSWORD_FILES=()
-  CRED_FILES=()
-  collect_wsl_source_access_credentials
-  collect_ssh_config_credentials
-
-  local file var_name password
-  for file in "${PASSWORD_FILES[@]}"; do
-    for var_name in SAVED_REMOTE_SUDO_PASSWORD SAVED_SSH_PASSWORD SAVED_SAMBA_PASSWORD; do
-      password="$(read_saved_password_var "$file" "$var_name")"
-      try_tmux_password_candidate "source-access:$var_name" "$password" && return 0
-    done
-  done
-  for file in "${CRED_FILES[@]}"; do
-    password="$(read_cred_password "$file")"
-    try_tmux_password_candidate "source-access:SAMBA_CREDENTIALS_FILE" "$password" && return 0
-  done
-  return 1
+  local file password
+  file="$(ssh_account_password_file)" || return 1
+  password="$(read_saved_password_var "$file" SAVED_REMOTE_SUDO_PASSWORD)"
+  try_tmux_password_candidate "source-access:SAVED_REMOTE_SUDO_PASSWORD" "$password"
 }
 
 install_tmux() {
@@ -483,8 +376,11 @@ install_tmux() {
   fi
 
   env_password="${!SUDO_PASSWORD_ENV-}"
-  try_tmux_password_candidate "env:$SUDO_PASSWORD_ENV" "$env_password" && return 0
-  try_saved_source_access_passwords && return 0
+  if [[ -n "$env_password" ]]; then
+    try_tmux_password_candidate "env:$SUDO_PASSWORD_ENV" "$env_password" && return 0
+  else
+    try_saved_source_access_passwords && return 0
+  fi
 
   echo "REMOTE_SUDO_PASSWORD_REQUIRED env=$SUDO_PASSWORD_ENV action=install_tmux" >&2
   exit 10

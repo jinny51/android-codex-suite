@@ -6,9 +6,9 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from .common import week_bounds, ymd
+    from .common import week_bounds, weekly_display_date, ymd
 except ImportError:  # pragma: no cover - direct script import fallback
-    from akbs_intake.reports.common import week_bounds, ymd
+    from akbs_intake.reports.common import week_bounds, weekly_display_date, ymd
 
 from akbs_member_ops.knowledge_rules import find_company_project
 from akbs_member_ops.json_io import write_json
@@ -178,11 +178,6 @@ def report_category(desc: str, progress: str) -> str:
 
 def report_item_name(desc: str) -> str:
     return compact_text(str(desc or "未命名事项"), 80)
-
-def weekly_display_date(date: dt.date) -> str:
-    start, end = week_bounds(date)
-    friday = start + dt.timedelta(days=4)
-    return min(friday, end).isoformat()
 
 def weekly_source_rows(items: dict[str, list[tuple[str, str]]]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
@@ -1104,6 +1099,7 @@ def report_view_payload(
     weekly_standalone_work: list[dict[str, Any]] | None = None,
     daily_standalone_work: list[dict[str, Any]] | None = None,
     daily_tomorrow_plan: dict[str, list[dict[str, Any]]] | None = None,
+    display_date: str = "",
 ) -> dict[str, Any]:
     items = normalized_report_items(items)
     document_rows = (daily_documents or []) if report_type == "daily" else (weekly_documents or [])
@@ -1158,7 +1154,7 @@ def report_view_payload(
         "material_summary": material_summary,
         "report_date": date.isoformat(),
         "week_range": week_key if report_type == "weekly" else "",
-        "display_date": weekly_display_date(date) if report_type == "weekly" else date.isoformat(),
+        "display_date": display_date or (weekly_display_date(date) if report_type == "weekly" else date.isoformat()),
         "member_alias": config["member_alias"],
         "member_name": config["member_name"],
     }
@@ -1485,6 +1481,7 @@ def write_report_view(
     weekly_standalone_work: list[dict[str, Any]] | None = None,
     daily_standalone_work: list[dict[str, Any]] | None = None,
     daily_tomorrow_plan: dict[str, list[dict[str, Any]]] | None = None,
+    display_date: str = "",
 ) -> str:
     rel = materials_rel("display", "report_view.json")
     write_json(
@@ -1506,6 +1503,7 @@ def write_report_view(
             weekly_standalone_work,
             daily_standalone_work,
             daily_tomorrow_plan,
+            display_date,
         ),
     )
     return rel

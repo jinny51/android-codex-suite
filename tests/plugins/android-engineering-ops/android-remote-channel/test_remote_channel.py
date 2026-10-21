@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import shlex
 import shutil
@@ -12,6 +13,8 @@ import threading
 import time
 import unittest
 from pathlib import Path
+
+import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -25,6 +28,48 @@ SCRIPT = (
     / "remote-channel.sh"
 )
 INSTALLED_RUNTIME_ENTRYPOINTS = ("SCRIPT",)
+
+
+@pytest.mark.parametrize("mode", ["saved", "missing_role", "explicit_failure"])
+def test_tmux_password_is_bound_to_resolved_account_and_sudo_role(tmp_path: Path, mode: str) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    ssh = fake_bin / "ssh"
+    ssh.write_text(
+        "#!/usr/bin/env bash\nset -eu\n"
+        "if [ \"${1:-}\" = -G ]; then printf 'user alice\\nhostname physical-server\\n'; exit 0; fi\n"
+        "command=${!#}\n"
+        "case \"$command\" in\n"
+        " *'WORKSPACE_HASH='*) printf 'WORKSPACE_HASH=0123456789abcdef\\nSERVER_ID_SHA256=%064d\\nREMOTE_UID=1000\\nCANONICAL_ROOT=/source\\n' 0; exit 0 ;;\n"
+        " *'sudo -n true'*) exit 10 ;;\n"
+        " *'sudo -S'*) read -r attempt; printf 'attempt\\n' >> \"$FAKE_ATTEMPTS\"; [ \"$attempt\" = sudo-only ] && exit 0; exit 12 ;;\n"
+        "esac\nexit 99\n"
+    )
+    ssh.chmod(0o700)
+    credentials = tmp_path / "credentials"
+    credentials.mkdir()
+    def save(account: str, body: str) -> None:
+        (credentials / f"{hashlib.sha256(account.encode()).hexdigest()}.passwords.env").write_text(body)
+    save("alice@alias", "SAVED_REMOTE_SUDO_PASSWORD=wrong-alias\n")
+    save("bob@physical-server", "SAVED_REMOTE_SUDO_PASSWORD=wrong-account\n")
+    save("alice@physical-server", "SAVED_SSH_PASSWORD=wrong-ssh\nSAVED_SAMBA_PASSWORD=wrong-samba\n" +
+         ("SAVED_REMOTE_SUDO_PASSWORD=sudo-only\n" if mode != "missing_role" else ""))
+    env = os.environ.copy()
+    env.update({"HOME": str(tmp_path / "home"), "PATH": f"{fake_bin}:{env['PATH']}",
+                "ANDROID_WSL_SOURCE_ACCESS_CREDENTIALS_DIR": str(credentials),
+                "CODEX_REMOTE_CHANNEL_SSH_MUX": "0", "CODEX_REMOTE_SUDO_PASSWORD": "",
+                "FAKE_ATTEMPTS": str(tmp_path / "attempts")})
+    if mode == "explicit_failure":
+        env["CODEX_REMOTE_SUDO_PASSWORD"] = "explicit-invalid"
+    result = subprocess.run([str(SCRIPT), "--ssh-host", "alias", "--remote-root", "/source", "install-tmux"],
+                            env=env, text=True, capture_output=True)
+    attempts = (tmp_path / "attempts").read_text().splitlines() if (tmp_path / "attempts").exists() else []
+    assert len(attempts) == (0 if mode == "missing_role" else 1)
+    assert result.returncode == (0 if mode == "saved" else 10), result.stderr
+    if mode == "saved":
+        assert "source-access:SAVED_REMOTE_SUDO_PASSWORD" in result.stdout
+    for value in ("sudo-only", "wrong-alias", "wrong-account", "wrong-ssh", "wrong-samba", "explicit-invalid"):
+        assert value not in result.stdout + result.stderr
 
 
 def make_fake_remote(

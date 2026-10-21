@@ -21,6 +21,9 @@ def validate_package(package_dir: Path, *, incoming_schema_version: str, validat
         errors.append(f"manifest.json 解析失败: {exc}")
         return {"status": "FAIL", "errors": errors, "warnings": warnings}
 
+    if not isinstance(manifest, dict):
+        errors.append("manifest.json 根节点必须是对象")
+        return {"status": "FAIL", "errors": errors, "warnings": warnings}
     if manifest.get("schema_version") != incoming_schema_version:
         errors.append(f"schema_version 必须是 {incoming_schema_version}")
         return {"status": "FAIL", "errors": errors, "warnings": warnings}

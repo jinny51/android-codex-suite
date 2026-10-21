@@ -388,6 +388,14 @@ def test_server_response_preserves_unrelated_legal_unknown_binding_evidence() ->
         validate_server_payload(payload)
 
 
+def test_published_schema_allows_runtime_unknown_without_accepting_arbitrary_states() -> None:
+    schema = json.loads((ROOT / "plugins/akbs-member-ops/contracts/knowledge/member-knowledge-search-v2.schema.json").read_text())
+    environment = schema["properties"]["results"]["items"]["properties"]["required_bindings"]["items"]["properties"]["environment_evidence"]["items"]
+    states = environment["properties"]["constraints_state"]["enum"]
+    assert set(states) == {"known_empty", "typed", "invalid", "unknown"}
+    assert "arbitrary" not in states
+
+
 def test_server_response_accepts_one_closed_exact_tuple_for_direct_reuse() -> None:
     payload = copy.deepcopy(_payload())
     item = payload["results"][0]

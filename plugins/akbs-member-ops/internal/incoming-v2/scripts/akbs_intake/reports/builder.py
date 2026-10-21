@@ -9,7 +9,7 @@ from akbs_intake.config import expanded_path, local_now, require_config, require
 from akbs_intake.io_utils import materials_rel, write_json
 from akbs_intake.report_sessions import SessionWork, synthetic_sessions
 from akbs_intake.session_privacy import require_report_session_consent, session_evidence_payload
-from akbs_intake.reports.common import ensure_report_date_allowed, ensure_report_not_duplicate, report_dates, report_identity, ymd
+from akbs_intake.reports.common import ensure_report_date_allowed, ensure_report_not_duplicate, report_dates, report_identity, weekly_display_date, ymd
 from akbs_intake.reports.identity import infer_report_project
 from akbs_intake.reports.daily_facts import (
     build_daily_facts,
@@ -123,6 +123,7 @@ def build_report_package(
         raise SystemExit(f"incoming 只支持 schema_version={incoming_schema_version}")
     dates, start, end, week_key = report_dates(report_type, date)
     ensure_report_date_allowed(report_type, date, config)
+    display_date = weekly_display_date(date) if report_type == "weekly" else date.isoformat()
     is_synthetic = synthetic_mode(config)
     explicit_facts = daily_facts_path if report_type == "daily" else weekly_facts_path
     weekly_history = None
@@ -366,6 +367,7 @@ def build_report_package(
         weekly_standalone_work,
         daily_standalone_work,
         daily_tomorrow_plan,
+        display_date=display_date,
     )
     fact_sources_path = daily_fact_evidence_path or weekly_fact_evidence_path
     fact_sources_payload = daily_facts.evidence if report_type == "daily" else weekly_facts.evidence

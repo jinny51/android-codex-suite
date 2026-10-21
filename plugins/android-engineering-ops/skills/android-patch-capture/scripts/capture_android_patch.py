@@ -1675,7 +1675,7 @@ def _main(cleanup: ExitStack) -> int:
     if final_dir.exists():
         raise SystemExit(f"输出目录已存在: {final_dir}")
     staging = cleanup.enter_context(tempfile.TemporaryDirectory(prefix="akbs-capture-"))
-    package_dir = Path(staging) / "package"
+    package_dir = Path(staging).resolve() / "package"
 
     patch_dir = package_dir / "patches"
     evidence_dir = package_dir / "evidence"

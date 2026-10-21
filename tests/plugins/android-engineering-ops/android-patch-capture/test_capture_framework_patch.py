@@ -26,6 +26,35 @@ def load_capture():
     return module
 
 
+def test_capture_publishes_when_tmpdir_has_a_symbolic_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys,
+) -> None:
+    capture = load_capture()
+    temp_real = tmp_path / "real-tmp"
+    temp_real.mkdir()
+    temp_alias = tmp_path / "alias-tmp"
+    temp_alias.symlink_to(temp_real, target_is_directory=True)
+    monkeypatch.setenv("TMPDIR", str(temp_alias))
+    monkeypatch.setattr(capture.tempfile, "tempdir", None)
+    patch = tmp_path / "existing.patch"
+    patch.write_text(
+        "diff --git a/core/Example.java b/core/Example.java\n"
+        "--- a/core/Example.java\n+++ b/core/Example.java\n@@ -1 +1,2 @@\n-old();\n"
+        "+//legacy_author 20251016@\n+updated();\n"
+    )
+    final = tmp_path / "captures/symlink-tmp"
+    monkeypatch.setattr(sys, "argv", [str(CAPTURE), "--workflow-contract", "historical_import",
+        "--implementation-origin", "historical", "--patch-artifact", str(patch),
+        "--patch-repo-path", "frameworks/base", "--platform", "rk14", "--component-layer", "platform",
+        "--feature", "rotation", "--summary", "旋转策略", "--run-id", "symlink-tmp", "--out-dir", str(final.parent)])
+    assert capture.main() == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["package"] == str(final)
+    assert (final / "manifest.json").is_file()
+    assert (final / "evidence/package-check.json").is_file()
+    assert list(temp_real.iterdir()) == []
+
+
 @pytest.mark.parametrize("failure", ["write", "diagnostic_fail", "after_publish"])
 def test_capture_final_directory_is_complete_or_absent_and_retry_does_not_overwrite(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys, failure: str,

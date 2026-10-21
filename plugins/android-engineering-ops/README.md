@@ -1,6 +1,6 @@
 # Android Engineering Ops
 
-`android-engineering-ops` 3.3.8 是独立的 Android 工程核心。默认不需要任何
+`android-engineering-ops` 3.3.9 是独立的 Android 工程核心。默认不需要任何
 编排插件：没有配置扩展时，当前任务直接使用核心 Skill 完成工作。
 
 本次 patch 版本收紧导入采集：只整理既有 patch 文件，不再用导入模式生成当前 Git

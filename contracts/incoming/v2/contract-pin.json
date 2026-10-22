@@ -14,7 +14,7 @@
   "public_contract": {
     "system_path": "contracts/incoming/v2/public-contract.json",
     "consumer_path": "plugins/akbs-member-ops/internal/incoming-v2/references/incoming-public-contract-v2.json",
-    "sha256": "80a8d3e2d82207247429a293f96f3f7cb31b9a625ceb03833fd68450dd3ccd2c"
+    "sha256": "fe607fef052f20c8c59c49aafecb329ed8cdcc20948f925f2c83008559842fd5"
   },
   "verification_reference_evaluator": {
     "source_path": "plugins/akbs-member-ops/lib/akbs_member_ops/verification_acceptance.py",
@@ -55,6 +55,16 @@
     "display_date_mismatch",
     "display_member_mismatch",
     "display_trace_mismatch",
+    "document_author_mismatch",
+    "document_intake_unavailable",
+    "document_not_found",
+    "document_original_mismatch",
+    "document_original_missing",
+    "document_original_unavailable",
+    "document_owner_mismatch",
+    "document_revision_conflict",
+    "document_revision_required",
+    "document_visibility_conflict",
     "duplicate_evidence_kind",
     "envelope_revision_missing",
     "files_not_object",
@@ -79,6 +89,11 @@
     "information_request_not_found",
     "information_request_open",
     "invalid_date",
+    "invalid_document_decision",
+    "invalid_document_files",
+    "invalid_document_id",
+    "invalid_document_manifest",
+    "invalid_document_visibility",
     "invalid_file_list",
     "invalid_json_file",
     "invalid_patch_ai_facts",

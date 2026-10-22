@@ -106,6 +106,23 @@
       "workflow_contract_invalid",
       "workflow_contract_missing"
     ],
+    "document": [
+      "invalid_document_manifest",
+      "document_author_mismatch",
+      "document_original_missing",
+      "invalid_document_files",
+      "invalid_document_visibility",
+      "invalid_document_id",
+      "document_revision_required",
+      "document_intake_unavailable",
+      "document_owner_mismatch",
+      "document_revision_conflict",
+      "document_visibility_conflict",
+      "document_not_found",
+      "invalid_document_decision",
+      "document_original_unavailable",
+      "document_original_mismatch"
+    ],
     "patch_queue": [
       "curation_decision_outside_patch_contract",
       "envelope_revision_missing",

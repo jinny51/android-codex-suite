@@ -69,10 +69,11 @@ def _require_member_patch_workflow(manifest: dict[str, Any]) -> None:
         )
 
 
-def package_tar_gz_bytes(package_dir: Path) -> bytes:
+def package_tar_gz_bytes(package_dir: Path, *, selected_paths: tuple[str, ...] | None = None) -> bytes:
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
-        for path in sorted(package_dir.rglob("*")):
+        paths = package_dir.rglob("*") if selected_paths is None else (package_dir / name for name in selected_paths)
+        for path in sorted(paths):
             if path.name == ".akbs-upload-receipt.json":
                 continue
             archive.add(path, arcname=path.relative_to(package_dir).as_posix(), recursive=False)

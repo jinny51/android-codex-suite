@@ -353,6 +353,14 @@ REUSE_GRADE_LABELS = {
 
 
 def format_server_result(row: dict[str, Any], index: int) -> str:
+    if row.get("type") == "doc":
+        original = row.get("original") or {}
+        return "\n".join([f"{index}. [文档参考] {row['title']}",
+            f"   - document_id/revision: {row['document_id']} / {row['revision']}",
+            f"   - 作者: {row.get('member_name') or row.get('member_alias')}",
+            f"   - 用途: {row['summary']}", f"   - 适用条件与限制: {row.get('applicability') or '未声明额外条件'}",
+            f"   - 原文件: {original.get('filename', '')} / SHA-256={original.get('sha256', '')}",
+            "   - 文档方法/结论供当前任务判断，不套用Patch验证等级；命中不代表已实际采用。"])
     grade = str(row.get("reuse_grade") or "")
     label = REUSE_GRADE_LABELS.get(grade, grade or "服务端未分级")
     title = row.get("title") or row.get("summary") or row.get("case_title") or "未命名知识候选"

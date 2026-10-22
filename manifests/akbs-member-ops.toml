@@ -29,3 +29,8 @@ summary = "基于有效日报和跨周台账生成、校验、修订和提交成
 name = "akbs-patch-submit"
 category = "Knowledge System"
 summary = "读取、检查、准备并通过正式 incoming v2 提交七层 Android change 包"
+
+[[skills]]
+name = "akbs-doc-submit"
+category = "Knowledge System"
+summary = "整理、检查、提交独立技术文档原件，并沿原文档提交修订版本"

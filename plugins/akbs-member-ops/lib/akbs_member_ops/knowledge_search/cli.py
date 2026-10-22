@@ -33,6 +33,7 @@ from akbs_member_ops.knowledge_search.config import selected_member_alias
 from akbs_member_ops.knowledge_search.formatting import compact_list, format_case_detail, format_markdown
 from akbs_member_ops.knowledge_search.local_index import load_rows, search
 from akbs_member_ops.knowledge_search.originals import download_case_patch, fetch_case_patches
+from akbs_member_ops.knowledge_search.documents import download_document, fetch_document, format_document_detail
 from akbs_member_ops.json_io import write_json_once
 from akbs_member_ops.http_client import failure_result
 from akbs_member_ops.member_config import expand_codex_path
@@ -60,6 +61,7 @@ def result_id(row: dict[str, Any]) -> str:
         "implementation": ("implementation_id",),
         "patch": ("evidence_binding_id", "patch_asset_id", "patch_id"),
         "symbol": ("symbol",),
+        "doc": ("document_id",),
     }.get(kind, ("id", "case_id"))
     for key in keys:
         value = row.get(key)
@@ -106,6 +108,10 @@ def usage_result(row: dict[str, Any]) -> dict[str, Any]:
         "evidence_binding_id",
         "patch_asset_id",
         "package_id",
+        "document_id",
+        "revision",
+        "knowledge_id",
+        "original",
     ):
         value = row.get(key)
         if value not in (None, "", []):
@@ -829,7 +835,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--member-assessment", default="", help="Member/Codex assessment for a merge dispute. Only sent with --send-dispute.")
     parser.add_argument("--evidence-ref", action="append", default=[], help="Evidence reference to include when explicitly sending a merge dispute. Repeatable.")
     parser.add_argument("--root", help="Knowledge repository worktree path.")
-    parser.add_argument("--type", choices=["all", "case", "implementation", "patch", "symbol", "variant", "report", "event", "evidence"], default="all", help="Result type filter; legacy variant/archive types are local text reads only.")
+    parser.add_argument("--type", choices=["all", "case", "implementation", "patch", "symbol", "doc", "variant", "report", "event", "evidence"], default="all", help="Result type filter; legacy variant/archive types are local text reads only.")
+    parser.add_argument("--document-detail", help="Read one independent Doc's exact version; server only.")
+    parser.add_argument("--document-revision", type=int, help="Server-returned revision to read or download with --document-detail.")
+    parser.add_argument("--download-document", action="store_true", help="Download --document-detail's original to --out and verify size/SHA-256.")
     parser.add_argument("--limit", type=int, default=8, help="Maximum result count.")
     parser.add_argument("--offset", type=int, default=0, help="Server result offset.")
     parser.add_argument("--project", default="", help="Target project for applicability comparison.")
@@ -910,6 +919,27 @@ def handle_merge_confirmation_command(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.document_detail:
+        if (args.query or args.case_detail or args.case_patches or args.download_patch or args.implementation_id
+                or args.merge_confirmation or args.source == "local" or args.root or args.refresh
+                or args.additional_query or args.reuse_decision or args.reuse_outcome):
+            parser.error("--document-detail is a separate server-only original read, not a Patch or reuse action")
+        if bool(args.download_document) != bool(args.out):
+            parser.error("--download-document and --out must be used together")
+        try:
+            payload = (download_document(args.document_detail, expand_codex_path(args.out, resolve=False),
+                        revision=args.document_revision, timeout=args.server_timeout)
+                       if args.download_document else fetch_document(args.document_detail,
+                        revision=args.document_revision, timeout=args.server_timeout))
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from None
+        except Exception as exc:
+            raise SystemExit(failure_result(exc).safe_summary("document original API unavailable")) from None
+        print(json.dumps(payload, ensure_ascii=False, indent=2) if args.json else
+              (f"已取得文档原件并核对SHA-256：{payload['output']}；尚未声称实际复用。" if args.download_document else format_document_detail(payload)))
+        return 0
+    if args.document_revision is not None or args.download_document:
+        parser.error("--document-revision/--download-document require --document-detail")
     if args.case_detail:
         if (
             args.query or args.case_patches or args.download_patch or args.out

@@ -1,8 +1,8 @@
 # AKBS Member Ops
 
 Standalone AKBS member plugin, version 2.3.19. It owns member setup, knowledge
-search and merge review, personal daily/weekly reports, and Android change
-package handling without depending on the engineering or optional practices
+search and merge review, personal daily/weekly reports, independent document
+submission, and Android change package handling without depending on the engineering or optional practices
 plugins at runtime.
 
 This patch release reserves manual/historical Patch imports for the existing
@@ -21,6 +21,7 @@ administrator account-opening process; existing profiles and bindings are unchan
 - `akbs-daily-report`
 - `akbs-weekly-report`
 - `akbs-patch-submit`
+- `akbs-doc-submit`
 
 ## Configuration and artifacts
 
@@ -78,7 +79,7 @@ administrator credentials; local-only preparation does not authorize production 
 
 ## Install-family boundary
 
-Daily, weekly and patch entrypoints share the existing member version gate. Its
+Daily, weekly, Patch and independent Doc entrypoints share the existing member version gate. Its
 generic release lookup, version comparison and marketplace update code comes from
 the same `shared/codex_plugin_update.py` source packaged in the engineering plugin.
 Business triggers and member configuration/package handling remain unchanged; neither

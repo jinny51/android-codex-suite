@@ -1,0 +1,7 @@
+interface:
+  display_name: "AKBS Doc Submit"
+  short_description: "Prepare and submit independent AKBS documents"
+  default_prompt: "Use $akbs-doc-submit to prepare, check, submit or revise the requested independent document, preserve its original file and author, and keep preparation, authorized upload and administrator knowledge publication separate."
+
+policy:
+  allow_implicit_invocation: true

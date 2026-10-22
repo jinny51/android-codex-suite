@@ -1,7 +1,7 @@
 {
   "name": "akbs-member-ops",
   "version": "2.3.19",
-  "description": "Standalone AKBS member setup, knowledge, reporting, and patch submission workflows.",
+  "description": "Standalone AKBS member setup, knowledge, reporting, Patch and independent document submission workflows.",
   "author": {
     "name": "Jinny Android Team",
     "url": "https://github.com/jinny51"
@@ -20,8 +20,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "AKBS Member Ops",
-    "shortDescription": "成员配置、知识检索、个人报告与补丁提交",
-    "longDescription": "为 AKBS 成员提供独立的首次配置、知识检索与合并确认、个人日报周报以及补丁包准备和提交。所有新入站使用正式 knowledge-incoming-package/2；补丁采用 android_change 和最小 components 七层映射，上传接口和既有生命周期保持不变。",
+    "shortDescription": "成员配置、知识检索、个人报告、补丁与独立文档提交",
+    "longDescription": "为 AKBS 成员提供首次配置、知识检索与合并确认、个人日报周报、补丁包和独立技术文档的准备与提交。补丁保留 knowledge-incoming-package/2/android_change 和 components 七层映射；独立Doc直接提交真实文件，不依赖Git或Android工程环境，管理端审校后可统一检索与取得原文。",
     "developerName": "Jinny Android Team",
     "category": "Coding",
     "capabilities": [
@@ -32,7 +32,7 @@
     "defaultPrompt": [
       "检查我的 AKBS 成员配置和端点状态",
       "检索团队知识并记录本次复用结论",
-      "生成并检查个人报告或补丁提交包"
+      "生成并检查个人报告、补丁或独立文档提交材料"
     ],
     "brandColor": "#0F766E",
     "screenshots": []

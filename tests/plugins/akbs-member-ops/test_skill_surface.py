@@ -22,6 +22,7 @@ CANONICAL = {
     "akbs-daily-report": "akbs_daily_report.py",
     "akbs-weekly-report": "akbs_weekly_report.py",
     "akbs-patch-submit": "akbs_patch_submit.py",
+    "akbs-doc-submit": "akbs_doc_submit.py",
 }
 class SkillSurfaceTest(unittest.TestCase):
     def load_script(self, name: str, path: Path):

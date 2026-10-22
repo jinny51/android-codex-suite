@@ -6,7 +6,7 @@
   "manifest_schema": {
     "path": "knowledge-incoming-package.schema.json",
     "id": "https://akbs.internal/contracts/incoming/v2/knowledge-incoming-package.schema.json",
-    "sha256": "d061ae53721812b5ee37323db02a33c0392bcc2f59c478c6a83ff673ae3c6d47"
+    "sha256": "112319a465f9a31c46eb74365e57b5d6ec4165f5ffa3a30cb482b20e32349561"
   },
   "verification_acceptance": {
     "path": "verification-acceptance-v2.json",

@@ -13,7 +13,8 @@
         "akbs-knowledge-merge-review",
         "akbs-daily-report",
         "akbs-weekly-report",
-        "akbs-patch-submit"
+        "akbs-patch-submit",
+        "akbs-doc-submit"
       ]
     },
     {

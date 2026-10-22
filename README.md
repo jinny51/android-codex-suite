@@ -8,7 +8,7 @@ device 与 build 层。
 
 | 插件 | 职责 | 是否必需 |
 | --- | --- | --- |
-| [akbs-member-ops](plugins/akbs-member-ops/README.md) | 成员设置、知识检索、合并复核、日报、周报和 Android 补丁包提交 | 使用 AKBS 的成员安装 |
+| [akbs-member-ops](plugins/akbs-member-ops/README.md) | 成员设置、知识检索、合并复核、日报、周报、Android 补丁和独立文档提交 | 使用 AKBS 的成员安装 |
 | [android-engineering-ops](plugins/android-engineering-ops/README.md) | Android 总工作流、内置共享策略、跨平台源码接入、远程执行、构建交付和本地补丁采集 | 处理 Android 工程任务的成员安装 |
 | [jinny-android-practices](plugins/jinny-android-practices/README.md) | 可选的 Jinny Android 多智能体编排实现 | 按成员选择安装 |
 
@@ -21,7 +21,8 @@ akbs-member-ops
 ├── akbs-knowledge-merge-review
 ├── akbs-daily-report
 ├── akbs-weekly-report
-└── akbs-patch-submit
+├── akbs-patch-submit
+└── akbs-doc-submit
 
 android-engineering-ops
 ├── android-change-workflow
@@ -42,6 +43,7 @@ jinny-android-practices
 - `akbs-patch-submit` 面向所有受支持的 Android change domain，不把补丁业务限定为 Framework。
 - `android-source-access` 自动识别 WSL 或 macOS，并选择插件内对应适配器；成员不再按操作系统安装两个入口插件。
 - 日报、周报、知识检索和补丁提交属于 AKBS 成员能力；源码修改、构建和本地材料采集属于 Android 工程能力。
+- 独立技术文档由 `akbs-doc-submit` 直接提交真实原件给 AKBS，不依赖 Git、LincHub 或工程插件。Patch/App 配套 README 不因另存成文件就变成独立 Doc；Doc 经管理端审校沉淀后，通过现有知识搜索查看方法、限制及原文，不另建搜索入口。
 - 当前产品源码补丁材料默认由远端通道一步生成最新快照并原子打包，避免人工衔接命令导致快照仅因等待而过期；独立 App 的本地开发不套用这条补丁采集路径。
 - 旧配置、材料和合法历史 v1 包按声明只读；所有当前入站统一写入正式 v2 包。
 - `android-patch-capture` 生成逐仓 patch 和工程证据，`akbs-patch-submit` 据此构造、检查并提交唯一的 `knowledge-incoming-package/2/android_change` 包；七层分类由 `components[].layer` 记录。

@@ -6,7 +6,7 @@ Default member search first calls the AKBS member search endpoint:
 
 ```text
 GET /akbs/api/member/knowledge-search?q=<query>&limit=<limit>&offset=<offset>
-  &type=<all|case|implementation|patch|symbol>
+  &type=<all|case|implementation|patch|symbol|doc>
   &project=<project>&platform=<platform>&android_version=<version>
   &component_layer=<repeatable-layer>
 ```
@@ -65,7 +65,7 @@ replaces_case_ids
 
 These fields mean the local curation skill has marked an old case as obsolete or contradicted and linked a recommended replacement case. Search should surface the relationship as guidance, not as a final reuse decision.
 
-Server `--type all` returns `case`, `implementation`, `patch` and `symbol`. Its evidence
+Server `--type all` returns `case`, `implementation`, `patch`, `symbol` and published `doc` knowledge. Patch evidence
 is available through the selected Implementation's bindings. Default local text search
 also preserves these prior AI evidence hints:
 
@@ -84,12 +84,35 @@ Default `--type all` must not return report rows, event rows, or human/archive e
 - `case`: a stable Android engineering problem or requirement.
 - `implementation`: a concrete approach under a Case, with separately declared exact applicability tuples and bound source/verification evidence.
 - `patch`: archived patch assets, readme path, status hints, modified files, modules, search anchors, patch-derived explanation, validation notes, and rollback hint.
+- `doc`: a published independent technical document, identified by `document_id` and exact `revision`, with reviewed text, applicability, author and original metadata. It is not a Patch Case, report or Patch-attached README.
 - `report`: explicit local archive filter only; not a server result type.
 - `symbol`: reverse index from modified files, SystemProperties, Settings keys, string/resource keys, FrameworkLog keys, modules, and patch-derived anchors to patch IDs.
 - `event`: explicit local archive filter only; not a server result type.
 - `evidence`: local AI hints or explicit local archive evidence, not a standalone server result type. `--type variant` is also local-only and reads the historical Implementation index.
 
 ## Existing Solution Detail and Exact Original Reads
+
+Independent Doc reads use the same search CLI, identity and endpoint resolver:
+
+```text
+akbs_knowledge_search.py --document-detail <document_id> --document-revision <revision> [--json]
+akbs_knowledge_search.py --document-detail <document_id> --document-revision <revision> --download-document --out <new-file> [--json]
+```
+
+`GET /akbs/api/member/me/documents/{document_id}?revision=N` returns `document_view`
+and, when published, the matching revision's `knowledge` text. Normal members read
+published versions; authors and administrators can read their permitted revisions.
+Doc result fields are `type=doc`, `document_id`, integer `revision`, `knowledge_id`
+(equal to `document_id`), `title`, `summary`, `content`, string `applicability`,
+`member_alias`, `member_name`, `source_package_key`, `original` (filename, SHA-256,
+size, URL), numeric `score`, and `reuse_grade=reference_only`. No Patch bindings,
+seven-layer classification or environment tuple applies. This reference label is
+the nature of a document, not an unverified Patch grade.
+
+Read the hit's exact revision. Original downloads allow only the configured AKBS
+origin, refuse redirects and existing output files, and verify the exact size and
+SHA-256. These GETs neither write search/reuse-success facts nor fall back to local
+JSONL. Legacy local text indexes do not prove absence of Doc knowledge.
 
 `--case-detail <case_id> [--implementation-id <implementation_id>]` calls the
 existing `GET /akbs/api/knowledge/{case_id}`, with the same fixed-IP member

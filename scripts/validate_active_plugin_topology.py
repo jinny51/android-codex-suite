@@ -26,7 +26,7 @@ EXPECTED = {
         "skills": {
             "akbs-member-setup", "akbs-knowledge-search",
             "akbs-knowledge-merge-review", "akbs-daily-report",
-            "akbs-weekly-report", "akbs-patch-submit",
+            "akbs-weekly-report", "akbs-patch-submit", "akbs-doc-submit",
         },
     },
     "android-engineering-ops": {

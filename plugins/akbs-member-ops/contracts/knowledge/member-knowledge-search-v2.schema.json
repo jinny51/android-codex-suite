@@ -29,7 +29,7 @@
     "search_mode": {"const": "two_stage_structured_lexical"},
     "query": {"type": "string", "minLength": 1},
     "result_type": {
-      "enum": ["all", "case", "implementation", "patch", "symbol"]
+      "enum": ["all", "case", "implementation", "patch", "symbol", "doc"]
     },
     "target_environment": {
       "type": "object",
@@ -49,6 +49,75 @@
     "results": {
       "type": "array",
       "items": {
+        "oneOf": [
+          {"$ref": "#/$defs/docResult"},
+          {"$ref": "#/$defs/patchKnowledgeResult"}
+        ]
+      }
+    },
+    "filters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component"],
+      "properties": {
+        "component": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["component_layer"],
+          "properties": {
+            "component_layer": {
+              "type": "array", "uniqueItems": true,
+              "items": {"enum": ["application", "platform", "native", "hal", "kernel", "device", "build"]}
+            }
+          }
+        }
+      }
+    },
+    "pagination": {
+      "type": "object", "additionalProperties": false,
+      "required": ["offset", "limit", "total", "has_more"],
+      "properties": {
+        "offset": {"type": "integer", "minimum": 0},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 50},
+        "total": {"type": "integer", "minimum": 0}, "has_more": {"type": "boolean"}
+      }
+    },
+    "projection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ready", "reason_code", "generation", "eligible_count", "indexed_count", "isolated_count", "complete"],
+      "properties": {
+        "ready": {"type": "boolean"}, "reason_code": {"type": "string"},
+        "generation": {"type": "integer", "minimum": 0}, "eligible_count": {"type": "integer", "minimum": 0},
+        "indexed_count": {"type": "integer", "minimum": 0}, "isolated_count": {"type": "integer", "minimum": 0},
+        "complete": {"type": "boolean"}
+      }
+    },
+    "not_found": {"const": false}
+  },
+  "$defs": {
+    "docResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "document_id", "revision", "knowledge_id", "title", "summary", "content", "applicability", "member_alias", "member_name", "source_package_key", "original", "score", "reuse_grade"],
+      "properties": {
+        "type": {"const": "doc"}, "document_id": {"type": "string", "minLength": 1},
+        "revision": {"type": "integer", "minimum": 1}, "knowledge_id": {"type": "string", "minLength": 1},
+        "title": {"type": "string", "minLength": 1}, "summary": {"type": "string", "minLength": 1},
+        "content": {"type": "string"}, "applicability": {"type": "string"},
+        "member_alias": {"type": "string", "minLength": 1}, "member_name": {"type": "string"},
+        "source_package_key": {"type": "string", "minLength": 1}, "score": {"type": "number"},
+        "reuse_grade": {"const": "reference_only"},
+        "original": {
+          "type": "object", "additionalProperties": false,
+          "required": ["filename", "sha256", "size", "url"],
+          "properties": {
+            "filename": {"type": "string", "minLength": 1},
+            "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "size": {"type": "integer", "minimum": 1}, "url": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "patchKnowledgeResult": {
         "type": "object",
         "additionalProperties": false,
         "required": [
@@ -354,71 +423,7 @@
             }
           }
         ]
-      }
-    },
-    "filters": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["component"],
-      "properties": {
-        "component": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["component_layer"],
-          "properties": {
-            "component_layer": {
-              "type": "array",
-              "uniqueItems": true,
-              "items": {
-                "enum": [
-                  "application",
-                  "platform",
-                  "native",
-                  "hal",
-                  "kernel",
-                  "device",
-                  "build"
-                ]
-              }
-            }
-          }
-        }
-      }
-    },
-    "pagination": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["offset", "limit", "total", "has_more"],
-      "properties": {
-        "offset": {"type": "integer", "minimum": 0},
-        "limit": {"type": "integer", "minimum": 1, "maximum": 50},
-        "total": {"type": "integer", "minimum": 0},
-        "has_more": {"type": "boolean"}
-      }
-    },
-    "projection": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "ready",
-        "reason_code",
-        "generation",
-        "eligible_count",
-        "indexed_count",
-        "isolated_count",
-        "complete"
-      ],
-      "properties": {
-        "ready": {"type": "boolean"},
-        "reason_code": {"type": "string"},
-        "generation": {"type": "integer", "minimum": 0},
-        "eligible_count": {"type": "integer", "minimum": 0},
-        "indexed_count": {"type": "integer", "minimum": 0},
-        "isolated_count": {"type": "integer", "minimum": 0},
-        "complete": {"type": "boolean"}
-      }
-    },
-    "not_found": {"const": false}
+    }
   },
   "allOf": [
     {

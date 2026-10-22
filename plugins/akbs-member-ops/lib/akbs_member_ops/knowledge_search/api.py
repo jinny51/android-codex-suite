@@ -28,7 +28,9 @@ from akbs_member_ops.knowledge_search.config import (
 SEARCH_RESPONSE_SCHEMA = "akbs-member-knowledge-search-v2"
 SEARCH_CONTRACT_HEADER = "X-AKBS-Member-Search-Contract"
 SEARCH_MODE = "two_stage_structured_lexical"
-RESULT_TYPES = frozenset({"case", "implementation", "patch", "symbol"})
+RESULT_TYPES = frozenset({"case", "implementation", "patch", "symbol", "doc"})
+DOC_RESULT_FIELDS = frozenset({"type", "document_id", "revision", "knowledge_id", "title", "summary",
+    "content", "applicability", "member_alias", "member_name", "source_package_key", "original", "score", "reuse_grade"})
 REUSE_GRADES = frozenset(
     {"direct_reuse_candidate", "adaptation_candidate", "reference_only"}
 )
@@ -208,6 +210,26 @@ def _is_sha256(value: Any, *, allow_empty: bool = False) -> bool:
     )
 
 
+def validate_doc_result(item: dict[str, Any]) -> None:
+    if set(item) != DOC_RESULT_FIELDS:
+        raise invalid_success_response("server Doc search fields are invalid")
+    if (item.get("type") != "doc" or not _has_text(item.get("document_id"))
+            or item.get("knowledge_id") != item["document_id"]
+            or type(item.get("revision")) is not int or item["revision"] < 1
+            or item.get("reuse_grade") != "reference_only"):
+        raise invalid_success_response("server Doc search identity or reference grade is invalid")
+    for key in ("title", "summary", "content", "applicability", "member_alias", "member_name", "source_package_key"):
+        if not isinstance(item.get(key), str) or (key in {"title", "summary", "member_alias", "source_package_key"} and not item[key].strip()):
+            raise invalid_success_response("server Doc search text is invalid")
+    if type(item.get("score")) not in {int, float}:
+        raise invalid_success_response("server Doc search score is invalid")
+    original = item.get("original")
+    if (not isinstance(original, dict) or set(original) != {"filename", "sha256", "size", "url"}
+            or not _has_text(original.get("filename")) or not _is_sha256(original.get("sha256"))
+            or type(original.get("size")) is not int or original["size"] < 1 or not _has_text(original.get("url"))):
+        raise invalid_success_response("server Doc original metadata is invalid")
+
+
 def validate_server_payload(
     payload: dict[str, Any],
     *,
@@ -284,6 +306,11 @@ def validate_server_payload(
     for item in results:
         if not isinstance(item, dict):
             raise invalid_success_response("server search result must be an object")
+        if item.get("type") == "doc":
+            validate_doc_result(item)
+            if payload["result_type"] not in {"all", "doc"}:
+                raise invalid_success_response("server Doc result does not match result_type filter")
+            continue
         if not set(item) <= RESULT_FIELDS:
             raise invalid_success_response("server search result fields are invalid")
         if not _in_enum(item.get("type"), RESULT_TYPES):
@@ -648,7 +675,8 @@ def normalize_server_results(payload: dict[str, Any]) -> list[dict[str, Any]]:
         row["kind"] = row["type"]
         row.setdefault(
             "id",
-            row.get("implementation_id")
+            row.get("document_id")
+            or row.get("implementation_id")
             or row.get("evidence_binding_id")
             or row.get("patch_asset_id")
             or row.get("patch_id")

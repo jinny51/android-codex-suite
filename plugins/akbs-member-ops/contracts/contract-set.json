@@ -7,7 +7,7 @@
       "schema_version": "2",
       "public_contract": "contracts/incoming/v2/public-contract.json",
       "write_policy": "required_for_all_new_incoming_packages",
-      "package_kinds": ["daily_trace", "weekly_trace", "android_change"]
+      "package_kinds": ["daily_trace", "weekly_trace", "android_change", "technical_document"]
     },
     "historical": {
       "schema": "knowledge-incoming-package",

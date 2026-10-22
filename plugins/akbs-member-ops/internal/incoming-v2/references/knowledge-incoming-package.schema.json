@@ -20,13 +20,17 @@
     "schema": {"const": "knowledge-incoming-package"},
     "schema_version": {"const": "2"},
     "package_key": {"type": "string", "pattern": "^[0-9]{8}/[^/]+/[0-9]{8}-[0-9]{6}(?:-[A-Za-z0-9_.-]+)?$"},
-    "package_kind": {"enum": ["daily_trace", "weekly_trace", "android_change"]},
+    "package_kind": {"enum": ["daily_trace", "weekly_trace", "android_change", "technical_document"]},
     "member_alias": {"type": "string", "minLength": 1},
     "member_name": {"type": "string", "minLength": 1},
     "date": {"type": "string", "format": "date"},
     "run_id": {"type": "string", "pattern": "^[0-9]{8}-[0-9]{6}(?:-[A-Za-z0-9_.-]+)?$"},
     "tool": {"type": "string", "minLength": 1},
     "summary": {"type": "string", "minLength": 1},
+    "title": {"type": "string", "minLength": 1},
+    "document_id": {"type": "string", "pattern": "^doc-[a-f0-9]{24}$"},
+    "expected_revision": {"type": "integer", "minimum": 1},
+    "visibility": {"enum": ["team", "private"]},
     "case_id": {"type": "string", "minLength": 1},
     "variant_id": {"type": "string", "minLength": 1},
     "project": {"type": "string", "minLength": 1},
@@ -69,6 +73,17 @@
       "then": {
         "required": ["case_id", "variant_id", "package_status", "project", "platform", "android_version", "workflow_contract", "components"],
         "properties": {"package_status": {"const": "validated"}}
+      }
+    },
+    {
+      "if": {"properties": {"package_kind": {"const": "technical_document"}}},
+      "then": {
+        "required": ["title"],
+        "properties": {
+          "tool": {"const": "akbs-doc-submit"},
+          "files": {"type": "object", "additionalProperties": false, "required": ["document"], "properties": {"document": {"type": "string", "minLength": 1}}}
+        },
+        "dependentRequired": {"document_id": ["expected_revision"], "expected_revision": ["document_id"]}
       }
     }
   ]

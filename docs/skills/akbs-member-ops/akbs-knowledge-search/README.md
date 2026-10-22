@@ -14,6 +14,22 @@
 
 该 skill 默认优先调用 AKBS 成员只读搜索接口：Case 描述功能目标和边界，Implementation 描述具体技术实现及分别声明的环境和绑定证据。服务端不可用、未授权、超时或合同不兼容时，会回退到本地知识库 JSONL 文本搜索，并明确标注 `source=local_jsonl_fallback`；本地结果不具有服务端复用分级权威。
 
+同一入口也检索已审校发布的独立技术文档（`--type doc`），不要求 Git、源码环境或七层分类。
+文档结果显示作者、适用条件和精确修订原件；`reference_only` 表示文档参考用途，不是补丁验证不足。
+本地旧索引回退不能证明文档未入库。
+
+```bash
+python3 "scripts/akbs_knowledge_search.py" "设备升级 操作限制" --type doc
+python3 "scripts/akbs_knowledge_search.py" --document-detail <document_id> \
+  --document-revision <revision> --json
+python3 "scripts/akbs_knowledge_search.py" --document-detail <document_id> \
+  --document-revision <revision> --download-document \
+  --out /path/to/task-output/document.md --json
+```
+
+按命中的修订读取正文和原件；下载仅限配置的 AKBS 同源入口，核对大小和 SHA-256，
+不覆盖已有文件，不把读取成功记为实际复用成功。
+
 服务端错误统一消费 `akbs-error-envelope-v1`，只显示稳定 `code`、`request_id`、类型和脱敏 message。旧版自由文本错误会明确标记为 legacy，不能据此做重试、fallback 业务判断或合并结论；错误输出不得包含 token、cookie、请求正文、session 原文、路径或底层异常文本。
 
 它的价值是让成员或其他 skill 在重新分析、重新开发之前，先查团队是否已经保存过类似功能、补丁或问题处理记录。

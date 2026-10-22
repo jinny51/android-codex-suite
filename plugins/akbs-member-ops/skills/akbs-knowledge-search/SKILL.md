@@ -1,11 +1,11 @@
 ---
 name: akbs-knowledge-search
-description: Search AKBS for prior Android engineering Cases, concrete Implementations, patches, code anchors, applicability and validation evidence. Use before source changes, during requirement triage, or when finding prior team solutions; this does not submit materials or decide engineering acceptance.
+description: Search AKBS for prior engineering Cases, Implementations, patches and published independent technical documents, with applicability and exact originals. Use during requirement triage, source work or knowledge reuse; this does not submit materials or decide engineering acceptance.
 ---
 
 # AKBS Knowledge Search
 
-Use this skill to search the team knowledge repository before starting new analysis or implementation. It is the member-side search entry for the knowledge system: `akbs-daily-report`, `akbs-weekly-report`, `akbs-patch-submit`, and `android-patch-capture` produce or submit materials through the appropriate member contract, and the user's local `akbs-curation-maintainer` skill promotes AI-usable knowledge into the knowledge repository for this skill to retrieve.
+Use this skill to search the team knowledge repository before starting new analysis or implementation. This unified entry retrieves Patch knowledge and independently submitted Doc knowledge; `akbs-doc-submit` prepares and submits real technical documents, while the available management Skill reviews and publishes them. Reports remain reporting materials, not independent Doc knowledge.
 
 This skill does not submit reports, create patches, edit source, or decide correctness by itself. A Case describes a problem or requirement; an Implementation is a concrete solution under it. Search returns their facts and bound originals for the current engineering task to assess.
 
@@ -66,6 +66,10 @@ python3 "scripts/akbs_knowledge_search.py" \
 python3 "scripts/akbs_knowledge_search.py" \
   "persist.sys launcher" --type patch
 
+# Search published independent documents; no source/Git environment is required.
+python3 "scripts/akbs_knowledge_search.py" \
+  "设备升级 操作限制" --type doc
+
 # Return machine-readable output for another workflow.
 python3 "scripts/akbs_knowledge_search.py" \
   "WindowManager display" --json
@@ -108,6 +112,27 @@ python3 "scripts/akbs_knowledge_search.py" \
   --send-dispute \
   --dispute-reason "目标知识没有覆盖当前补丁的功能目标"
 ```
+
+## Read a Document and Its Exact Original
+
+Doc results carry `document_id`, `revision`, author, reviewed content and applicability,
+and original filename/hash/size/URL. Their `reference_only` label describes document
+use; it is not missing Patch validation. Do not require Case/Implementation bindings,
+seven-layer classification or an Android environment tuple for a Doc.
+
+```bash
+python3 "scripts/akbs_knowledge_search.py" --document-detail <document_id> \
+  --document-revision <revision> --json
+python3 "scripts/akbs_knowledge_search.py" --document-detail <document_id> \
+  --document-revision <revision> --download-document \
+  --out /path/to/task-output/document.md --json
+```
+
+Use the hit's exact revision, not a guessed latest file. These actions are server-only
+GETs using the same identity and installation preflight. Downloads stay on the configured
+AKBS origin, check size/SHA-256 and never overwrite an existing output. Reading or
+downloading does not claim successful use. Local JSONL fallback does not establish
+whether a published Doc exists; state that limitation when the server is unavailable.
 
 ## Read the Solution and Its Original Patches
 

@@ -6,7 +6,7 @@ Default member search first calls the AKBS member search endpoint:
 
 ```text
 GET /akbs/api/member/knowledge-search?q=<query>&limit=<limit>&offset=<offset>
-  &type=<all|case|implementation|patch|symbol|doc>
+  &type=<all|case|implementation|patch|symbol|doc|app>
   &project=<project>&platform=<platform>&android_version=<version>
   &component_layer=<repeatable-layer>
 ```
@@ -65,7 +65,7 @@ replaces_case_ids
 
 These fields mean the local curation skill has marked an old case as obsolete or contradicted and linked a recommended replacement case. Search should surface the relationship as guidance, not as a final reuse decision.
 
-Server `--type all` returns `case`, `implementation`, `patch`, `symbol` and published `doc` knowledge. Patch evidence
+Server `--type all` returns `case`, `implementation`, `patch`, `symbol` and published `doc`/`app` knowledge. Patch evidence
 is available through the selected Implementation's bindings. Default local text search
 also preserves these prior AI evidence hints:
 
@@ -80,6 +80,18 @@ also preserves these prior AI evidence hints:
 Default `--type all` must not return report rows, event rows, or human/archive evidence kinds such as `source`, `work_findings`, `report_context`, or `package_check`. These archive records remain available only through explicit type filters for administrator trace-back and debugging.
 
 ## Result Types
+
+- `app`: a reviewed independent App capability tied to `app_id`, exact `revision`,
+  `sources` full LincHub commits, usage, applicability and limitations. No Patch
+  Case, layer, environment tuple or source upload applies. The existing search
+  contract adds this typed result; no second search protocol is introduced.
+
+App exact reads use `GET /akbs/api/member/me/apps/{app_id}?revision=N` and
+`GET /akbs/api/member/me/apps/{app_id}/revisions/{revision}/source`. The source
+locator must match the selected revision's repositories and commits; fetching
+code still requires the reader's own LincHub access. Explicit feedback uses
+`POST /akbs/api/member/me/apps/{app_id}/feedback` with exact `revision`, stable
+`request_id`, real `outcome` and `content`. Reads never submit feedback or claim use.
 
 - `case`: a stable Android engineering problem or requirement.
 - `implementation`: a concrete approach under a Case, with separately declared exact applicability tuples and bound source/verification evidence.

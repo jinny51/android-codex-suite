@@ -1,6 +1,6 @@
 # AKBS Member Ops
 
-Standalone AKBS member plugin, version 2.3.20. It owns member setup, knowledge
+Standalone AKBS member plugin, version 2.3.21. It owns member setup, knowledge
 search and merge review, personal daily/weekly reports, independent document
 submission, and Android change package handling without depending on the engineering or optional practices
 plugins at runtime.
@@ -22,6 +22,11 @@ administrator account-opening process; existing profiles and bindings are unchan
 - `akbs-weekly-report`
 - `akbs-patch-submit`
 - `akbs-doc-submit`
+
+App knowledge uses `akbs-knowledge-search` for published capabilities, exact LincHub
+versions and explicit actual-use feedback. Source stays in its existing personal or
+SysPros repository. The existing curation pass reads linked Git changes; members do
+not submit an additional App package or register App capabilities themselves.
 
 ## Configuration and artifacts
 

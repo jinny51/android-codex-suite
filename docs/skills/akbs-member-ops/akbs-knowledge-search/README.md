@@ -18,6 +18,12 @@
 文档结果显示作者、适用条件和精确修订原件；`reference_only` 表示文档参考用途，不是补丁验证不足。
 本地旧索引回退不能证明文档未入库。
 
+独立 App 能力也使用同一搜索入口（`--type app`）。结果固定 `app_id`、修订及
+LincHub 完整 commit，不把独立 App 套成 Patch 或要求七层。用 `--app-detail ID
+--app-revision N` 读详情，加 `--app-source` 取得准确版本指引；源码仍由本人按既有
+LincHub 权限获取。只有明确要求记录真实使用结果时才加 `--app-feedback JSON`，
+不将命中、取码或未执行记成成功复用，不涉及积分。
+
 ```bash
 python3 "scripts/akbs_knowledge_search.py" "设备升级 操作限制" --type doc
 python3 "scripts/akbs_knowledge_search.py" --document-detail <document_id> \

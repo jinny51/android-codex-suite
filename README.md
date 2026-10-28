@@ -47,7 +47,7 @@ jinny-android-practices
 - 当前产品源码补丁材料默认由远端通道一步生成最新快照并原子打包，避免人工衔接命令导致快照仅因等待而过期；独立 App 的本地开发不套用这条补丁采集路径。
 - 旧配置、材料和合法历史 v1 包按声明只读；所有当前入站统一写入正式 v2 包。
 - `android-patch-capture` 生成逐仓 patch 和工程证据，`akbs-patch-submit` 据此构造、检查并提交唯一的 `knowledge-incoming-package/2/android_change` 包；七层分类由 `components[].layer` 记录。
-- Patch 的每份 diff 必须来自目标 Android 产品源码的 Git 仓；独立 App 源码仍由 SysPros 管理，当前不能借 Patch 通道入库，App 的 AKBS 知识闭环尚待建设。七层只给合格的 Patch 分类，不能作为来源证明。
+- Patch 的每份 diff 必须来自目标 Android 产品源码的 Git 仓。独立 App 源码保留在实际所属的 LincHub 个人或 SysPros 仓库，由现有 curation 自动流程读取已关联仓库的提交并整理知识；成员不额外提交 App 材料。已发布 App 可通过统一搜索读取用途、条件和准确 commit，按本人 LincHub 权限取得源码并显式反馈真实使用结果。七层只给合格的 Patch 分类，不能作为来源证明。
 - 管理员提交本人 Patch 时，成员 Skill 只复用本地准备和校验，由可用的本地 `akbs-curation-maintainer` 确认服务端权限与作者绑定，在同一会话连续提交、比较知识和完成正式沉淀判断；普通成员路径不变，仅制作或暂存不触发生产写。
 
 ## 可选扩展

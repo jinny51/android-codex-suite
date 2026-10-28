@@ -85,7 +85,7 @@ def test_doc_search_json_schema_keeps_patch_branch_and_covers_exact_doc_fields()
     assert doc_schema["properties"]["type"]["const"] == "doc"
     assert doc_schema["properties"]["reuse_grade"]["const"] == "reference_only"
     assert {branch["$ref"] for branch in schema["properties"]["results"]["items"]["oneOf"]} == {
-        "#/$defs/patchKnowledgeResult", "#/$defs/docResult"}
+        "#/$defs/patchKnowledgeResult", "#/$defs/docResult", "#/$defs/appResult"}
 
 
 def test_doc_detail_uses_profile_headers_and_exact_revision(monkeypatch):

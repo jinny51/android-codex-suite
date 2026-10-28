@@ -353,6 +353,14 @@ REUSE_GRADE_LABELS = {
 
 
 def format_server_result(row: dict[str, Any], index: int) -> str:
+    if row.get("type") == "app":
+        lines = [f"{index}. [App 能力] {row['title']}",
+            f"   - app_id/revision: {row['app_id']} / {row['revision']}",
+            f"   - 用途: {row['summary']}", f"   - 用法: {row['usage']}",
+            f"   - 适用条件: {row['applicability']}", f"   - 限制: {row['limitations']}"]
+        lines.extend(f"   - 准确源码: {item['repository_url']} @ {item['commit']}" for item in row["sources"])
+        lines.append("   - 按本人的LincHub权限取得代码；命中或获取不等于实际复用。")
+        return "\n".join(lines)
     if row.get("type") == "doc":
         original = row.get("original") or {}
         return "\n".join([f"{index}. [文档参考] {row['title']}",

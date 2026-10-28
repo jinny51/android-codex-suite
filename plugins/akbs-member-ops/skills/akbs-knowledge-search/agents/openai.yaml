@@ -1,7 +1,7 @@
 interface:
   display_name: "AKBS Knowledge Search"
   short_description: "Search reusable team knowledge assets"
-  default_prompt: "Use $akbs-knowledge-search to find prior engineering cases, implementations, patches or independent technical documents before App/GMS, platform, native, HAL, kernel, device or build work; read the exact solution or document revision and its original before judging applicability."
+  default_prompt: "Use $akbs-knowledge-search to find cases, implementations, patches, App capabilities or independent documents before App/GMS, platform, native, HAL, kernel, device or build work; read the exact solution, App commit or Doc revision before judging applicability."
 
 policy:
   allow_implicit_invocation: true

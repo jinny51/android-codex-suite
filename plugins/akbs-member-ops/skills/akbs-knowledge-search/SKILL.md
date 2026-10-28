@@ -1,13 +1,13 @@
 ---
 name: akbs-knowledge-search
-description: Search AKBS for prior engineering Cases, Implementations, patches and published independent technical documents, with applicability and exact originals. Use during requirement triage, source work or knowledge reuse; this does not submit materials or decide engineering acceptance.
+description: Search AKBS for engineering Cases, Implementations, patches, published independent Docs and App capabilities, with applicability and exact originals or source versions. Use during requirement triage or knowledge reuse; does not submit materials or decide acceptance.
 ---
 
 # AKBS Knowledge Search
 
 Use this skill to search the team knowledge repository before starting new analysis or implementation. This unified entry retrieves Patch knowledge and independently submitted Doc knowledge; `akbs-doc-submit` prepares and submits real technical documents, while the available management Skill reviews and publishes them. Reports remain reporting materials, not independent Doc knowledge.
 
-This skill does not submit reports, create patches, edit source, or decide correctness by itself. A Case describes a problem or requirement; an Implementation is a concrete solution under it. Search returns their facts and bound originals for the current engineering task to assess.
+This skill does not submit reports, create patches, edit source, or decide correctness by itself. A Case describes a problem or requirement; an Implementation is a concrete solution under it. Search returns their facts and bound originals for the current engineering task to assess. Published App capabilities use the same search with `--type app`; the existing curation pass reads linked LincHub changes and organizes their knowledge. Members continue normal Git development without a separate App submission.
 
 ## Active Install Family
 
@@ -112,6 +112,32 @@ python3 "scripts/akbs_knowledge_search.py" \
   --send-dispute \
   --dispute-reason "目标知识没有覆盖当前补丁的功能目标"
 ```
+
+## Read an App Capability, Accurate Version and Actual-Use Feedback
+
+App results identify `app_id`, exact `revision`, reviewed usage/conditions and
+LincHub repositories pinned to full commits. An App is not a Patch Implementation;
+its reference label is not a missing seven-layer or device-verification gate.
+
+```bash
+python3 scripts/akbs_knowledge_search.py "人脸解锁" --type app --json
+python3 scripts/akbs_knowledge_search.py --app-detail <app_id> --app-revision <revision> --json
+python3 scripts/akbs_knowledge_search.py --app-detail <app_id> --app-revision <revision> --app-source --json
+```
+
+Use the returned exact commit locators and the reader's own existing LincHub
+access. AKBS does not lend administrator credentials or silently follow a branch
+to newer code. These reads do not fetch code or claim actual reuse. Local text
+fallback cannot establish whether App knowledge exists or is accessible.
+
+Only when requested, send a real use result with `--app-detail ...
+--app-revision ... --app-feedback /path/to/feedback.json`. The JSON contains exact
+`revision`, stable `request_id`, actual `outcome` and explanatory `content`.
+Outcomes are `unknown`, `not_executed`, `rejected_with_reason`, `not_applicable`,
+`acquisition_failed`, `operation_failed`, `content_error`, or `used`.
+Do not infer `used` from a hit, download, plan or unperformed test. Retry an
+uncertain write with the same request and payload; a target-specific failure is
+feedback, not automatic global invalidation or contribution points.
 
 ## Read a Document and Its Exact Original
 

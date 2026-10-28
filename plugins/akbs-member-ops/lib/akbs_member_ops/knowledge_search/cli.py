@@ -34,6 +34,7 @@ from akbs_member_ops.knowledge_search.formatting import compact_list, format_cas
 from akbs_member_ops.knowledge_search.local_index import load_rows, search
 from akbs_member_ops.knowledge_search.originals import download_case_patch, fetch_case_patches
 from akbs_member_ops.knowledge_search.documents import download_document, fetch_document, format_document_detail
+from akbs_member_ops.knowledge_search.apps import fetch_app, fetch_app_source, format_app_detail, submit_app_feedback
 from akbs_member_ops.json_io import write_json_once
 from akbs_member_ops.http_client import failure_result
 from akbs_member_ops.member_config import expand_codex_path
@@ -62,6 +63,7 @@ def result_id(row: dict[str, Any]) -> str:
         "patch": ("evidence_binding_id", "patch_asset_id", "patch_id"),
         "symbol": ("symbol",),
         "doc": ("document_id",),
+        "app": ("app_id",),
     }.get(kind, ("id", "case_id"))
     for key in keys:
         value = row.get(key)
@@ -109,6 +111,8 @@ def usage_result(row: dict[str, Any]) -> dict[str, Any]:
         "patch_asset_id",
         "package_id",
         "document_id",
+        "app_id",
+        "sources",
         "revision",
         "knowledge_id",
         "original",
@@ -835,7 +839,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--member-assessment", default="", help="Member/Codex assessment for a merge dispute. Only sent with --send-dispute.")
     parser.add_argument("--evidence-ref", action="append", default=[], help="Evidence reference to include when explicitly sending a merge dispute. Repeatable.")
     parser.add_argument("--root", help="Knowledge repository worktree path.")
-    parser.add_argument("--type", choices=["all", "case", "implementation", "patch", "symbol", "doc", "variant", "report", "event", "evidence"], default="all", help="Result type filter; legacy variant/archive types are local text reads only.")
+    parser.add_argument("--type", choices=["all", "case", "implementation", "patch", "symbol", "doc", "app", "variant", "report", "event", "evidence"], default="all", help="Result type filter; legacy variant/archive types are local text reads only.")
+    parser.add_argument("--app-detail", help="Read an exact App capability revision; server only.")
+    parser.add_argument("--app-revision", type=int, help="Exact App revision returned by the server.")
+    parser.add_argument("--app-source", action="store_true", help="Read the selected App revision's exact LincHub source locators.")
+    parser.add_argument("--app-feedback", metavar="JSON", help="Explicitly send actual-use feedback for --app-detail; no automatic feedback.")
     parser.add_argument("--document-detail", help="Read one independent Doc's exact version; server only.")
     parser.add_argument("--document-revision", type=int, help="Server-returned revision to read or download with --document-detail.")
     parser.add_argument("--download-document", action="store_true", help="Download --document-detail's original to --out and verify size/SHA-256.")
@@ -919,6 +927,31 @@ def handle_merge_confirmation_command(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.app_detail:
+        if (args.query or args.case_detail or args.case_patches or args.document_detail
+                or args.document_revision is not None or args.download_document or args.download_patch
+                or args.implementation_id or args.out or args.merge_confirmation or args.source == "local"
+                or args.root or args.refresh or args.additional_query or args.reuse_decision or args.reuse_outcome
+                or (args.app_source and args.app_feedback)):
+            parser.error("--app-detail is a separate exact-version read or explicit feedback, not a Patch/Doc action")
+        try:
+            if args.app_feedback:
+                feedback = json.loads(expand_codex_path(args.app_feedback, resolve=False).read_text(encoding="utf-8"))
+                if not isinstance(feedback, dict) or feedback.get("revision") != args.app_revision:
+                    raise ValueError("feedback revision must match --app-revision")
+                payload = submit_app_feedback(args.app_detail, feedback, timeout=args.server_timeout)
+            else:
+                payload = (fetch_app_source if args.app_source else fetch_app)(args.app_detail,
+                    revision=args.app_revision, timeout=args.server_timeout)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from None
+        except Exception as exc:
+            raise SystemExit(failure_result(exc).safe_summary("App knowledge API unavailable")) from None
+        print(json.dumps(payload, ensure_ascii=False, indent=2) if args.json or args.app_source or args.app_feedback
+              else format_app_detail(payload))
+        return 0
+    if args.app_revision is not None or args.app_source or args.app_feedback:
+        parser.error("--app-revision/--app-source/--app-feedback require --app-detail")
     if args.document_detail:
         if (args.query or args.case_detail or args.case_patches or args.download_patch or args.implementation_id
                 or args.merge_confirmation or args.source == "local" or args.root or args.refresh

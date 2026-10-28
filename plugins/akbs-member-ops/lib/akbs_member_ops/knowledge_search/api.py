@@ -28,7 +28,10 @@ from akbs_member_ops.knowledge_search.config import (
 SEARCH_RESPONSE_SCHEMA = "akbs-member-knowledge-search-v2"
 SEARCH_CONTRACT_HEADER = "X-AKBS-Member-Search-Contract"
 SEARCH_MODE = "two_stage_structured_lexical"
-RESULT_TYPES = frozenset({"case", "implementation", "patch", "symbol", "doc"})
+RESULT_TYPES = frozenset({"case", "implementation", "patch", "symbol", "doc", "app"})
+APP_RESULT_FIELDS = frozenset({"type", "app_id", "revision", "knowledge_id", "title", "summary", "content",
+    "applicability", "member_alias", "member_name", "sources", "usage", "limitations", "version_label",
+    "source_url", "score", "reuse_grade"})
 DOC_RESULT_FIELDS = frozenset({"type", "document_id", "revision", "knowledge_id", "title", "summary",
     "content", "applicability", "member_alias", "member_name", "source_package_key", "original", "score", "reuse_grade"})
 REUSE_GRADES = frozenset(
@@ -210,6 +213,22 @@ def _is_sha256(value: Any, *, allow_empty: bool = False) -> bool:
     )
 
 
+def validate_app_result(item: dict[str, Any]) -> None:
+    from akbs_member_ops.knowledge_search.apps import validate_sources
+    if (set(item) != APP_RESULT_FIELDS or not _has_text(item.get("app_id"))
+            or item.get("knowledge_id") != item["app_id"] or type(item.get("revision")) is not int
+            or item["revision"] < 1 or item.get("reuse_grade") != "reference_only"
+            or type(item.get("score")) not in {int, float}):
+        raise invalid_success_response("server App search identity, fields or reference grade is invalid")
+    for key in ("title", "summary", "content", "applicability", "member_alias", "member_name", "usage", "limitations", "version_label", "source_url"):
+        if not isinstance(item.get(key), str):
+            raise invalid_success_response("server App search text is invalid")
+    try:
+        validate_sources(item.get("sources"))
+    except ValueError:
+        raise invalid_success_response("server App search sources must pin exact LincHub commits") from None
+
+
 def validate_doc_result(item: dict[str, Any]) -> None:
     if set(item) != DOC_RESULT_FIELDS:
         raise invalid_success_response("server Doc search fields are invalid")
@@ -306,6 +325,11 @@ def validate_server_payload(
     for item in results:
         if not isinstance(item, dict):
             raise invalid_success_response("server search result must be an object")
+        if item.get("type") == "app":
+            validate_app_result(item)
+            if payload["result_type"] not in {"all", "app"}:
+                raise invalid_success_response("server App result does not match result_type filter")
+            continue
         if item.get("type") == "doc":
             validate_doc_result(item)
             if payload["result_type"] not in {"all", "doc"}:
@@ -675,7 +699,8 @@ def normalize_server_results(payload: dict[str, Any]) -> list[dict[str, Any]]:
         row["kind"] = row["type"]
         row.setdefault(
             "id",
-            row.get("document_id")
+            row.get("app_id")
+            or row.get("document_id")
             or row.get("implementation_id")
             or row.get("evidence_binding_id")
             or row.get("patch_asset_id")

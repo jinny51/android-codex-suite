@@ -13,6 +13,7 @@ for path in (MEMBER / "lib", MEMBER / "internal/incoming-v2/scripts"):
     sys.path.insert(0, str(path))
 
 from akbs_intake import submit  # noqa: E402
+from akbs_member_ops.knowledge_rules import patch_upload_gate_errors  # noqa: E402
 
 
 def package_with_workflow(tmp_path: Path, workflow: str) -> tuple[Path, bytes]:
@@ -68,3 +69,12 @@ def test_member_current_workflow_keeps_the_existing_submission_route(
     assert result == {"submitted": True}
     assert sent == [(package, "test-member", True)]
     assert (package / "manifest.json").read_bytes() == before
+
+
+@pytest.mark.parametrize("status", ["draft", "candidate", "failed", "blocked"])
+def test_missing_search_warning_does_not_let_unvalidated_statuses_upload(status: str) -> None:
+    manifest = {"package_kind": "android_change", "package_status": status,
+                "workflow_contract": "current_codex_skill"}
+    assert patch_upload_gate_errors(manifest)
+    assert manifest["package_status"] == status
+    assert patch_upload_gate_errors({**manifest, "package_status": "validated"}) == []

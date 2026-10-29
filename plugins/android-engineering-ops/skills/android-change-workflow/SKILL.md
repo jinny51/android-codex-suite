@@ -118,9 +118,11 @@ or reinterpret that rule. Do not automatically include non-functional conversati
 instructions in the query; a request that is already a concise, complete function
 description may be used unchanged.
 
-When `akbs-member-ops` is installed and configured, run `akbs-knowledge-search` before
-implementation with the real project, chip platform, Android version and applicable
-Patch layers. Compare the Case purpose, concrete Implementation, exact environment
+When `akbs-member-ops` is installed and configured, automatically run
+`akbs-knowledge-search` before implementation with the real project, chip platform,
+Android version and applicable Patch layers. If an App task later needs a product-source
+change, do this before the first system-source edit as well; the App task label does
+not skip this step. Compare the Case purpose, concrete Implementation, exact environment
 and bound original patches. Read `--case-detail <case_id>` and, when selecting a
 solution, `--implementation-id <implementation_id>`; list/download originals
 with that same selector. Do not apply only the search summary or truncated preview.
@@ -134,13 +136,20 @@ Pass them as `--search-receipt` and `--search-receipt-sha256` so the current
 capture→submit chain preserves the exact original per-query receipt.
 Downloading originals or choosing reuse is not proof of successful target verification.
 AKBS search is an optional engineering integration: its absence must not block source
-access, implementation, or verification. Record the absence truthfully. Where the
-existing capture route and required profile are available, local `draft` or `candidate`
-material may preserve that limitation; this is not a `validated` upload package.
-A current `validated` capture requires genuine pre-change search evidence, and formal
-submission retains its existing stricter gate. Do not fabricate a receipt or relabel
-current work as an import. Missing source/profile/capture capability leaves material
-in the engineering task rather than creating another packaging route.
+access, implementation, or verification. Report a failed/unavailable search truthfully
+when it happens; if a known usable search is deliberately skipped, immediately explain
+the process violation. From 2026-11-01 00:00+08:00, a confirmed controllable skip in
+new work halves only that person's corresponding net contribution after its ordinary
+technical score. Pre-rule work is not penalized even if uploaded later. A missing
+receipt alone, a tool/service fault, no matches or an `unknown` reuse decision is not
+proof of that violation. Do not add a human approval step or penalize it in the plugin.
+Where the existing capture route and required profile are available, retain actual
+search facts. A verified change may still use `validated` capture and normal submission
+without a pre-change search record; missing feature verification still stays local
+`draft` or `candidate`. Upload is not knowledge acceptance. Do not fabricate a receipt,
+perform a later search as if it preceded development, or relabel current work as an
+import. Missing source/profile/capture capability leaves material in the engineering
+task rather than creating another packaging route.
 For independent App work, do not invent a Patch layer for search.
 
 For a `registered_remote_tree`, use the host platform's `android-source-access` entry

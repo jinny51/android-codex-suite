@@ -25,6 +25,7 @@ if PLUGIN_LIB.is_dir() and str(PLUGIN_LIB) not in sys.path:
     sys.path.insert(0, str(PLUGIN_LIB))
 
 from android_engineering_ops.knowledge_rules import (
+    PRE_CHANGE_SEARCH_MISSING_WARNING,
     aggregate_package_scope_errors,
     classify_patch_asset_names,
     classify_pre_change_search,
@@ -998,17 +999,12 @@ def validate_search_decision_for_status(args: argparse.Namespace, search_payload
     if not bool(classification.get("searched")):
         if not bool(classification.get("requires_pre_change_search")):
             return [], []
-        return [
-            "开发前知识搜索（pre-change knowledge search）未发生，不能事后补造。"
-            "本包声明为 current_codex_skill 工作流，不能按当前 validated 上传；"
-            "请保持真实工作流和实施来源，不能互相改写以规避门禁。"
-            "当前结果可留在本地或报告上下文；后续重新开发时必须先完成知识检索。"
-        ], []
+        return [], [PRE_CHANGE_SEARCH_MISSING_WARNING]
     if not bool(classification.get("member_can_complete_before_upload")):
         return [], []
     return [], [
         "已发生开发前知识搜索，但结果用途仍不确定；保留 unknown，不据此阻断补丁采集。"
-        "这不代表复用成功，也不获得搜索闭环加分。"
+        "这不代表复用成功，按真实贡献评分。"
     ]
 
 
@@ -1472,7 +1468,7 @@ def parse_args() -> argparse.Namespace:
         default="current_codex_skill",
         help=(
             "How this patch entered AKBS. This is independent from who wrote "
-            "the code; current_codex_skill requires truthful pre-change search."
+            "the code; current_codex_skill preserves the actual pre-change search facts."
         ),
     )
     parser.add_argument("--project", default="unknown", help="Project name for manifest/readme.")

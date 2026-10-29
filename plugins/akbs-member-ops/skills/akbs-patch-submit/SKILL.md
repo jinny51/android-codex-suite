@@ -105,6 +105,17 @@ administrator submission, use the existing truthful manual/historical capture
 route with real verification evidence, then prepare with `--patch-package`.
 Do not invent PASS evidence or weaken the validated upload gate.
 
+A verified current-work capture without a pre-change knowledge-search record still
+uses normal prepare/validate/submit with truthful search facts. Never borrow another
+receipt, retrospectively label a search as pre-change, or switch to an import label.
+Only the missing search record is advisory; the existing validated status, source,
+verification and supplied-receipt integrity requirements remain. Upload does not
+establish knowledge acceptance. From 2026-11-01 00:00+08:00, confirmed controllable
+skipping in new work halves only the person's corresponding net contribution through
+administrator scoring. Missing receipts or tool faults alone do not establish a
+violation; pre-rule work is not penalized. Show the returned warning without asking
+for another permission or scoring locally.
+
 ## Validate and submit
 
 Local validation does not submit:

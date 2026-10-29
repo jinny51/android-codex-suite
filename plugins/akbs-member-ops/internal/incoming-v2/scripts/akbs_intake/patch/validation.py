@@ -12,7 +12,10 @@ from akbs_member_ops.patch_analysis import (
     resource_keys_from_patch_text,
 )
 from akbs_member_ops.verification_evidence import has_authoritative_requirement_result
-from akbs_member_ops.knowledge_rules import search_receipt_platform_matches_package
+from akbs_member_ops.knowledge_rules import (
+    PRE_CHANGE_SEARCH_MISSING_WARNING,
+    search_receipt_platform_matches_package,
+)
 
 RequireFile = Callable[[Any, str], Optional[Path]]
 ReadReferencedJson = Callable[[Path, str], Optional[dict[str, Any]]]
@@ -713,12 +716,7 @@ def validate_patch_pre_change_search(
         and requires_pre_change_search
         and search_payload_missing_required_pre_change_search(search_payload)
     ):
-        errors.append(
-            "开发前知识搜索（pre-change knowledge search）未发生，不能事后补造。"
-            "本包声明为 current_codex_skill 工作流，不能按当前 validated 上传；"
-            "请保持真实工作流和实施来源，不能互相改写以规避门禁。"
-            "当前结果可留在本地或报告上下文；后续重新开发时必须先完成知识检索。"
-        )
+        warnings.append(PRE_CHANGE_SEARCH_MISSING_WARNING)
     elif (
         package_status == "validated"
         and missing_pre_change_search
@@ -736,7 +734,7 @@ def validate_patch_pre_change_search(
     ):
         warnings.append(
             "已发生开发前知识搜索，但结果用途仍不确定；保留 unknown，不据此阻断补丁上传。"
-            "这不代表复用成功，也不获得搜索闭环加分。"
+            "这不代表复用成功，按真实贡献评分。"
         )
 
 

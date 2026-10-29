@@ -179,10 +179,14 @@ their own recorded facts; submit must not select a same-day record for them.
 For every status, refuse empty patches, unrelated changes or functional goals,
 failed member marker policy, conflicting project/platform facts, or a missing layer.
 A supplied search receipt that is fabricated or invalid is always refused.
-A `validated` current Codex capture additionally requires verified feature behavior
-and genuine pre-change search evidence; missing evidence cannot be invented later.
-An honest local `draft`/`candidate` must retain that missing or unverified fact and
-does not bypass final submission requirements.
+A `validated` current Codex capture additionally requires verified feature behavior.
+Missing pre-change search evidence produces a truthful warning, not a downgrade or
+refusal of an otherwise verified capture; missing evidence cannot be invented later.
+From 2026-11-01 00:00+08:00, confirmed controllable skipping in new work halves the
+corresponding person's net contribution through the existing administrator scoring
+pass. The plugin does not decide a penalty from a missing receipt or a tool failure;
+pre-rule work is not penalized. An honest local `draft`/`candidate` retains missing
+feature verification and does not bypass final submission requirements.
 
 One functional goal may legitimately span several repositories and layers, so it stays
 in one package. Its patch files are still generated separately per Git repository;

@@ -89,16 +89,20 @@ def test_framework_reference_inherits_source_authority_instead_of_requiring_remo
     assert "does not add current local-Git capture support" in framework
 
 
-def test_optional_knowledge_does_not_promise_validated_capture_without_prechange_search() -> None:
+def test_search_failure_does_not_block_verified_capture_or_create_an_import_bypass() -> None:
     workflow = (WORKFLOW / "SKILL.md").read_text(encoding="utf-8")
     optional = workflow.split("AKBS search is an optional engineering integration:", 1)[1].split(
         "For independent App work", 1,
     )[0]
     assert "implementation, or verification" in optional
-    assert "local `draft` or `candidate`" in optional
-    assert "not a `validated` upload package" in optional
-    assert "current `validated` capture requires genuine pre-change search evidence" in optional
+    assert "missing feature verification still stays local" in optional
+    assert "`draft` or `candidate`" in optional
+    assert "normal submission\nwithout a pre-change search record" in optional
+    assert "2026-11-01 00:00+08:00" in optional
+    assert "missing\nreceipt alone" in optional
+    assert "do not add a human approval step" in optional.lower()
     assert "relabel" in optional and "import" in optional
+    assert "before the first system-source edit" in workflow
 
 
 def test_manifest_publishes_five_canonical_skills() -> None:

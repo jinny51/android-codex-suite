@@ -562,13 +562,19 @@ def test_capture_rechecks_receipt_after_resolving_real_project(
     assert receipt.read_bytes() == raw
 
 
-def test_explicit_unknown_does_not_relax_missing_pre_change_search() -> None:
+@pytest.mark.parametrize("payload", [
+    {"searched": False, "decision": "unknown", "reuse_decision": "unknown"}, {},
+])
+def test_missing_pre_change_search_warns_without_blocking_verified_capture(payload: dict) -> None:
     capture = load_capture()
-    errors, _ = capture.validate_search_decision_for_status(
+    before = json.dumps(payload, sort_keys=True)
+    errors, warnings = capture.validate_search_decision_for_status(
         argparse.Namespace(status="validated", workflow_contract="current_codex_skill"),
-        {"searched": False, "decision": "unknown", "reuse_decision": "unknown"},
+        payload,
     )
-    assert any("未发生" in error for error in errors)
+    assert errors == []
+    assert any("开发前知识搜索执行记录" in warning and "旧成果不追溯" in warning for warning in warnings)
+    assert json.dumps(payload, sort_keys=True) == before
 
 
 @pytest.mark.parametrize("status", ["draft", "candidate"])
@@ -592,7 +598,7 @@ def test_capture_instructions_keep_unknown_non_blocking_without_dropping_search_
     assert "the use decision is closed; do not submit it as `validated`" not in skill
     assert "A supplied search receipt that is fabricated or invalid is always refused" in skill
     assert "A `validated` current Codex capture" in skill
-    assert "genuine pre-change search evidence" in skill
+    assert "Missing pre-change search evidence produces a truthful warning" in skill
     assert "retrospectively fabricate one" in skill
-    assert "开发前搜索未发生时仍停止当前工作流的已验证采集" in docs
+    assert "不再阻止已完成真实功能验证" in docs
     assert "不因状态是草稿而放行" in docs

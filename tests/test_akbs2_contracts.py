@@ -404,7 +404,7 @@ def test_unknown_preserves_search_facts_without_blocking_validated_patch(package
         errors=errors, warnings=warnings,
     )
     assert bool(errors) is (mutation != "none")
-    expected_error = {"hash": "hash", "environment": "目标环境", "not_searched": "未发生"}.get(mutation)
+    expected_error = {"hash": "hash", "environment": "目标环境", "not_searched": "真实搜索标记"}.get(mutation)
     if package_status == "validated" and mutation == "none":
         assert any("用途仍不确定" in warning for warning in warnings)
     if expected_error:
@@ -414,6 +414,28 @@ def test_unknown_preserves_search_facts_without_blocking_validated_patch(package
     assert classify_pre_change_search(
         payload, workflow_contract="current_codex_skill", package_status=package_status,
     )["validity_score_effect"] == "no_search_loop_score"
+
+
+@pytest.mark.parametrize("search_evidence", [
+    {}, {"payload": {"searched": False, "decision": "unknown", "queries": []}},
+])
+def test_verified_current_package_missing_search_warns_without_inventing_a_receipt(search_evidence: dict) -> None:
+    before = copy.deepcopy(search_evidence)
+    errors, warnings = [], []
+    validate_patch_pre_change_search(
+        manifest={"workflow_contract": "current_codex_skill", "member_alias": "member-test"},
+        evidence_by_kind={"search_before_change": search_evidence}, package_status="validated",
+        workflow_contract_requires_pre_change_search=workflow_contract_requires_pre_change_search,
+        search_payload_missing_required_pre_change_search=search_payload_missing_required_pre_change_search,
+        search_payload_has_unresolved_usage=search_payload_has_unresolved_usage,
+        errors=errors, warnings=warnings,
+    )
+    assert errors == []
+    from akbs_member_ops.knowledge_rules import PRE_CHANGE_SEARCH_MISSING_WARNING as member_warning
+    from android_engineering_ops.knowledge_rules import PRE_CHANGE_SEARCH_MISSING_WARNING as capture_warning
+    assert member_warning == capture_warning
+    assert warnings == [member_warning]
+    assert search_evidence == before
 
 
 @pytest.mark.parametrize("chip,family,compatible", [

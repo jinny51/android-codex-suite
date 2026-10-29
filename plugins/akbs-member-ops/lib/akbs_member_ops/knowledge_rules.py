@@ -8,6 +8,12 @@ from typing import Any
 
 
 AKBS_RULES_CONTRACT_VERSION = "2026-08-27.1"
+PRE_CHANGE_SEARCH_MISSING_WARNING = (
+    "未能提供开发前知识搜索执行记录；保留真实缺失事实，可以继续正常打包和提交，"
+    "不能事后补造或改标为历史/手工导入。"
+    "2026-11-01 00:00+08:00 起，确认本可检索却有意跳过的新工作，对应净贡献实得分减半；"
+    "仅缺回执或工具故障不直接扣分，旧成果不追溯。"
+)
 SEMVER_RE = re.compile(r"^\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9_.-]+)?$")
 RUN_ID_TIMESTAMP_RE = re.compile(r"^(?P<date>\d{8})-(?P<time>\d{6})(?:-|$)")
 GARBLED_QUESTION_MARK_RE = re.compile(r"[?？]{3,}")

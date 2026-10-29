@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import json
 import os
 from pathlib import Path
@@ -557,6 +558,65 @@ class RemotePatchSnapshotTests(unittest.TestCase):
         )
         self.assertEqual(coding["expected_member_alias"], "member01")
         self.assertEqual(coding["identity_source"], "current_member_profile")
+
+    def test_verified_capture_without_search_prepares_one_normal_validated_incoming_package(self) -> None:
+        snapshot_path = self.root / "handoff" / "snapshot.json"
+        codex_home = self.root / "codex-home"
+        self.write_snapshot(snapshot_path)
+        command = self.capture_command(snapshot_path, codex_home)
+        for flag in ("--search-query", "--search-result", "--reuse-decision"):
+            index = command.index(flag)
+            del command[index:index + 2]
+        command.extend(["--status", "validated", "--problem-summary", "产品显示策略缺少开关",
+                        "--solution-summary", "在产品框架中增加显示策略开关"])
+        result = run(command, self.root, env={"CODEX_HOME": str(codex_home)})
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        captured = json.loads(result.stdout)
+        capture = Path(captured["package"])
+        manifest = json.loads((capture / "manifest.json").read_text())
+        self.assertEqual(manifest["status"], "validated")
+        self.assertEqual(captured["local_check"]["status"], "PASS")
+        self.assertTrue(any("开发前知识搜索执行记录" in message for message in captured["local_check"]["warnings"]))
+        originals = {row["path"]: (capture / row["path"]).read_bytes() for row in manifest["patches"]}
+
+        member = REPO_ROOT / "plugins/akbs-member-ops"
+        for path in (member / "lib", member / "internal/incoming-v2/scripts"):
+            sys.path.insert(0, str(path))
+        import akbs_member_intake as intake
+        from akbs_intake.patch import builder
+        from akbs_member_ops.knowledge_rules import patch_upload_gate_errors
+        version = json.loads((member / ".codex-plugin/plugin.json").read_text())["version"]
+        def source(package, config, skill):
+            payload = {"source": "akbs-member-ops", "tool": skill, "member_alias": config["member_alias"],
+                       "plugin_name": "akbs-member-ops", "plugin_version": version, "skill_version": version,
+                       "installed_plugin_version": version, "remote_plugin_version": version,
+                       "skill_cache_version": version, "plugin_version_check": {"status": "PASS"}}
+            intake.write_json(package / "materials/evidence/source.json", {"kind": "source", "payload": payload})
+            return payload
+        with patch.object(builder, "same_day_daily_report_run_ids", return_value=[]), patch.object(
+            builder, "related_report_project_clues", return_value=[],
+        ):
+            incoming = builder.build_patch_package(
+                dt.date(2026, 10, 29), {"member_alias": "member01", "member_name": "Member 01",
+                                      "out_dir": str(self.root / "incoming")},
+                run_id="20261029-120000-verified-without-search", patch_package_paths=[str(capture)],
+                project="TVE1088U", summary="产品显示策略开关", status="validated",
+                platform_override="unisoc", android_version_override="14", incoming_schema_version="2",
+                framework_optional_evidence_kinds=set(), validate_package_fn=intake.validate_package,
+                write_package_source_fn=source, plugin_install_metadata_fn=lambda: {"plugin_version": version},
+            )
+        generated = json.loads((incoming / "manifest.json").read_text())
+        check = json.loads((incoming / "local-check.json").read_text())
+        self.assertEqual(check["status"], "PASS", check)
+        self.assertEqual(generated["package_status"], "validated")
+        self.assertEqual(generated["workflow_contract"], "current_codex_skill")
+        self.assertEqual(patch_upload_gate_errors(generated), [])
+        search = json.loads((incoming / "materials/evidence/search_before_change.json").read_text())
+        self.assertIs(search["payload"]["searched"], False)
+        self.assertNotIn("source_receipt_json", search)
+        self.assertNotIn("source_receipt_sha256", search)
+        self.assertEqual(len(generated["files"]["patches"]), len(originals))
+        self.assertEqual({(incoming / path).read_bytes() for path in generated["files"]["patches"]}, set(originals.values()))
 
     def test_current_capture_rejects_source_root_patch_artifact_and_external_output(self) -> None:
         base = [

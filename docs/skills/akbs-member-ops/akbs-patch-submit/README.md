@@ -59,3 +59,5 @@ python3 "scripts/akbs_patch_submit.py" --profile <member_alias> --submit-latest
 需要修改源码或重新抓取时使用 `$android-patch-capture`，然后直接检查、准备或提交
 它生成的整个目录。不要手工拼 manifest。历史 `framework_change` 只读兼容；当前
 工具只写 `android_change`。普通成员上传后的管理员审核保持原流程；管理员本人提交按上面的管理通路连续处理，不制造一次自我确认。
+
+缺开发前检索记录的已验证当前工作仍走正常 prepare/validate/submit，保留事实并显示警告，不改标导入、不补造检索。来源、真实验收、validated 上传状态以及已提供回执的完整性检查不变；上传成功不等于沉淀通过。自 2026-11-01 00:00+08:00 起，确认本可检索却有意跳过的新工作，由管理端只对本人对应净贡献的技术分减半并公示依据；仅缺回执或工具故障不直接扣分，旧成果不追溯。

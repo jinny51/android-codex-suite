@@ -5,7 +5,7 @@
   "plugins": [
     {
       "id": "akbs-member-ops",
-      "version": "2.3.22",
+      "version": "2.3.23",
       "role": "standalone_member_workflows",
       "skills": [
         "akbs-member-setup",
@@ -19,7 +19,7 @@
     },
     {
       "id": "android-engineering-ops",
-      "version": "3.3.9",
+      "version": "3.3.10",
       "role": "standalone_android_engineering_core",
       "default_execution": "core-direct",
       "skills": [

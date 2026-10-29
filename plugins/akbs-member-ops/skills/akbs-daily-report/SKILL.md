@@ -202,3 +202,10 @@ every later version is a revision, never a late submission, even when revised on
 a later date. Require the member to request that revision explicitly and target
 the current effective run with `--replace-daily-run-id`; retain the old version
 in history.
+
+For punctuality and scoring, use the server deadline policy and the first valid
+server receipt, not package generation time or the curation run time. Daily
+reports dated 2026-10-29 onward are due by that day's 24:00, before the next
+00:00, in Asia/Shanghai. Earlier report dates retain their original 20:00 cutoff;
+later submission or revision does not move them to the new rule. Do not add a
+member-side cutoff calculation or change existing report points.

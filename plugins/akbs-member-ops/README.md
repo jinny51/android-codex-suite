@@ -1,6 +1,6 @@
 # AKBS Member Ops
 
-Standalone AKBS member plugin, version 2.3.21. It owns member setup, knowledge
+Standalone AKBS member plugin, version 2.3.22. It owns member setup, knowledge
 search and merge review, personal daily/weekly reports, independent document
 submission, and Android change package handling without depending on the engineering or optional practices
 plugins at runtime.

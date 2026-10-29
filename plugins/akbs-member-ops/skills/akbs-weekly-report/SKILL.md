@@ -314,3 +314,11 @@ already exists, every later version is a revision, never a late submission,
 even when revised in a later week. Require an explicit revision targeting the
 current effective run with `--replace-weekly-run-id`; retain the old version in
 history.
+
+For punctuality and scoring, use the server deadline policy and the first valid
+server receipt, not package generation time or the curation run time. The due
+date remains the day after the week's last workday, no later than that Sunday.
+When that original due date is 2026-10-29 or later, the cutoff is its 24:00,
+before the next 00:00, in Asia/Shanghai; earlier due dates retain 20:00. Keep the
+weekly period and contribution month unchanged. Do not add a member-side cutoff
+calculation or change existing report points.

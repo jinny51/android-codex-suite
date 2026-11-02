@@ -252,9 +252,9 @@ def parse_http_error(
     assert isinstance(payload, dict)
     code = str(payload["code"])
     kind = classify_error(status, code, contract_codes)
-    # The envelope message is validated for shape but is still server-controlled.
-    # A code-derived message cannot echo a request body, session, path, or secret.
-    message = _generic_message(kind)
+    # Keep actionable server diagnostics while redacting credentials and paths.
+    # The generic text is a fallback, not a replacement for a valid explanation.
+    message = sanitize_public_text(payload["message"], _generic_message(kind))
     details = sanitize_details(payload.get("details", {}))
     return HttpErrorResult(
         status_code=status,

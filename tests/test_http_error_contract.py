@@ -245,6 +245,28 @@ def test_shared_request_client_preserves_modern_code_and_request_id() -> None:
     assert result.kind is HttpErrorKind.RESOURCE_LIMIT
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "report_view.projects[0].bsp_pending must use '当前剩余 N 项：需求 N、移植 N、Bug N'",
+        "report_view report_type does not match the upload route",
+        "report_view.projects[0].work_items[0].status is invalid",
+    ],
+)
+def test_report_rejection_exposes_the_specific_reason_without_file_forwarding(message: str) -> None:
+    error = make_http_error(status=400, code="invalid_report_view", message=message)
+    request = urllib.request.Request("http://akbs.invalid/member/me/uploads/weekly")
+
+    with patch("urllib.request.urlopen", side_effect=error):
+        with pytest.raises(HttpClientFailure) as caught:
+            request_json(request, timeout=1, contract_codes=error_reason_codes())
+
+    visible = str(caught.value)
+    assert message in visible
+    assert "code=invalid_report_view" in visible
+    assert f"request_id={REQUEST_ID}" in visible
+
+
 def make_synthetic_system_root(root: Path) -> Path:
     system_root = root / "synthetic-system"
     incoming_root = system_root / "contracts" / "incoming" / "v2"

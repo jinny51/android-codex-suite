@@ -170,11 +170,6 @@ generated files, build targets and build route, runtime/deployment mechanism,
 regression surface, diagnostics, and rollback. Preserve unrelated user changes and use
 the smallest coherent change.
 
-When this task will edit a file that already contains an applied prerequisite
-patch outside Git HEAD, record the post-apply state before the first edit using
-`android-patch-capture`'s existing snapshot command and `--record-baseline`.
-Keep the returned command ID and SHA256 with the task for final capture.
-
 ## Gate 4: Implement and Verify by Component
 
 Choose a build route from authoritative project files and instructions:

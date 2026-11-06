@@ -22,7 +22,6 @@ if str(PLUGIN_LIB) not in sys.path:
 from android_engineering_ops.artifact_paths import require_safe_artifact_path
 from android_engineering_ops.remote_patch_snapshot import (
     RemotePatchSnapshotError,
-    add_baseline_arguments,
     load_remote_patch_snapshot,
     parse_repository_files,
 )
@@ -74,22 +73,17 @@ def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
         raise SystemExit(f"无法执行 snapshot handoff 命令: {command[0]}: {exc}") from exc
 
 
-def _snapshot_command(args: argparse.Namespace) -> str:
+def _snapshot_command(repository_paths: list[str], repository_files: list[str]) -> str:
     source = base64.b64encode(SNAPSHOT_MODULE.read_bytes()).decode("ascii")
     python = "import base64;exec(compile(base64.b64decode(%r),'<remote_patch_snapshot>','exec'))" % source
-    arguments = [f"--repo-path={item}" for item in args.repo_path]
-    arguments.extend(f"--repo-file={item}" for item in args.repo_file)
-    if args.record_baseline is not None:
-        arguments.append(f"--record-baseline={args.record_baseline}")
-    if args.baseline_snapshot is not None:
-        arguments.append(f"--baseline-snapshot={args.baseline_snapshot}")
-    arguments.extend(f"--baseline-patch={item}" for item in args.baseline_patch)
+    arguments = " ".join(f"--repo-path {shlex.quote(item)}" for item in repository_paths)
+    arguments += "".join(f" --repo-file {shlex.quote(item)}" for item in repository_files)
     return (
         f"python3 -c {shlex.quote(python)} generate "
         '--remote-root "$CANONICAL_ROOT" '
         '--workspace-id "${STATE_DIR##*/}" '
         '--command-id "$CURRENT_ID" '
-        f"{shlex.join(arguments)}"
+        f"{arguments}"
     )
 
 
@@ -186,7 +180,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--remote-root", required=True)
     parser.add_argument("--repo-path", action="append", required=True)
     parser.add_argument("--repo-file", action="append", default=[], help="REPO_PATH=EXACT_FILE; repeat to capture only this feature without altering its source worktree.")
-    add_baseline_arguments(parser)
     parser.add_argument("--command-id", required=True)
     parser.add_argument("--channel-script", type=Path, default=CHANNEL_SCRIPT)
     parser.add_argument("--out", type=Path)
@@ -216,10 +209,6 @@ def main() -> int:
         selected_files = parse_repository_files(args.repo_path, args.repo_file)
     except RemotePatchSnapshotError as exc:
         raise SystemExit(str(exc)) from exc
-    if (args.record_baseline is not None or args.baseline_snapshot is not None or args.baseline_patch) and not selected_files:
-        raise SystemExit("增量基线须配合 --repo-file 指定准确文件")
-    if args.record_baseline is not None and args.package:
-        raise SystemExit("--record-baseline 只记录开发前状态，不能与 --package 一起使用")
     if not _ID_RE.fullmatch(args.command_id):
         raise SystemExit("--command-id 必须符合 remote-channel v2 id 合同")
     if args.max_age_seconds <= 0 or args.max_age_seconds > 86400:
@@ -241,7 +230,7 @@ def main() -> int:
             _emit_completed_process(preflight)
             return preflight.returncode
 
-    remote_command = _snapshot_command(args)
+    remote_command = _snapshot_command(args.repo_path, args.repo_file)
     channel = _run(
         [
             str(channel_script),

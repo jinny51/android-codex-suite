@@ -30,7 +30,7 @@ EXPECTED = {
         },
     },
     "android-engineering-ops": {
-        "version": "3.3.10",
+        "version": "3.3.11",
         "skills": {
             "android-change-workflow", "android-source-access",
             "android-remote-channel", "android-remote-build-deploy",

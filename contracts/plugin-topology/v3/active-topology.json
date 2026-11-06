@@ -19,7 +19,7 @@
     },
     {
       "id": "android-engineering-ops",
-      "version": "3.3.10",
+      "version": "3.3.11",
       "role": "standalone_android_engineering_core",
       "default_execution": "core-direct",
       "skills": [

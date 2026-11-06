@@ -115,10 +115,29 @@ contains unrelated changes; give files for every selected repository. Paths are
 literal, not directory or glob selections. The snapshot retains the actual Git
 root and HEAD and does not read unselected generated output. Include both old and
 new paths of a rename; an identifiable rename crossing the selection is refused.
-Selection is file-level: all changes within a selected file are captured, not just
-this feature's hunks. Inspect them before capture; do not claim file selection
-isolates unrelated edits in the same file, or create a temporary source worktree
-solely to exclude other files.
+Ordinary capture compares selected files with Git HEAD. If an old prerequisite
+patch is applied in the worktree but absent from HEAD, and the new work edits the
+same file, use the existing snapshot command with an explicit baseline:
+
+- Before editing, after applying the old patch, run `capture_remote_snapshot.py`
+  with `--record-baseline '<old patch name or AKBS ID>'`, exact `--repo-file`
+  selections and its own command ID. Keep the returned command ID and SHA256 in
+  this task. At normal capture add `--baseline-snapshot COMMAND_ID:SHA256` and
+  select files within the recorded scope. Confirm the named prerequisites
+  describe the actual pre-edit state of those files.
+- If editing is already complete, use the exact old patch originally applied
+  and the Git HEAD it was applied to. Add
+  `--baseline-patch REPO_PATH=BASE_HEAD:SHA256:/absolute/remote/old.patch` to
+  the normal capture for each affected repository. Use an existing copy of the
+  original on the source server or transfer the original there to private scratch
+  storage. Confirm these facts from this task or the original material.
+
+Keep the usual final `--package` call, build/device evidence and submission. The
+capture compares the two states in temporary Git storage, leaves product source
+alone, and records the prerequisite and application order in the generated README.
+Review the resulting diff against this task's functional scope. If the exact
+baseline cannot be established, tell the member which input is missing. File
+selection alone still captures every HEAD-relative change in a selected file.
 
 The one-step wrapper validates local capture arguments before remote acquisition.
 Reuse this task's verified build/device facts and original search receipt; only

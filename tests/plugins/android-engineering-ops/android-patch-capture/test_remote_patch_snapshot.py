@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -579,12 +580,27 @@ class RemotePatchSnapshotTests(unittest.TestCase):
         self.assertTrue(any("开发前知识搜索执行记录" in message for message in captured["local_check"]["warnings"]))
         originals = {row["path"]: (capture / row["path"]).read_bytes() for row in manifest["patches"]}
 
+        incoming = self.prepare_incoming(capture)
+        generated = json.loads((incoming / "manifest.json").read_text())
+        check = json.loads((incoming / "local-check.json").read_text())
+        self.assertEqual(check["status"], "PASS", check)
+        self.assertEqual(generated["package_status"], "validated")
+        self.assertEqual(generated["workflow_contract"], "current_codex_skill")
+        from akbs_member_ops.knowledge_rules import patch_upload_gate_errors
+        self.assertEqual(patch_upload_gate_errors(generated), [])
+        search = json.loads((incoming / "materials/evidence/search_before_change.json").read_text())
+        self.assertIs(search["payload"]["searched"], False)
+        self.assertNotIn("source_receipt_json", search)
+        self.assertNotIn("source_receipt_sha256", search)
+        self.assertEqual(len(generated["files"]["patches"]), len(originals))
+        self.assertEqual({(incoming / path).read_bytes() for path in generated["files"]["patches"]}, set(originals.values()))
+
+    def prepare_incoming(self, capture: Path, *, suffix: str = "verified-without-search") -> Path:
         member = REPO_ROOT / "plugins/akbs-member-ops"
         for path in (member / "lib", member / "internal/incoming-v2/scripts"):
             sys.path.insert(0, str(path))
         import akbs_member_intake as intake
         from akbs_intake.patch import builder
-        from akbs_member_ops.knowledge_rules import patch_upload_gate_errors
         version = json.loads((member / ".codex-plugin/plugin.json").read_text())["version"]
         def source(package, config, skill):
             payload = {"source": "akbs-member-ops", "tool": skill, "member_alias": config["member_alias"],
@@ -596,27 +612,152 @@ class RemotePatchSnapshotTests(unittest.TestCase):
         with patch.object(builder, "same_day_daily_report_run_ids", return_value=[]), patch.object(
             builder, "related_report_project_clues", return_value=[],
         ):
-            incoming = builder.build_patch_package(
+            return builder.build_patch_package(
                 dt.date(2026, 10, 29), {"member_alias": "member01", "member_name": "Member 01",
                                       "out_dir": str(self.root / "incoming")},
-                run_id="20261029-120000-verified-without-search", patch_package_paths=[str(capture)],
+                run_id=f"20261029-120000-{suffix}", patch_package_paths=[str(capture)],
                 project="TVE1088U", summary="产品显示策略开关", status="validated",
                 platform_override="unisoc", android_version_override="14", incoming_schema_version="2",
                 framework_optional_evidence_kinds=set(), validate_package_fn=intake.validate_package,
                 write_package_source_fn=source, plugin_install_metadata_fn=lambda: {"plugin_version": version},
             )
-        generated = json.loads((incoming / "manifest.json").read_text())
-        check = json.loads((incoming / "local-check.json").read_text())
-        self.assertEqual(check["status"], "PASS", check)
-        self.assertEqual(generated["package_status"], "validated")
-        self.assertEqual(generated["workflow_contract"], "current_codex_skill")
-        self.assertEqual(patch_upload_gate_errors(generated), [])
-        search = json.loads((incoming / "materials/evidence/search_before_change.json").read_text())
-        self.assertIs(search["payload"]["searched"], False)
-        self.assertNotIn("source_receipt_json", search)
-        self.assertNotIn("source_receipt_sha256", search)
-        self.assertEqual(len(generated["files"]["patches"]), len(originals))
-        self.assertEqual({(incoming / path).read_bytes() for path in generated["files"]["patches"]}, set(originals.values()))
+
+    def test_incremental_capture_uses_the_post_apply_state(self) -> None:
+        self.check_incremental_capture(record_first=True)
+
+    def test_incremental_capture_replays_the_old_patch_after_editing(self) -> None:
+        self.check_incremental_capture(record_first=False)
+
+    def check_incremental_capture(self, *, record_first: bool) -> None:
+        self.assertEqual(run(["git", "restore", "--source=HEAD", "--staged", "--worktree", "--", "."], self.repo).returncode, 0)
+        target = self.repo / "services/core/DisplayPolicy.java"
+        old_only = self.repo / "core/Framework.java"
+        base_content = "class DisplayPolicy {\n  static final int VOLUME = 5;\n}\n"
+        target.write_text(base_content)
+        self.assertEqual(run(["git", "commit", "-am", "product base"], self.repo).returncode, 0)
+        head = run(["git", "rev-parse", "HEAD"], self.repo).stdout.strip()
+        target.write_text(base_content.replace("VOLUME = 5", "VOLUME = 8"))
+        old_only.write_text("class Framework { int oldOnly = 1; }\n")
+        old_patch = self.root / "old-display.patch"
+        original_patch = run(["git", "diff", "--binary", "--full-index", "HEAD"], self.repo).stdout.encode()
+        old_patch.write_bytes(original_patch)
+        self.assertEqual(run(["git", "restore", "."], self.repo).returncode, 0)
+        applied = run(["git", "apply", str(old_patch)], self.repo)
+        self.assertEqual(applied.returncode, 0, applied.stderr)
+
+        codex_home = self.root / "incremental-codex"
+        bin_dir = codex_home / "test-inventory-bin"
+        bin_dir.mkdir(parents=True)
+        fake_channel = bin_dir / "fake-channel"
+        fake_channel.write_text(
+            "#!/bin/sh\n"
+            f"export CANONICAL_ROOT=\"$4\" CURRENT_ID=\"$9\" STATE_DIR=/sessions/{self.workspace_id}\n"
+            "for command do :; done\n"
+            "exec /bin/sh -c \"$command\"\n"
+        )
+        fake_scp = bin_dir / "scp"
+        fake_scp.write_text('#!/bin/sh\ncp "${2#*:}" "$3"\n')
+        fake_scp.chmod(0o755)
+        runtime = self.install_plugin(codex_home, channel=fake_channel)
+        command = [
+            sys.executable, str(runtime / "skills/android-patch-capture/scripts/capture_remote_snapshot.py"),
+            "--ssh-host", "fixture", "--remote-root", str(self.remote_root), "--repo-path", "frameworks/base",
+            "--repo-file", f"frameworks/base={target.relative_to(self.repo)}",
+            "--repo-file", f"frameworks/base={old_only.relative_to(self.repo)}",
+        ]
+        env = {"CODEX_HOME": str(codex_home), "HOME": str(self.root / "remote-home")}
+        if record_first:
+            receipt = run([*command, "--command-id", "before-edit", "--record-baseline", old_patch.name], self.root, env=env)
+            self.assertEqual(receipt.returncode, 0, receipt.stderr or receipt.stdout)
+            snapshot_sha = json.loads(receipt.stdout)["snapshot_sha256"]
+            baseline = ["--baseline-snapshot", f"before-edit:{snapshot_sha}"]
+        else:
+            patch_sha = hashlib.sha256(original_patch).hexdigest()
+            baseline = ["--baseline-patch", f"frameworks/base={head}:{patch_sha}:{old_patch}"]
+
+        target.write_text(base_content.replace(
+            "  static final int VOLUME = 5;", "  //member01 20260826@{\n  static final int VOLUME = 10;\n  //member01 20260826@}",
+        ))
+        def source_state() -> tuple:
+            return (
+                target.read_bytes(), old_only.read_bytes(), old_patch.read_bytes(),
+                (self.repo / ".git/index").read_bytes(),
+                run(["git", "rev-parse", "HEAD"], self.repo).stdout,
+                run(["git", "count-objects", "-v"], self.repo).stdout,
+            )
+        before = source_state()
+        args = self.capture_arguments(codex_home)
+        for flag in ("--search-query", "--search-result", "--reuse-decision"):
+            index = args.index(flag)
+            del args[index:index + 2]
+        packaged = run([
+            *command, "--command-id", "after-edit", *baseline, "--package", "--", *args,
+            "--status", "validated", "--problem-summary", "产品初始音量需调整",
+            "--solution-summary", "调整框架中已有的音量默认值",
+        ], self.root, env=env)
+        self.assertEqual(packaged.returncode, 0, packaged.stderr or packaged.stdout)
+        self.assertEqual(source_state(), before)
+        capture = Path(json.loads(packaged.stdout)["package"])
+        incoming = self.prepare_incoming(capture, suffix="incremental")
+        manifest = json.loads((incoming / "manifest.json").read_text())
+        self.assertEqual(manifest["schema_version"], "2")
+        self.assertEqual(manifest["workflow_contract"], "current_codex_skill")
+        self.assertEqual(json.loads((incoming / "local-check.json").read_text())["status"], "PASS")
+        patch_path, = manifest["files"]["patches"]
+        delta = (incoming / patch_path).read_bytes()
+        self.assertIn(b"-  static final int VOLUME = 8;", delta)
+        self.assertIn(b"+  static final int VOLUME = 10;", delta)
+        self.assertNotIn(b"Framework.java", delta)
+        readme = (incoming / manifest["files"]["readme"]).read_text()
+        self.assertIn("先在原仓库应用 old-display.patch，再应用本次补丁", readme)
+        self.assertIn(head, readme)
+        evidence = json.loads((capture / "evidence/remote-source-snapshot.json").read_text())["repositories"][0]
+        self.assertEqual(evidence["changed_files"], [target.relative_to(self.repo).as_posix()])
+        self.assertEqual(decode_snapshot_blob(evidence["incremental"]["diff"], field="incremental"), delta)
+        for name in ("status", "staged_diff", "unstaged_diff", "head_diff", "untracked_diff"):
+            self.assertEqual(decode_snapshot_blob(evidence[name], field=name), b"")
+
+        replay = self.root / "replay"
+        self.assertEqual(run(["git", "clone", "--quiet", str(self.repo), str(replay)], self.root).returncode, 0)
+        self.assertEqual(run(["git", "apply", str(old_patch)], replay).returncode, 0)
+        applied = run(["git", "apply", str(incoming / patch_path)], replay)
+        self.assertEqual(applied.returncode, 0, applied.stderr)
+        self.assertEqual((replay / target.relative_to(self.repo)).read_bytes(), before[0])
+        self.assertEqual((replay / old_only.relative_to(self.repo)).read_bytes(), before[1])
+
+    def test_incremental_capture_rejects_missing_or_mismatched_baselines(self) -> None:
+        original = self.root / "original.patch"
+        original.write_bytes(b"not a Git patch")
+        sha256 = hashlib.sha256(original.read_bytes()).hexdigest()
+        for options, message in (
+            ({"baseline_snapshot": ""}, "COMMAND_ID:SHA256"),
+            ({"baseline_patches": [f"frameworks/base={'0' * 40}:{sha256}:{original}"]}, "HEAD differs"),
+            ({"baseline_patches": [f"frameworks/base={self.snapshot['repositories'][0]['head']}:{sha256}:{original}"]}, "cannot replay"),
+        ):
+            with self.subTest(message=message), self.assertRaisesRegex(RemotePatchSnapshotError, message):
+                create_remote_patch_snapshot(
+                    remote_root=self.remote_root, workspace_id=self.workspace_id, command_id=self.command_id,
+                    repository_paths=["frameworks/base"],
+                    repository_files=["frameworks/base=services/core/DisplayPolicy.java"], **options,
+                )
+
+    def test_incremental_capture_can_restore_a_line_to_its_head_value(self) -> None:
+        target = "services/core/DisplayPolicy.java"
+        old_patch = self.root / "prior.patch"
+        original = run(["git", "diff", "--binary", "--full-index", "HEAD", "--", target], self.repo)
+        old_patch.write_text(original.stdout)
+        sha256 = hashlib.sha256(old_patch.read_bytes()).hexdigest()
+        head = self.snapshot["repositories"][0]["head"]
+        self.assertEqual(run(["git", "restore", "--", target], self.repo).returncode, 0)
+        snapshot = create_remote_patch_snapshot(
+            remote_root=self.remote_root, workspace_id=self.workspace_id, command_id=self.command_id,
+            repository_paths=["frameworks/base"], repository_files=[f"frameworks/base={target}"],
+            baseline_patches=[f"frameworks/base={head}:{sha256}:{old_patch}"],
+        )
+        repository = snapshot["repositories"][0]
+        self.assertEqual(repository["changed_files"], [target])
+        delta = decode_snapshot_blob(repository["incremental"]["diff"], field="incremental")
+        self.assertIn(b"-  static final boolean REMOTE_POLICY = true;", delta)
 
     def test_current_capture_rejects_source_root_patch_artifact_and_external_output(self) -> None:
         base = [

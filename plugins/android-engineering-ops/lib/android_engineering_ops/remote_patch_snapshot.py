@@ -11,7 +11,7 @@ import stat
 import subprocess
 import tempfile
 import time
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, NamedTuple, Sequence
 from urllib.parse import urlsplit, urlunsplit
 
 
@@ -54,11 +54,20 @@ _REPOSITORY_FIELDS = frozenset(
 _BLOB_FIELDS = frozenset({"encoding", "size", "sha256", "data"})
 _REPO_STATUS_FIELDS = frozenset({"available", "reason", "output"})
 _REMOTE_FIELDS = frozenset({"name", "fetch_urls", "push_urls"})
+_HEAD_RELATIVE_BLOBS = ("status", "staged_diff", "unstaged_diff", "head_diff", "untracked_diff")
 _UNTRACKED_FIELDS = frozenset({"path", "kind", "size", "mtime_ns", "sha256"})
 
 
 class RemotePatchSnapshotError(ValueError):
     """A remote patch snapshot is incomplete, stale, or untrusted."""
+
+
+class PatchBaseline(NamedTuple):
+    head: str
+    kind: str
+    dependency: str
+    sha256: str
+    patches: tuple[bytes, ...]
 
 
 def _canonical_json_bytes(payload: Mapping[str, Any]) -> bytes:
@@ -108,11 +117,16 @@ def decode_snapshot_blob(value: Mapping[str, Any], *, field: str) -> bytes:
     return decoded
 
 
-def _run_bytes(command: Sequence[str], cwd: Path, *, expected: tuple[int, ...] = (0,)) -> bytes:
+def _run_bytes(
+    command: Sequence[str], cwd: Path, *, expected: tuple[int, ...] = (0,),
+    env: dict[str, str] | None = None, input_bytes: bytes | None = None,
+) -> bytes:
     result = subprocess.run(
         list(command),
         cwd=str(cwd),
         check=False,
+        env=env if env is not None else {**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
+        input=input_bytes,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
@@ -232,7 +246,7 @@ def _validate_rename_scope(root: Path, files: Sequence[str], status: bytes) -> N
                 raise RemotePatchSnapshotError("file selection splits a rename; select both old and new paths")
 
 
-def _validate_selected_files(root: Path, files: Sequence[str]) -> None:
+def _validate_selected_files(root: Path, files: Sequence[str], *, allow_missing: bool = False) -> None:
     for name in files:
         _safe_relative_path(name, field="selected file")
         parent = root
@@ -246,6 +260,8 @@ def _validate_selected_files(root: Path, files: Sequence[str]) -> None:
         if path.exists():
             if not path.is_file():
                 raise RemotePatchSnapshotError(f"selected path is not an exact file: {name}")
+            continue
+        if allow_missing:
             continue
         # Deleted tracked files are legitimate selections; typos and directories are not.
         entries = _run_bytes(["git", "ls-tree", "-z", "HEAD", "--", *_literal_paths([name])], root)
@@ -358,8 +374,47 @@ def _git_remotes(root: Path) -> list[dict[str, Any]]:
     return remotes
 
 
+def _incremental_diff(
+    root: Path, files: Sequence[str], baseline: PatchBaseline,
+    head_diff: bytes, untracked_diff: bytes,
+) -> tuple[bytes, list[str]]:
+    # git apply --cached writes objects too. Use a disposable object database
+    # and index, with the product Git objects available only as an alternate.
+    objects = _run_bytes(["git", "rev-parse", "--git-path", "objects"], root).decode().rstrip("\n")
+    object_dir = (root / objects).resolve()
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, GIT_OPTIONAL_LOCKS="0")
+    with tempfile.TemporaryDirectory(prefix="akbs-patch-diff-") as temporary:
+        scratch = Path(temporary)
+
+        def git(*args: str, input_bytes: bytes | None = None) -> bytes:
+            return _run_bytes(["git", *args], scratch, env=env, input_bytes=input_bytes)
+
+        object_format = ["--object-format=sha256"] if len(baseline.head) == 64 else []
+        git("init", "--bare", "--quiet", "--template=", *object_format)
+        (scratch / "objects/info/alternates").write_text(f"{object_dir}\n", encoding="utf-8")
+
+        def tree(patches: Sequence[bytes]) -> str:
+            git("read-tree", baseline.head)
+            for patch in patches:
+                if patch:
+                    git("apply", "--cached", "--whitespace=nowarn", "-", input_bytes=patch)
+            return git("write-tree").decode("ascii").strip()
+
+        try:
+            before = tree(baseline.patches)
+        except RemotePatchSnapshotError as exc:
+            raise RemotePatchSnapshotError(f"cannot replay the baseline on its original HEAD: {exc}") from exc
+        after = tree((head_diff, untracked_diff))
+        paths = _literal_paths(files)
+        diff = git("diff", "--binary", "--full-index", "--no-ext-diff", "--no-textconv", before, after, "--", *paths)
+        names = git("diff", "--name-only", "--no-renames", "-z", before, after, "--", *paths)
+        return diff, sorted(name.decode("utf-8") for name in names.split(b"\0") if name)
+
+
 def _capture_repository(
     remote_root: Path, repo_path: str, files: Sequence[str] = (),
+    *, baseline: PatchBaseline | None = None, recording: bool = False,
 ) -> dict[str, Any]:
     repo_path = _canonical_repo_path(repo_path)
     candidate = remote_root if repo_path == "." else remote_root / repo_path
@@ -379,9 +434,11 @@ def _capture_repository(
             f"snapshot repository path is not its Git root: {repo_path} -> {git_root}"
         )
 
-    _validate_selected_files(root, files)
+    _validate_selected_files(root, files, allow_missing=recording or baseline is not None)
     paths = _literal_paths(files)
     head = _run_bytes(["git", "rev-parse", "HEAD"], root).decode("ascii").strip()
+    if baseline is not None and baseline.head != head:
+        raise RemotePatchSnapshotError(f"baseline HEAD differs from the current repository HEAD: {repo_path}")
     branch = _run_bytes(["git", "branch", "--show-current"], root).decode("utf-8").strip()
     status = _run_bytes(["git", "status", "--porcelain=v1", "-z", "--branch", "--", *paths], root)
     _validate_rename_scope(root, files, status)
@@ -389,8 +446,9 @@ def _capture_repository(
     unstaged = _run_bytes(["git", "diff", "--binary", "--full-index", "--", *paths], root)
     head_diff = _run_bytes(["git", "diff", "--binary", "--full-index", "HEAD", "--", *paths], root)
     untracked = _remote_inventory(root, files)
+    untracked_diff = _untracked_diff(root, untracked)
     changed_files = _changed_paths(root, untracked, files)
-    if files and not changed_files:
+    if files and not changed_files and baseline is None and not recording:
         raise RemotePatchSnapshotError(f"selected files contain no changes: {repo_path}")
     if files and not set(changed_files).issubset(files):
         raise RemotePatchSnapshotError(f"snapshot includes files outside the requested selection: {repo_path}")
@@ -418,7 +476,7 @@ def _capture_repository(
         raise RemotePatchSnapshotError(
             f"repository changed while remote snapshot was being generated: {repo_path}"
         )
-    return {
+    result = {
         "repo_path": repo_path,
         "root": root.as_posix(),
         "head": head,
@@ -428,10 +486,24 @@ def _capture_repository(
         "staged_diff": _blob(staged),
         "unstaged_diff": _blob(unstaged),
         "head_diff": _blob(head_diff),
-        "untracked_diff": _blob(_untracked_diff(root, untracked)),
+        "untracked_diff": _blob(untracked_diff),
         "untracked": untracked,
         "changed_files": changed_files,
     }
+    if baseline is not None:
+        diff, delta_files = _incremental_diff(root, files, baseline, head_diff, untracked_diff)
+        # The capture evidence contains B, never the original A or A+B diffs.
+        for name in _HEAD_RELATIVE_BLOBS:
+            result[name] = _blob(b"")
+        result["untracked"] = []
+        result["changed_files"] = delta_files
+        result["incremental"] = {
+            "kind": baseline.kind,
+            "dependency": baseline.dependency,
+            "sha256": baseline.sha256,
+            "diff": _blob(diff),
+        }
+    return result
 
 
 def _repo_status(remote_root: Path) -> dict[str, Any]:
@@ -459,6 +531,78 @@ def _snapshot_digest(payload: Mapping[str, Any]) -> str:
     return _sha256(_canonical_json_bytes(unsigned))
 
 
+def _baseline_dependency(value: Any) -> str:
+    if (
+        not isinstance(value, str) or not value.strip() or len(value) > 240
+        or any(not character.isprintable() for character in value)
+    ):
+        raise RemotePatchSnapshotError("baseline dependency must name the original patch on one line")
+    return value
+
+
+def _snapshot_path(workspace_id: str, command_id: str) -> Path:
+    return (
+        Path.home() / ".codex" / "android-remote-sessions"
+        / workspace_id / "snapshots" / command_id / "snapshot.json"
+    )
+
+
+def _read_baselines(
+    workspace_id: str, remote_root: str, selected: Mapping[str, list[str]],
+    snapshot_ref: str | None, patch_refs: Sequence[str], now_ns: int,
+) -> dict[str, PatchBaseline]:
+    if snapshot_ref is not None:
+        command, _, sha256 = snapshot_ref.partition(":")
+        if not _ID_RE.fullmatch(command) or not _SHA256_RE.fullmatch(sha256):
+            raise RemotePatchSnapshotError("--baseline-snapshot requires COMMAND_ID:SHA256")
+        snapshot = load_remote_patch_snapshot(
+            _snapshot_path(workspace_id, command), expected_workspace_id=workspace_id,
+            expected_command_id=command, expected_remote_root=remote_root,
+            expected_sha256=sha256, now_ns=now_ns,
+        )
+        recorded = snapshot.get("baseline")
+        if recorded is None or snapshot["generated_at_ns"] >= now_ns:
+            raise RemotePatchSnapshotError("baseline must be a snapshot recorded before this capture")
+        result = {}
+        for repository in snapshot["repositories"]:
+            repo_path = repository["repo_path"]
+            if repo_path not in selected:
+                continue
+            if not set(selected[repo_path]).issubset(recorded["files"][repo_path]):
+                raise RemotePatchSnapshotError(f"capture selects files outside the recorded baseline: {repo_path}")
+            patches = tuple(
+                decode_snapshot_blob(repository[name], field=name) for name in ("head_diff", "untracked_diff")
+            )
+            result[repo_path] = PatchBaseline(repository["head"], "snapshot", recorded["dependency"], sha256, patches)
+        if set(result) != set(selected):
+            raise RemotePatchSnapshotError("recorded baseline omits a selected repository")
+        return result
+
+    result = {}
+    for value in patch_refs:
+        repo_path, _, reference = value.partition("=")
+        parts = reference.split(":", 2)
+        if (
+            repo_path not in selected or repo_path in result or len(parts) != 3
+            or not _GIT_HEAD_RE.fullmatch(parts[0]) or not _SHA256_RE.fullmatch(parts[1])
+            or not Path(parts[2]).is_absolute() or not parts[2].isprintable()
+        ):
+            raise RemotePatchSnapshotError("--baseline-patch requires REPO_PATH=BASE_HEAD:SHA256:REMOTE_FILE, once per selected repository")
+        head, sha256, filename = parts
+        path = Path(filename)
+        dependency = _baseline_dependency(path.name)
+        try:
+            if not path.is_file():
+                raise OSError("not a regular file")
+            data = path.read_bytes()
+        except OSError as exc:
+            raise RemotePatchSnapshotError(f"cannot read the original baseline patch: {dependency}") from exc
+        if not data or _sha256(data) != sha256:
+            raise RemotePatchSnapshotError(f"baseline patch is empty or its SHA256 differs: {dependency}")
+        result[repo_path] = PatchBaseline(head, "patch", dependency, sha256, (data,))
+    return result
+
+
 def create_remote_patch_snapshot(
     *,
     remote_root: str | Path,
@@ -466,6 +610,9 @@ def create_remote_patch_snapshot(
     command_id: str,
     repository_paths: Sequence[str],
     repository_files: Sequence[str] = (),
+    record_baseline: str | None = None,
+    baseline_snapshot: str | None = None,
+    baseline_patches: Sequence[str] = (),
     generated_at_ns: int | None = None,
 ) -> dict[str, Any]:
     if not _WORKSPACE_RE.fullmatch(workspace_id):
@@ -480,8 +627,17 @@ def create_remote_patch_snapshot(
         raise RemotePatchSnapshotError(f"remote root does not exist: {remote_root}") from exc
     canonical_root = _canonical_remote_root(root.as_posix())
     selected = parse_repository_files(repository_paths, repository_files)
+    baseline_modes = (record_baseline is not None, baseline_snapshot is not None, bool(baseline_patches))
+    if sum(baseline_modes) > 1 or (any(baseline_modes) and not selected):
+        raise RemotePatchSnapshotError("select one baseline option and use exact --repo-file selections")
+    if record_baseline is not None:
+        _baseline_dependency(record_baseline)
+    baselines = _read_baselines(workspace_id, canonical_root, selected, baseline_snapshot, baseline_patches, time.time_ns())
     repositories = [
-        _capture_repository(root, item, selected.get(item, ()))
+        _capture_repository(
+            root, item, selected.get(item, ()),
+            baseline=baselines.get(item), recording=record_baseline is not None,
+        )
         for item in dict.fromkeys(repository_paths)
     ]
     timestamp = time.time_ns() if generated_at_ns is None else generated_at_ns
@@ -500,6 +656,8 @@ def create_remote_patch_snapshot(
         ),
         "repositories": repositories,
     }
+    if record_baseline is not None:
+        payload["baseline"] = {"dependency": record_baseline, "files": selected}
     payload["snapshot_sha256"] = _snapshot_digest(payload)
     return payload
 
@@ -530,7 +688,7 @@ def validate_remote_patch_snapshot(
     now_ns: int | None = None,
     max_age_ns: int | None = None,
 ) -> dict[str, Any]:
-    _require_exact_fields(payload, _TOP_FIELDS, "root")
+    _require_exact_fields(payload, _TOP_FIELDS | ({"baseline"} if "baseline" in payload else set()), "root")
     if payload.get("schema") != REMOTE_PATCH_SNAPSHOT_SCHEMA:
         raise RemotePatchSnapshotError("snapshot schema is not supported")
     if type(payload.get("version")) is not int or payload.get("version") != REMOTE_PATCH_SNAPSHOT_VERSION:
@@ -568,10 +726,18 @@ def validate_remote_patch_snapshot(
     repositories = payload.get("repositories")
     if not isinstance(repositories, list) or not repositories:
         raise RemotePatchSnapshotError("snapshot repositories must be a non-empty list")
+    recorded = payload.get("baseline")
+    if "baseline" in payload:
+        _require_exact_fields(recorded, frozenset({"dependency", "files"}), "baseline")
+        _baseline_dependency(recorded["dependency"])
+        if not isinstance(recorded["files"], dict):
+            raise RemotePatchSnapshotError("baseline file selections are invalid")
     seen: set[str] = set()
     root_path = PurePosixPath(remote_root)
     for index, repository in enumerate(repositories):
-        _require_exact_fields(repository, _REPOSITORY_FIELDS, f"repositories[{index}]")
+        incremental = isinstance(repository, Mapping) and "incremental" in repository
+        fields = _REPOSITORY_FIELDS | ({"incremental"} if incremental else set())
+        _require_exact_fields(repository, fields, f"repositories[{index}]")
         repo_path = _canonical_repo_path(repository.get("repo_path"))
         if repo_path in seen:
             raise RemotePatchSnapshotError("snapshot contains duplicate repository paths")
@@ -593,7 +759,7 @@ def validate_remote_patch_snapshot(
                 raise RemotePatchSnapshotError("snapshot Git remote name is invalid")
             _validate_string_list(remote.get("fetch_urls"), field="remote.fetch_urls")
             _validate_string_list(remote.get("push_urls"), field="remote.push_urls")
-        for blob_name in ("status", "staged_diff", "unstaged_diff", "head_diff", "untracked_diff"):
+        for blob_name in _HEAD_RELATIVE_BLOBS:
             decode_snapshot_blob(repository[blob_name], field=f"repositories[{index}].{blob_name}")
         changed_files = _validate_string_list(
             repository.get("changed_files"),
@@ -603,6 +769,21 @@ def validate_remote_patch_snapshot(
         untracked = repository.get("untracked")
         if not isinstance(untracked, list):
             raise RemotePatchSnapshotError("snapshot untracked inventory is invalid")
+        if incremental:
+            delta = repository["incremental"]
+            _require_exact_fields(delta, frozenset({"kind", "dependency", "sha256", "diff"}), "incremental")
+            _baseline_dependency(delta["dependency"])
+            if (
+                recorded is not None or delta["kind"] not in ("snapshot", "patch")
+                or not isinstance(delta["sha256"], str) or not _SHA256_RE.fullmatch(delta["sha256"])
+                or untracked or any(repository[name]["size"] for name in _HEAD_RELATIVE_BLOBS)
+            ):
+                raise RemotePatchSnapshotError("incremental snapshot metadata is invalid")
+            decode_snapshot_blob(delta["diff"], field="incremental.diff")
+        if recorded is not None:
+            selected = _validate_string_list(recorded["files"].get(repo_path), field="baseline.files", path_values=True)
+            if not selected or not set(changed_files).issubset(selected):
+                raise RemotePatchSnapshotError("recorded baseline changes exceed its file selection")
         untracked_paths: list[str] = []
         for item in untracked:
             _require_exact_fields(item, _UNTRACKED_FIELDS, "untracked item")
@@ -619,6 +800,8 @@ def validate_remote_patch_snapshot(
             raise RemotePatchSnapshotError("snapshot untracked inventory contains duplicates")
         if not set(untracked_paths).issubset(changed_files):
             raise RemotePatchSnapshotError("snapshot changed_files omits untracked paths")
+    if recorded is not None and set(recorded["files"]) != seen:
+        raise RemotePatchSnapshotError("recorded baseline repositories differ from its file selection")
     return dict(payload)
 
 
@@ -627,17 +810,10 @@ def write_immutable_remote_snapshot(payload: Mapping[str, Any]) -> Path:
     command_id = str(payload.get("command_id") or "")
     if not _WORKSPACE_RE.fullmatch(workspace_id) or not _ID_RE.fullmatch(command_id):
         raise RemotePatchSnapshotError("snapshot identity is invalid")
-    directory = (
-        Path.home()
-        / ".codex"
-        / "android-remote-sessions"
-        / workspace_id
-        / "snapshots"
-        / command_id
-    )
+    target = _snapshot_path(workspace_id, command_id)
+    directory = target.parent
     directory.mkdir(parents=True, mode=0o700, exist_ok=True)
     os.chmod(directory, 0o700)
-    target = directory / "snapshot.json"
     if target.exists():
         raise RemotePatchSnapshotError(f"immutable snapshot already exists: {target}")
     data = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8") + b"\n"
@@ -671,6 +847,13 @@ def load_remote_patch_snapshot(
     return validate_remote_patch_snapshot(payload, **validation)
 
 
+def add_baseline_arguments(parser: argparse.ArgumentParser) -> None:
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--record-baseline", metavar="OLD_PATCH_ID", help="Record the selected files after applying this prerequisite and before editing.")
+    group.add_argument("--baseline-snapshot", metavar="COMMAND_ID:SHA256", help="Compare with the previously recorded baseline.")
+    group.add_argument("--baseline-patch", action="append", default=[], metavar="REPO_PATH=BASE_HEAD:SHA256:REMOTE_FILE", help="Reconstruct the baseline using the exact original patch on the remote server.")
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate an immutable remote patch snapshot.")
     parser.add_argument("generate", nargs="?")
@@ -679,6 +862,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--command-id", required=True)
     parser.add_argument("--repo-path", action="append", required=True)
     parser.add_argument("--repo-file", action="append", default=[], help="REPO_PATH=EXACT_FILE; repeat for this feature's files.")
+    add_baseline_arguments(parser)
     return parser.parse_args()
 
 
@@ -690,6 +874,9 @@ def _main() -> int:
         command_id=args.command_id,
         repository_paths=args.repo_path,
         repository_files=args.repo_file,
+        record_baseline=args.record_baseline,
+        baseline_snapshot=args.baseline_snapshot,
+        baseline_patches=args.baseline_patch,
     )
     path = write_immutable_remote_snapshot(payload)
     print(f"SNAPSHOT_REMOTE_PATH={path}")

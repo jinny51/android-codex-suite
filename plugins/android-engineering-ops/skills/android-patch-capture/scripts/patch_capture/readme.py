@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from patch_capture.git_diff import prefixed_files, unique_preserve
@@ -97,6 +98,19 @@ def change_readme_text(
     risk = args.risk or "待结合当前项目、触发路径和验证结果补充。"
     rollback = args.rollback or "在对应源码仓库逐个执行 `git apply -R <patch>`，或回退对应源码仓库提交。"
     repo_lines = "\n".join(f"- `{capture.repo_path}` -> `{capture.patch_rel}`" for capture in captures)
+    dependencies = []
+    for capture in captures:
+        if capture.baseline is None:
+            continue
+        baseline = capture.baseline
+        dependency = re.sub(r"([\\\x60*_{}\[\]<>])", r"\\\1", baseline["dependency"])
+        digest_label = "开发前快照" if baseline["kind"] == "snapshot" else "旧补丁"
+        dependencies.append(
+            f"- `{capture.repo_path}`：从 Git `{capture.git_info['head']}` 开始，"
+            f"先在原仓库应用 {dependency}，再应用本次补丁。"
+            f"{digest_label} SHA256：`{baseline['sha256']}`。"
+        )
+    dependency_section = "\n\n## 前置补丁\n\n" + "\n".join(dependencies) if dependencies else ""
     modification_sections = "\n\n".join(
         f"### {capture.repo_path}\n\n{bullet_list(prefixed_files(capture.repo_path, capture.facts['modified_files']))}" for capture in captures
     )
@@ -125,7 +139,7 @@ def change_readme_text(
 
 ## 涉及源码仓库
 
-{repo_lines}
+{repo_lines}{dependency_section}
 
 ## 修改点
 

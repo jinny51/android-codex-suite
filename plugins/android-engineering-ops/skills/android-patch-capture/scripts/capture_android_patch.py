@@ -114,6 +114,7 @@ class RepositoryCapture:
     module: str
     patch_name: str
     patch_rel: str
+    baseline: dict[str, str] | None = None
 
 
 
@@ -332,6 +333,8 @@ def collect_snapshot_captures(
         )
     except RemotePatchSnapshotError as exc:
         raise SystemExit(f"remote snapshot 验证失败: {exc}") from exc
+    if "baseline" in snapshot:
+        raise SystemExit("开发前基线不能直接打包；请重新采集本次增量")
     if len(snapshot["repositories"]) > 1 and args.module:
         raise SystemExit("多源码仓库 snapshot 不接受单个 --module；模块名按每个远端仓库推断。")
 
@@ -340,13 +343,16 @@ def collect_snapshot_captures(
     mode_only: list[str] = []
     for repository in snapshot["repositories"]:
         repo_path = str(repository["repo_path"])
-        head_diff = decode_snapshot_blob(repository["head_diff"], field=f"{repo_path}.head_diff")
-        untracked_diff = decode_snapshot_blob(
-            repository["untracked_diff"],
-            field=f"{repo_path}.untracked_diff",
-        )
+        baseline = repository.get("incremental")
+        if baseline is not None:
+            diff = decode_snapshot_blob(baseline["diff"], field=f"{repo_path}.incremental.diff")
+            if not diff:
+                continue
+        else:
+            diff = decode_snapshot_blob(repository["head_diff"], field=f"{repo_path}.head_diff")
+            diff += decode_snapshot_blob(repository["untracked_diff"], field=f"{repo_path}.untracked_diff")
         try:
-            diff_text = (head_diff + untracked_diff).decode("utf-8")
+            diff_text = diff.decode("utf-8")
             status_text = decode_snapshot_blob(
                 repository["status"],
                 field=f"{repo_path}.status",
@@ -380,6 +386,8 @@ def collect_snapshot_captures(
         if capture is None:
             mode_only.append(repo_path)
             continue
+        if baseline is not None:
+            capture.baseline = {name: baseline[name] for name in ("kind", "dependency", "sha256")}
         snapshot_changed = set(str(item) for item in repository["changed_files"])
         diff_changed = set(capture.facts.get("modified_files", []))
         if not diff_changed.issubset(snapshot_changed):

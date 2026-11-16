@@ -28,7 +28,7 @@ WEEK = "20261005-20261011"
 
 
 def identity(work_type: str, customer: str = "CustomerA", downstream: str = "") -> dict:
-    row = {"project": PROJECT, "work_type": work_type, "customer": customer,
+    row = {"project": PROJECT, "project_version": "A16", "work_type": work_type, "customer": customer,
            "customer_name": customer, "downstream_customer": downstream}
     if work_type == "App":
         row["app_name"] = "ScopeDemo"
@@ -72,23 +72,25 @@ def test_view_identity_allows_independent_patch_and_app_chains() -> None:
     assert validation.report_project_customer_errors("view", rows, "projects", allow_work_scopes=False)
 
 
-@pytest.mark.parametrize("changed_downstream", [False, True])
-def test_same_scope_duplicate_or_conflict_still_rejected(changed_downstream: bool) -> None:
+def test_same_scope_duplicate_still_rejected() -> None:
     first = identity("App")
-    second = {**first, "downstream_customer": "Factory"} if changed_downstream else dict(first)
-    errors = validation.report_project_customer_errors("view", [first, second], "projects", allow_work_scopes=True)
+    errors = validation.report_project_customer_errors("view", [first, dict(first)], "projects", allow_work_scopes=True)
     assert any("统计对象重复" in error for error in errors)
 
 
 @pytest.mark.parametrize("work_type", ["Patch", "App", "GMS"])
-def test_direct_customer_is_a_scope_dimension_but_downstream_is_not(work_type: str) -> None:
+def test_version_and_both_customers_define_scope(work_type: str) -> None:
     first, second = identity(work_type), identity(work_type, "CustomerB")
     if work_type == "GMS":
         first.update(gms_release_type="IR", gms_target="A14")
         second.update(gms_release_type="IR", gms_target="A14")
     assert scope.report_scope_key(first) != scope.report_scope_key(second)
-    assert scope.report_scope_key(first) == scope.report_scope_key({**first, "downstream_customer": "Factory"})
+    downstream = {**first, "downstream_customer": "Factory"}
+    versioned = {**first, "project_version": "release-17.2"}
+    assert scope.report_scope_key(first) != scope.report_scope_key(downstream)
+    assert scope.report_scope_key(first) != scope.report_scope_key(versioned)
     assert validation.report_project_customer_errors("view", [first, second], "projects", allow_work_scopes=True) == []
+    assert validation.report_project_customer_errors("view", [first, downstream, versioned], "projects", allow_work_scopes=True) == []
     contexts = scope.report_customer_contexts_from_rows([first, second])
     assert PROJECT not in contexts
     assert validation.weekly_project_identity_consistency_errors("view", [first, second], [second, first]) == []
@@ -118,12 +120,14 @@ def test_duplicate_scoped_source_evidence_cannot_last_write_win() -> None:
     contradictory = {**evidence[0], "customer_name": "CustomerB"}
     assert validation.weekly_project_identity_consistency_errors("view", [row], [contradictory, evidence[0]])
     assert validation.weekly_project_identity_consistency_errors("view", [row], [evidence[0], evidence[0]])
-    with pytest.raises(ValueError, match="身份矛盾"):
-        scope.report_customer_contexts_from_rows([row, {**row, "downstream_customer": "ChangedFactory"}])
+    contexts = scope.report_customer_contexts_from_rows([row, {**row, "downstream_customer": "ChangedFactory"}])
+    assert len(contexts) == 2
 
 
 def test_flat_evidence_remains_valid_only_when_chains_are_unambiguous() -> None:
     app, patch = identity("App"), identity("Patch")
+    app.pop("project_version")
+    patch.pop("project_version")
     flat = [{"project": PROJECT, "customer_name": "CustomerA"}]
     assert validation.weekly_project_identity_consistency_errors("view", [app], flat) == []
     assert validation.weekly_project_identity_consistency_errors("view", [app, patch], flat * 2) == []
@@ -156,7 +160,13 @@ def test_daily_and_tomorrow_scopes_are_independent_but_required_and_unique() -> 
     plan = {"projects": plan_rows, "documents": [], "standalone_work": []}
     assert daily_facts.validate_tomorrow_plan(plan) == []
     assert daily_facts.validate_tomorrow_plan({**plan, "projects": plan_rows + [plan_rows[0]]})
+    assert daily_facts.validate_tomorrow_plan({**plan, "projects": [
+        {**plan_rows[0], "project_version": "  "},
+    ]}) == ["tomorrow_plan.projects[0].project_version 必须提供项目版本号"]
     assert daily_facts.validate_daily_projects(rows + [rows[0]])
+    assert daily_facts.validate_daily_projects([{**rows[0], "project_version": None}]) == [
+        "projects[0].project_version 必须提供项目版本号",
+    ]
     assert daily_facts.validate_daily_projects([{**rows[0], "customer": "", "customer_name": ""}])
 
 
@@ -165,6 +175,9 @@ def test_current_weekly_explicit_facts_allow_distinct_chains_without_relaxing_le
     rows = weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, raw), WEEK,
                                          expected_project_customers={PROJECT: "GenericHint"})
     assert [(r["customer"], r["downstream_customer"]) for r in rows] == [("CustomerA", "Factory"), ("CustomerB", "")]
+    bad_version = {**raw[0], "project_version": 16}
+    with pytest.raises(SystemExit, match="project_version"):
+        weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, [bad_version]), WEEK)
     with pytest.raises(SystemExit, match="重复"):
         weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, raw + [raw[0]]), WEEK)
     bad = copy.deepcopy(raw)
@@ -181,7 +194,7 @@ def test_history_customer_is_scope_bound_and_tomorrow_cannot_overwrite_actual() 
     metadata, records = weekly_facts._daily_project_records(daily)
     assert "customer" not in metadata[PROJECT]
     for work_type, customer, downstream in [("App", "CustomerA", "Factory"), ("Patch", "CustomerB", "")]:
-        prior = {"work_type": work_type, "app_name": "ScopeDemo" if work_type == "App" else ""}
+        prior = {"project_version": "A16", "work_type": work_type, "app_name": "ScopeDemo" if work_type == "App" else ""}
         own_records = [r for r in records[PROJECT] if r["work_type"] == work_type]
         row, _ = weekly_facts._history_project_row(PROJECT, prior, metadata[PROJECT], own_records,
                                                  period_start=DATE, as_of=DATE)
@@ -271,6 +284,9 @@ def test_same_named_daily_work_keeps_customer_attention_plan_and_prior_assignmen
     legacy_record.pop("customer")
     assignment, ambiguous = weekly_facts.assign_daily_records_to_scopes([seeds[0]], [legacy_record])
     assert not ambiguous and assignment == [[legacy_record]]
+    legacy_record.pop("project_version")
+    assignment, ambiguous = weekly_facts.assign_daily_records_to_scopes([seeds[0]], [legacy_record])
+    assert ambiguous and assignment == [[]]
 
 
 def test_downstream_supplement_cannot_reopen_existing_ledger_or_reset_total(tmp_path: Path) -> None:
@@ -299,6 +315,10 @@ def test_downstream_supplement_cannot_reopen_existing_ledger_or_reset_total(tmp_
     assert rows[0]["work_total"] == 10 and rows[0]["remaining_total"] == 7
     assert rows[0]["downstream_customer"] == "Factory"
     assert rows[0]["ledger"]["baseline"]["total"] == 10
+    also_enriched = {**current, "downstream_customer": "OtherFactory"}
+    with pytest.raises(SystemExit, match="多个当前范围不能使用同一份上周台账"):
+        weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, [current, also_enriched]), WEEK,
+                                         previous_projects=previous_projects)
     # A genuinely different direct customer is an independent new scope.
     current.update(customer="CustomerB", customer_name="CustomerB", work_total=1,
                    remaining=0, remaining_items=[], next_week_plan=[])
@@ -306,6 +326,60 @@ def test_downstream_supplement_cannot_reopen_existing_ledger_or_reset_total(tmp_
     rows = weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, [current]), WEEK,
                                            previous_projects=previous_projects)
     assert rows[0]["ledger"]["opening"] is True and rows[0]["work_total"] == 1
+
+
+def test_legacy_previous_ledger_does_not_seed_a_version_and_cannot_be_relabelled(tmp_path: Path) -> None:
+    prior = weekly_facts._weekly_project_row({
+        **weekly_raw_row("App"), "project_version": "", "project_role": "主责",
+        "work_total": 10, "remaining": 10,
+    })
+    prior.update(_package_key="synthetic/legacy", _week_range="20260928-20261004")
+    current = {**weekly_raw_row("App"), "project_version": "A17",
+               "project_role": "主责", "work_total": 1, "completed_items": ["核查接口"],
+               "completed_this_week": 1, "remaining": 0}
+    current["ledger"].update(opening=True, project_completed=1)
+    previous = {PROJECT: [prior]}
+    rows = weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, [current]), WEEK, previous_projects=previous)
+    assert rows[0]["ledger"]["opening"] is True and rows[0]["work_total"] == 1
+    current["ledger"].update(opening=False, baseline_package_key=prior["_package_key"],
+                             baseline_week_range=prior["_week_range"])
+    with pytest.raises(SystemExit, match="不得伪造上周基线"):
+        weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, [current]), WEEK, previous_projects=previous)
+    assert prior["project_version"] == "" and prior["work_total"] == 10
+
+
+def test_same_project_versions_keep_role_work_attention_and_plans_separate(monkeypatch: pytest.MonkeyPatch) -> None:
+    lead = {**weekly_raw_row("App"), "project_role": "主责", "work_total": 2,
+            "completed_this_week": "本周完成 0 项", "remaining": "当前剩余 2 项",
+            "remaining_items": ["核查接口", "修复输入法"]}
+    collaborator = {**weekly_raw_row("App"), "project_version": "A17",
+                    "completed_this_week": "本周完成 0 项", "remaining": "当前剩余 1 项",
+                    "remaining_items": ["核查接口"]}
+    legacy = {**lead, "project_version": "", "remaining_items": ["旧版专属事项"]}
+    history = [{"package_key": "previous", "week_range": "20260928-20261004",
+                "report_view": {"projects": [lead, collaborator, legacy]}}]
+    daily_a = {**daily_row("App"), "key_points": ["A16客户确认"], "dependencies": ["A16设备"],
+               "tomorrow_focus": ["A16旧格式计划"]}
+    daily_b = {**daily_row("App"), "project_version": "A17",
+               "key_points": ["A17发布说明"], "dependencies": ["A17账号"]}
+    daily_b["work_items"][0].update(status="处理中", result="仍在核查")
+    daily = [{"package_key": "today", "report_date": DATE.isoformat(), "report_view": {
+        "projects": [daily_a, daily_b], "tomorrow_plan": {"projects": [
+            {**identity("App"), "project_version": "A17", "plan_items": ["A17继续联调"]},
+        ]},
+    }}]
+    monkeypatch.setattr(weekly_facts, "local_now", lambda config: dt.datetime(2026, 10, 11))
+    result = weekly_facts.build_weekly_facts(
+        {}, dt.date(2026, 10, 5), dt.date(2026, 10, 11), WEEK, history=(daily, history, {}),
+    )
+    rows = {row["project_version"]: row for row in result.projects}
+    assert set(rows) == {"A16", "A17"}
+    assert rows["A16"]["project_role"] == "主责" and rows["A17"]["project_role"] == "协作"
+    assert rows["A16"]["completed_this_week_total"] == 1 and rows["A17"]["completed_this_week_total"] == 0
+    assert rows["A16"]["key_points"] == ["A16客户确认"] and rows["A17"]["key_points"] == ["A17发布说明"]
+    assert rows["A16"]["next_week_plan"] == ["A16旧格式计划"] and rows["A17"]["next_week_plan"] == ["A17继续联调"]
+    assert {entry["scope"].split(" / ")[1] for entry in result.evidence["attention_review_candidates"]} == {"A16", "A17"}
+    assert legacy["remaining_items"] == ["旧版专属事项"]
 
 
 @pytest.mark.parametrize("report_type", ["daily", "weekly"])
@@ -334,13 +408,19 @@ def test_builder_preserves_scope_identity_in_view_and_source_evidence(
     })
     if report_type == "weekly":
         facts = explicit_weekly(tmp_path, [weekly_raw_row("App", "CustomerA", "Factory"),
-                                          weekly_raw_row("App" if same_work_type else "Patch", "CustomerB")], week)
+                                          {**weekly_raw_row("App" if same_work_type else "Patch", "CustomerB"),
+                                           "project_version": "BSP 17.2"}], week)
         kwargs = {"weekly_facts_path": str(facts)}
     else:
         facts = tmp_path / "daily-facts.json"
         write_json(facts, {"schema": daily_facts.DAILY_FACTS_SCHEMA, "report_date": date.isoformat(),
-                           "projects": [daily_row("App", "CustomerA", "Factory"), daily_row("App" if same_work_type else "Patch", "CustomerB")],
-                           "documents": [], "standalone_work": [], "tomorrow_plan": daily_facts.empty_tomorrow_plan()})
+                           "projects": [daily_row("App", "CustomerA", "Factory"),
+                                        {**daily_row("App" if same_work_type else "Patch", "CustomerB"),
+                                         "project_version": "BSP 17.2"}],
+                           "documents": [], "standalone_work": [], "tomorrow_plan": {
+                               **daily_facts.empty_tomorrow_plan(),
+                               "projects": [{**identity("Patch"), "project_version": "R18", "plan_items": ["验证新版"]}],
+                           }})
         kwargs = {"daily_facts_path": str(facts)}
 
     package = builder.build_report_package(report_type, date, config, run_id=f"{date:%Y%m%d}-091500-scope",
@@ -355,7 +435,13 @@ def test_builder_preserves_scope_identity_in_view_and_source_evidence(
             for r in source["project_customers"]} == expected
     assert {r["customer"]: (r["work_type"], r.get("downstream_customer", ""))
             for r in view["projects"]} == expected
+    assert [r["project_version"] for r in source["project_customers"]] == ["A16", "BSP 17.2"]
+    assert [r["project_version"] for r in view["projects"]] == ["A16", "BSP 17.2"]
     assert "CustomerA" in view["material_name"] and "CustomerB" in view["material_name"]
+    assert "A16" in view["material_name"] and "BSP 17.2" in view["material_name"]
+    if report_type == "daily":
+        assert source["planned_project_customers"][0]["project_version"] == "R18"
+        assert view["tomorrow_plan"]["projects"][0]["project_version"] == "R18"
     assert "需成员补充客户名" not in view["material_name"]
     check = json.loads((package / "local-check.json").read_text())
     assert check["status"] == "PASS", check["errors"]
@@ -367,8 +453,9 @@ def test_builder_preserves_scope_identity_in_view_and_source_evidence(
     # The formal package validator must reject display/source/hash drift.
     view_path = package / "materials/display/report_view.json"
     document = json.loads(view_path.read_text())
-    document["payload"]["projects"][0]["downstream_customer"] = "ChangedAfterGeneration"
+    document["payload"]["projects"][0]["project_version"] = "ChangedAfterGeneration"
     write_json(view_path, document)
     changed = intake.validate_package(package)
     assert changed["status"] == "FAIL"
+    assert any("来源证据一致" in error for error in changed["errors"])
     assert any("report_render_binding.report_view_sha256" in error for error in changed["errors"])

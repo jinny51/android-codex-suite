@@ -57,7 +57,7 @@ headings and body text. Bold only the project name, for example
 Markdown presentation rule only. Keep project and customer values in
 `report_view.json` as plain text without Markdown markers.
 
-Generate the same-source UI read model at `materials/display/report_view.json`. Required daily payload fields include `schema=akbs-report-view-human-v1`, `report_type=daily`, `report_date`, `display_date`, `material_name`, `material_summary`, `projects[]`, `documents[]`, `standalone_work[]`, and `tomorrow_plan`; at least one of the three today arrays must be non-empty. Every project-bound today row belongs in `projects[]` and contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), `today_topic`, `current_result`, `work_items[]`, `key_points[]`, and `dependencies[]`. Project work uses `Patch`, `App`, `GMS`, `Doc`, or `Other`. Only a non-project document belongs in `documents[]` with `work_type=Doc` and `document_name`. A non-project, non-document activity belongs in `standalone_work[]` with `work_type=Other` and `work_name`. Historical `Document` remains readable as `Doc`. Every work item contains `name`, `did[]`, `how[]`, `result`, and fixed-enum `status`.
+Generate the same-source UI read model at `materials/display/report_view.json`. Required daily payload fields include `schema=akbs-report-view-human-v1`, `report_type=daily`, `report_date`, `display_date`, `material_name`, `material_summary`, `projects[]`, `documents[]`, `standalone_work[]`, and `tomorrow_plan`; at least one of the three today arrays must be non-empty. Every project-bound today row belongs in `projects[]` and contains `project`, `project_version`, direct `customer`, optional `downstream_customer` (客户的客户), `today_topic`, `current_result`, `work_items[]`, `key_points[]`, and `dependencies[]`. Project work uses `Patch`, `App`, `GMS`, `Doc`, or `Other`. Only a non-project document belongs in `documents[]` with `work_type=Doc` and `document_name`. A non-project, non-document activity belongs in `standalone_work[]` with `work_type=Other` and `work_name`. Historical `Document` remains readable as `Doc`. Every work item contains `name`, `did[]`, `how[]`, `result`, and fixed-enum `status`.
 
 Every current GMS project row also records `gms_release_type`
 (IR/MR/SMR/ESMR/EMR/LR), an Android major-version `gms_target` written as
@@ -136,22 +136,22 @@ pass it with `--daily-facts`. Read
 take precedence over inferred scope. For multiple unresolved scopes under one
 project, assign each work item to its scope explicitly.
 
-Daily card identity is not the date. Project identity preserves the customer chain, such as `TVE1086U（青鸾云）` or `TVE1091U（AOC → 福建移动高清）`; non-project documents and standalone work use their concrete names. Multiple scopes use `、`. `material_summary` summarizes today's actual progress; tomorrow-only scopes do not enter the card identity or today's summary. The current read model emits `material_name`, `material_summary`, `projects`, `documents`, `standalone_work`, and `tomorrow_plan`; it does not emit `display_title`, `ui_card`, `one_line_summary`, top-level `work_items`, `risks`, or `outputs`.
+Daily card identity is not the date. Project identity includes the version and customer chain, such as `TVE1086U A16（青鸾云）` or `TVE1091U R17.2（AOC → 福建移动高清）`; non-project documents and standalone work use their concrete names. Multiple scopes use `、`. `material_summary` summarizes today's actual progress; tomorrow-only scopes do not enter the card identity or today's summary. The current read model emits `material_name`, `material_summary`, `projects`, `documents`, `standalone_work`, and `tomorrow_plan`; it does not emit `display_title`, `ui_card`, `one_line_summary`, top-level `work_items`, `risks`, or `outputs`.
 
-Every project row, including Patch/App/GMS/Doc/Other, must include a recognized company project and direct customer. A third segment is optional and means the direct customer's customer: parse `TVE1091U AOC 福建移动高清` as project `TVE1091U`, customer `AOC`, and downstream customer `福建移动高清`. Keep `TVE1086U 青鸾云` compatible as a two-segment identity. The structured `customer` field contains only the direct customer; never write a flattened chain such as `customer="浪潮 杭研中屏"` with an empty `downstream_customer`. If project or direct customer is missing, local submit must stop; never merge direct and downstream customers as aliases. Non-project `documents[]` and `standalone_work[]` rows must not carry project/customer placeholders.
+Each project-bound work and tomorrow-plan row requires `project`, the confirmed `project_version`, and direct `customer`. Use `downstream_customer` when the customer's customer is known. A version can be any nonempty version string. Preserve it separately from the GMS target and patch Android version. Ask only for missing facts, and keep different versions and confirmed customer chains in their own scopes. Independent documents and standalone work use their own names.
 
 Before running `--prepare`, `--upload`, or `--submit-latest`, first decide
 whether the work is project-bound, a non-project document, or other non-project
-work. All project-bound types require a recognized project + customer pair.
+work. All project-bound types require a recognized project, version and direct customer.
 Non-project Doc requires a document name; non-project Other requires a work
-name. GMS without project/customer is invalid. Only when
+name. GMS also requires its project version and customer. Only when
 neither a valid project scope nor a valid standalone scope can be established should Codex stop
 and reply:
 
 ```text
-当前会话未关联项目，请补充项目名和客户名。
-例如：TVE1086U 青鸾云
-如有客户的客户：TVE1091U AOC 福建移动高清
+请补齐项目名、版本号、客户中缺失的字段。
+例如：TVE1086U｜版本号：A16｜客户：青鸾云
+有客户的客户时再加一栏，例如：TVE1091U｜版本号：R17.2｜客户：AOC｜客户的客户：福建移动高清
 
 建议后续按正确流程开展：先创建项目，再在项目下创建开发会话。
 
@@ -184,7 +184,7 @@ An explicit report request or a member-configured recurring task authorizes gene
 Partial daily facts may use the existing single-project work-item fallback only
 with authorized session access for this run; the facts file itself is not consent.
 
-Generation is not submission or revision authorization. A generate-only task calls `--prepare`, returns the report content/link, and must not call `--upload`, `--submit-latest`, or a replacement option. Submit or revise only when explicitly included in the member's instructions. Project paths, branches and Git output may identify a project, never a customer. Use the member's same-line declaration (for example `TVI2343R 海信`) or structured facts for customer identity; do not convert an inferred candidate into "confirmed identity".
+Generation is not submission or revision authorization. A generate-only task calls `--prepare`, returns the report content/link, and must not call `--upload`, `--submit-latest`, or a replacement option. Submit or revise only when explicitly included in the member's instructions. Project paths, branches and Git output may identify a project, never a customer. Use the member's same-line declaration (for example `TVI2343R｜版本号：A16｜客户：海信`) or structured facts for version and customer identity; do not convert an inferred candidate into "confirmed identity".
 
 ## Commands
 

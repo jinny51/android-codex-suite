@@ -118,7 +118,7 @@ def actual_work() -> dict:
 def daily_facts_file(tmp_path: Path, date: dt.date) -> Path:
     path = tmp_path / "daily-facts.json"
     write_json(path, {"schema": daily_facts.DAILY_FACTS_SCHEMA, "report_date": date.isoformat(),
-                      "projects": [{"project": "TVI2343R", "customer": "海信", "work_type": "Patch",
+                      "projects": [{"project": "TVI2343R", "project_version": "A16", "customer": "海信", "work_type": "Patch",
                                     "today_topic": "接口核查", "current_result": "核查完成",
                                     "work_items": [actual_work()], "key_points": [], "dependencies": []}],
                       "documents": [], "standalone_work": [],
@@ -390,7 +390,7 @@ def test_scheduled_generate_only_runs_with_each_date_window_and_never_submits(
     config = report_config(tmp_path)
     monkeypatch.setattr(intake, "load_config", lambda profile: (dict(config), []))
     read = Mock(return_value=[SessionWork(project="TVI2343R", messages=[
-        "TVI2343R 海信；完成接口修复", "通过源码对照完成验证，结果已完成"],
+        "TVI2343R｜版本号：release-16.2｜客户：海信；完成接口修复", "通过源码对照完成验证，结果已完成"],
         commands=["git diff"], source_work_type_hint="Patch")])
     monkeypatch.setattr(intake, "parse_sessions", read)
     monkeypatch.setattr(intake, "discover_patches", lambda *args: [])
@@ -433,6 +433,15 @@ def test_git_or_next_line_never_establishes_customer(text: str) -> None:
                                  "项目：TVI2343R 客户：海信", "项目客户：TVI2343R 海信"])
 def test_same_line_customer_declaration_remains_supported(text: str) -> None:
     assert project_customer_contexts_from_text(text) == [("TVI2343R", {"customer_name": "海信"})]
+
+
+def test_named_report_version_is_independent_of_both_customer_fields() -> None:
+    assert project_customer_contexts_from_text(
+        "TVI2343R｜版本号：BSP 17.2｜客户的客户：现场用户｜客户：海信"
+    ) == [("TVI2343R", {"project_version": "BSP 17.2", "customer_name": "海信",
+                         "downstream_customer": "现场用户"})]
+    assert project_customer_contexts_from_text("TVI2343R｜版本号：BSP 17.2｜下游客户：现场用户") == []
+    assert project_customer_contexts_from_text("TVI2343R 版本号：BSP 17.2 客户：海信")[0][1]["project_version"] == "BSP 17.2"
 
 
 def test_metadata_candidates_cannot_override_member_declaration() -> None:

@@ -13,6 +13,7 @@ from .common import report_session_privacy_errors
 from .daily_facts import (
     DAILY_FACT_SOURCES_SCHEMA,
     LEGACY_DAILY_GMS_FACT_SOURCES_SCHEMA,
+    PREVIOUS_DAILY_FACT_SOURCES_SCHEMA,
     SUPPORTED_DAILY_FACT_SOURCES_SCHEMAS,
     planning_only_work_item,
     validate_tomorrow_plan,
@@ -38,10 +39,11 @@ from .render_binding import REPORT_RENDER_BINDING_SCHEMA
 from .weekly_facts import (
     LEGACY_WEEKLY_FACT_SOURCES_SCHEMA,
     OLDEST_WEEKLY_FACT_SOURCES_SCHEMA,
+    PREVIOUS_WEEKLY_FACT_SOURCES_SCHEMA,
     WEEKLY_FACT_SOURCES_SCHEMA,
 )
 from .weekly_ledger import WEEKLY_LEDGER_SCHEMA
-from .scope import report_scope_key
+from .scope import project_version, report_scope_key
 
 
 RequireFile = Callable[[Any, str], Path | None]
@@ -92,6 +94,7 @@ def report_project_customer_errors(
     label: str,
     *,
     allow_work_scopes: bool = False,
+    require_project_version: bool = False,
 ) -> list[str]:
     row_errors: list[str] = []
     if not isinstance(rows, list) or not rows:
@@ -111,6 +114,8 @@ def report_project_customer_errors(
             row_errors.append(
                 f"{rel} payload.{label}[{index}].project 只能填写规范项目编号 {canonical_project}；其他内容应写入事项字段"
             )
+        if require_project_version and not project_version(row):
+            row_errors.append(f"{rel} payload.{label}[{index}].project_version 必须提供项目版本号")
         customer = str(row.get("customer") or row.get("customer_name") or "").strip()
         compatibility_customer = str(row.get("customer_name") or "").strip()
         if customer and compatibility_customer and customer != compatibility_customer:
@@ -325,6 +330,7 @@ def validate_weekly_fact_sources(
         return
     if payload.get("schema") not in {
         WEEKLY_FACT_SOURCES_SCHEMA,
+        PREVIOUS_WEEKLY_FACT_SOURCES_SCHEMA,
         LEGACY_WEEKLY_FACT_SOURCES_SCHEMA,
         OLDEST_WEEKLY_FACT_SOURCES_SCHEMA,
     }:
@@ -364,8 +370,15 @@ def weekly_project_identity_consistency_errors(
     rel: str,
     rows: Any,
     expected_rows: Any,
+    *,
+    require_project_version: bool = False,
+    label: str = "projects",
 ) -> list[str]:
-    if not isinstance(rows, list) or not isinstance(expected_rows, list) or not expected_rows:
+    if not isinstance(rows, list):
+        return []
+    if not isinstance(expected_rows, list) or (not expected_rows and rows):
+        if require_project_version:
+            return [f"{rel} payload.{label} 必须有对应的版本和客户链来源证据"]
         return []
 
     identity_errors: list[str] = []
@@ -374,10 +387,14 @@ def weekly_project_identity_consistency_errors(
         result: dict[tuple[str, ...], tuple[str, str]] = {}
         for value in values:
             if not isinstance(value, dict):
+                if require_project_version:
+                    identity_errors.append(f"{rel} payload.{label} 工作范围来源必须是对象")
                 continue
             project = find_company_project(str(value.get("project") or ""))
             customer = str(value.get("customer") or value.get("customer_name") or "").strip()
             downstream = str(value.get("downstream_customer") or "").strip()
+            if require_project_version and (not project or not customer or not project_version(value) or not value.get("work_type")):
+                identity_errors.append(f"{rel} payload.{label} 工作范围来源缺少项目、版本、客户或工作类型")
             if project and customer:
                 scope = report_scope_key({**value, "project": project})
                 chain = (customer, downstream)
@@ -390,7 +407,9 @@ def weekly_project_identity_consistency_errors(
     expected = identities(expected_rows)
     if identity_errors:
         return identity_errors
-    if all(not str(value.get("work_type") or "").strip() for value in expected_rows if isinstance(value, dict)):
+    if not require_project_version and all(
+        not str(value.get("work_type") or "").strip() for value in expected_rows if isinstance(value, dict)
+    ):
         # A flat source still describes several scopes when their chains agree.
         by_project: dict[str, set[tuple[str, str]]] = {}
         for scope, chain in actual.items():
@@ -398,13 +417,15 @@ def weekly_project_identity_consistency_errors(
         if any(len(chains) != 1 for chains in by_project.values()):
             return [f"{rel} project_inference.project_customers 必须明确各工作范围的客户身份"]
         actual = {
-            report_scope_key({"project": project, "customer": next(iter(chains))[0]}): next(iter(chains))
+            report_scope_key({"project": project, "customer": customer, "downstream_customer": downstream}):
+            (customer, downstream)
             for project, chains in by_project.items()
+            for customer, downstream in chains
         }
     if actual == expected:
         return []
     return [
-        f"{rel} payload.projects 项目客户身份必须与 project_inference.project_customers 来源证据一致"
+        f"{rel} payload.{label} 项目、版本和客户链必须与 project_inference 来源证据一致"
     ]
 
 
@@ -919,6 +940,8 @@ def validate_report_view_payload(
     manifest: dict[str, Any],
     view: dict[str, Any],
     expected_weekly_project_identities: Any = None,
+    expected_planned_project_identities: Any = None,
+    require_project_version: bool = False,
     daily_contract_v3: bool,
     daily_require_current_gms: bool,
     errors: list[str],
@@ -955,14 +978,16 @@ def validate_report_view_payload(
                 projects,
                 "projects",
                 allow_work_scopes=True,
+                require_project_version=require_project_version,
             )
         )
-    if report_type == "weekly":
+    if report_type == "weekly" or require_project_version:
         errors.extend(
             weekly_project_identity_consistency_errors(
                 rel,
                 projects,
                 expected_weekly_project_identities,
+                require_project_version=require_project_version,
             )
         )
     for index, project in enumerate(projects):
@@ -993,7 +1018,17 @@ def validate_report_view_payload(
             contract_v3=daily_contract_v3,
         )
         if daily_contract_v3 or "tomorrow_plan" in view:
-            errors.extend(validate_tomorrow_plan(tomorrow_plan, prefix=f"{rel} payload.tomorrow_plan"))
+            errors.extend(
+                validate_tomorrow_plan(
+                    tomorrow_plan, prefix=f"{rel} payload.tomorrow_plan",
+                    require_project_version=require_project_version,
+                )
+            )
+        if require_project_version and isinstance(tomorrow_plan, dict):
+            errors.extend(weekly_project_identity_consistency_errors(
+                rel, tomorrow_plan.get("projects"), expected_planned_project_identities,
+                require_project_version=True, label="tomorrow_plan.projects",
+            ))
     else:
         if "tomorrow_plan" in view:
             errors.append(f"{rel} payload.tomorrow_plan 仅日报允许提供")
@@ -1015,6 +1050,8 @@ def validate_report_display_files(
     manifest: dict[str, Any],
     report_type: str,
     expected_weekly_project_identities: Any,
+    expected_planned_project_identities: Any,
+    require_project_version: bool,
     daily_contract_v3: bool,
     daily_require_current_gms: bool,
     require_file: RequireFile,
@@ -1045,6 +1082,8 @@ def validate_report_display_files(
             manifest=manifest,
             view=view,
             expected_weekly_project_identities=expected_weekly_project_identities,
+            expected_planned_project_identities=expected_planned_project_identities,
+            require_project_version=require_project_version,
             daily_contract_v3=daily_contract_v3,
             daily_require_current_gms=daily_require_current_gms,
             errors=errors,
@@ -1140,28 +1179,27 @@ def validate_report_trace_package(
         validate_weekly_fact_sources(manifest=manifest, evidence_by_kind=evidence_by_kind, errors=errors)
     validate_session_privacy_evidence(evidence_by_kind=evidence_by_kind, errors=errors)
     validate_work_findings(evidence_by_kind=evidence_by_kind, package_status_values=package_status_values, errors=errors)
+    infer_payload = evidence_by_kind.get("project_inference", {}).get("payload")
+    infer_payload = infer_payload if isinstance(infer_payload, dict) else {}
+    fact_payload = evidence_by_kind.get(f"{report_type}_fact_sources", {}).get("payload")
+    fact_schema = fact_payload.get("schema") if isinstance(fact_payload, dict) else None
     validate_report_display_files(
         package_dir=package_dir,
         files=files,
         manifest=manifest,
         report_type=report_type,
-        expected_weekly_project_identities=(
-            evidence_by_kind.get("project_inference", {}).get("payload", {}).get("project_customers")
-            if package_kind == "weekly_trace"
-            and isinstance(evidence_by_kind.get("project_inference", {}).get("payload"), dict)
-            else None
-        ),
+        expected_weekly_project_identities=infer_payload.get("project_customers"),
+        expected_planned_project_identities=infer_payload.get("planned_project_customers"),
+        require_project_version=fact_schema in {DAILY_FACT_SOURCES_SCHEMA, WEEKLY_FACT_SOURCES_SCHEMA},
         daily_contract_v3=(
             package_kind == "daily_trace"
-            and isinstance(evidence_by_kind.get("daily_fact_sources", {}).get("payload"), dict)
-            and evidence_by_kind["daily_fact_sources"]["payload"].get("schema")
-            in {DAILY_FACT_SOURCES_SCHEMA, LEGACY_DAILY_GMS_FACT_SOURCES_SCHEMA}
+            and fact_schema in {
+                DAILY_FACT_SOURCES_SCHEMA, PREVIOUS_DAILY_FACT_SOURCES_SCHEMA, LEGACY_DAILY_GMS_FACT_SOURCES_SCHEMA,
+            }
         ),
         daily_require_current_gms=(
             package_kind == "daily_trace"
-            and isinstance(evidence_by_kind.get("daily_fact_sources", {}).get("payload"), dict)
-            and evidence_by_kind["daily_fact_sources"]["payload"].get("schema")
-            == DAILY_FACT_SOURCES_SCHEMA
+            and fact_schema in {DAILY_FACT_SOURCES_SCHEMA, PREVIOUS_DAILY_FACT_SOURCES_SCHEMA}
         ),
         require_file=require_file,
         read_referenced_json=read_referenced_json,

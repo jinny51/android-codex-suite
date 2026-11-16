@@ -178,11 +178,12 @@ An explicit report request or a member-configured recurring task authorizes gene
     "week_range": "",
     "member_alias": "member01",
     "member_name": "成员",
-    "material_name": "TVE1086U（青鸾云）",
+    "material_name": "TVE1086U A16（青鸾云）",
     "material_summary": "TVE1086U：今日处理锁屏鼠标位置刷新，已完成基础验证。",
     "projects": [
       {
         "project": "TVE1086U",
+        "project_version": "A16",
         "customer": "青鸾云",
         "work_type": "Patch",
         "today_topic": "锁屏鼠标位置刷新",
@@ -200,6 +201,7 @@ An explicit report request or a member-configured recurring task authorizes gene
       "projects": [
         {
           "project": "TVE1065M",
+          "project_version": "A16",
           "customer": "韩富友",
           "work_type": "GMS",
           "gms_release_type": "IR",
@@ -214,15 +216,12 @@ An explicit report request or a member-configured recurring task authorizes gene
 }
 ```
 
-`customer` is the direct customer. `downstream_customer` is optional and means
-the direct customer's customer. Thus `TVE1091U AOC 福建移动高清` is represented
-as `project=TVE1091U`, `customer=AOC`, and
-`downstream_customer=福建移动高清`; direct and downstream names are not aliases.
+Every new project row carries a confirmed nonempty `project_version` separately from `project`, direct `customer` and optional `downstream_customer`. The version differs from patch Android version and GMS target. The same identity is used in project progress and plans. Older packages missing a version remain readable as 版本待核.
 
 Daily and weekly report payloads contain parallel `projects[]`, `documents[]`,
 and `standalone_work[]` arrays, with at least one non-empty. Every project-bound
 row uses `projects[]`, may use `Patch`, `App`, `GMS`, `Doc`, or `Other`, and
-retains canonical project/customer identity. Non-project documents use
+retains canonical project, version and customer chain. Non-project documents use
 `documents[]/Doc/document_name`; other non-project work uses
 `standalone_work[]/Other/work_name`. GMS is always project-bound. For
 `report_type=daily`, every project and non-project scope carries

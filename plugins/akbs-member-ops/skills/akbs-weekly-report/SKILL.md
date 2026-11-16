@@ -123,7 +123,7 @@ The weekly Markdown baseline is the project block format:
 ```markdown
 ## 一、本周概况
 
-### **TVE1086U** 青鸾云
+### **TVE1086U** A16 青鸾云
 
 本周围绕 **TVE1086U** 青鸾云 项目推进：完成系统接口联调。
 
@@ -184,7 +184,7 @@ categories; the displayed total must equal the category sum. For `App`, use
 plain counts without Patch categories:
 
 ```markdown
-### **TVI2343R** 海信｜App：蓝牙播放器
+### **TVI2343R** R17.2 海信｜App：蓝牙播放器
 
 - 类型：App
 - App 名称：蓝牙播放器
@@ -205,11 +205,11 @@ as separate unordered lists under subsection 4.
 For multiple projects, repeat the same block per project. Do not use a large
 overview table in `本周概况`.
 
-Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `schema=akbs-report-view-human-v1`, `report_type=weekly`, `week_range`, `display_date`, `material_name`, `material_summary`, `projects[]`, `documents[]`, and `standalone_work[]`; at least one array must be non-empty. Patch/App project rows keep the existing total and ledger fields. GMS project rows carry the minimal release/target, cycle, self-test, and submission facts plus progress, key points, risks, dependencies, and plans without Patch/App totals. Project GMS titles are `项目 + 客户｜GMS：送测类别（目标版本）`; `display_name`, `model`, `work_name`, and `document_name` never replace that identity. Project-bound Doc/Other are progress scopes. Non-project Doc and Other use their own arrays and concrete names.
+Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `schema=akbs-report-view-human-v1`, `report_type=weekly`, `week_range`, `display_date`, `material_name`, `material_summary`, `projects[]`, `documents[]`, and `standalone_work[]`; at least one array must be non-empty. Patch/App project rows keep the existing total and ledger fields. GMS project rows carry the minimal release/target, cycle, self-test, and submission facts plus progress, key points, risks, dependencies, and plans without Patch/App totals. Project GMS titles are `项目 版本号 客户｜GMS：送测类别（目标版本）`; `display_name`, `model`, `work_name`, and `document_name` never replace that identity. Project-bound Doc/Other are progress scopes. Non-project Doc and Other use their own arrays and concrete names.
 
 Weekly card identity is not the week range. `material_name` must preserve the
 customer chain, such as `TVE1086U（青鸾云）` or
-`TVE1091U（AOC → 福建移动高清）`; multiple projects must keep each project
+`TVE1091U R17.2（AOC → 福建移动高清）`; multiple projects must keep each project
 paired with its own customer chain. Standalone documentation uses
 `Doc：<文档名称>`. `material_summary` must summarize each project's or
 document's weekly completed and remaining state. The current read model emits
@@ -217,26 +217,14 @@ document's weekly completed and remaining state. The current read model emits
 emit `display_title`, `ui_card`, `one_line_summary`, `project_ledgers`,
 `weekly_progress_summary`, or `weekly_detail_sections`.
 
-Each project row must include both a recognized company project name
-and a direct customer. A third segment is optional and represents the direct
-customer's customer: parse `TVE1091U AOC 福建移动高清` into project
-`TVE1091U`, customer `AOC`, and downstream customer `福建移动高清`. Keep
-`TVE1086U 青鸾云` compatible as a two-segment identity. If project or direct
-customer is missing, generate the package with
-`需成员补充项目名` or `需成员补充客户名` so the member can edit it, but local
-submit must stop until both values are present. Do not repair Markdown alone.
+Each project row requires the project name, the confirmed `project_version`, and direct `customer`. Fill `downstream_customer` when the customer's customer is known. The version accepts any nonempty version string and is separate from the GMS target and patch Android version. Resolve missing values in the structured facts.
 Complete the structured weekly facts and regenerate so `reports/weekly.md` and
 `report_view.json` remain the same-source views of one fact set. Any management-side
 aggregation happens outside the member workflow and should not be exposed as a
 member responsibility. Direct and downstream customer aliases must be resolved
 within their own levels, never across the customer chain.
 
-There must be exactly one `projects[]` row for each reporting scope. A Patch
-scope is `project + direct customer + Patch`; an App scope is `project + direct
-customer + App + app_name`; a GMS scope adds release type + target. The same
-formal project may therefore contain one Patch row, multiple App rows, separate
-IR/MR/SMR GMS rows, and project-bound Doc/Other rows; no
-scope may be duplicated. Feature names remain work items and do not create more rows. The
+There must be one `projects[]` row for each combination of project, version, direct customer, downstream customer and work scope. App adds `app_name`; GMS adds release type and target. Track each version’s role, counts, risks and next-week actions in its own row. A historical row with no version remains 版本待核 and cannot start a versioned ledger. When a sole matching ledger gains a downstream customer, continue that ledger with its existing totals. Feature names remain work items and do not create more rows. The
 gate is structural, not a vocabulary blacklist: it validates the canonical
 project, customer chain, work scope, and same-source identity consistency.
 Generation and `--submit-latest` reject conflicts before HTTP.
@@ -275,17 +263,17 @@ covered; do not ask them to reconstruct the full report.
 
 Before running `--prepare`, `--upload`, or `--submit-latest`, distinguish
 project-bound work from non-project Doc and Other work. Every project row
-requires a recognized project + customer pair. A non-project document requires
-`document_name`; other non-project work requires `work_name`. Ask for project/customer only when
+requires a recognized project, version and direct customer. A non-project document requires
+`document_name`; other non-project work requires `work_name`. Ask only for missing project identity fields when
 the unresolved work is project work, and reply:
 
 ```text
-缺少项目名和客户名，请补充，例如：TVE1086U 青鸾云；如有客户的客户，继续写第三段，例如：TVE1091U AOC 福建移动高清。
+请补齐项目名、版本号、客户中缺失的字段。例如 TVE1086U｜版本号：A16｜客户：青鸾云。有客户的客户时另填一栏。
 ```
 
 If it is non-project documentation, ask only for the concrete document name and
 use `Doc`. If it is non-project, non-document work, use `Other` with a concrete
-work name. Never create GMS without a company project and customer.
+work name. Never create GMS without a company project, project version and customer.
 
 The weekly display date is the last workday of the period, including official holidays
 and makeup workdays from the bundled read-only work calendar. It requires no runtime

@@ -6,7 +6,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from akbs_member_ops.knowledge_rules import find_company_project
 
@@ -28,7 +28,7 @@ from .document_work import (
 )
 from .gms import GMS_CURRENT_FIELDS, GMS_PLAN_FIELDS, normalize_gms_fields, validate_gms_fields
 from .scope import (
-    ALLOWED_WORK_TYPES, PROJECT_WORK_TYPES, clean_scope_text, report_scope_key,
+    ALLOWED_WORK_TYPES, PROJECT_WORK_TYPES, clean_scope_text, project_version, report_scope_key,
     report_scope_customer_context,
 )
 
@@ -43,12 +43,14 @@ SUPPORTED_DAILY_FACTS_SCHEMAS = {
     LEGACY_DAILY_WORK_FACTS_SCHEMA,
     LEGACY_DAILY_FACTS_SCHEMA,
 }
-DAILY_FACT_SOURCES_SCHEMA = "akbs-daily-fact-sources-v4"
+DAILY_FACT_SOURCES_SCHEMA = "akbs-daily-fact-sources-v5"
+PREVIOUS_DAILY_FACT_SOURCES_SCHEMA = "akbs-daily-fact-sources-v4"
 LEGACY_DAILY_GMS_FACT_SOURCES_SCHEMA = "akbs-daily-fact-sources-v3"
 LEGACY_DAILY_FACT_SOURCES_SCHEMA = "akbs-daily-fact-sources-v1"
 LEGACY_DAILY_WORK_FACT_SOURCES_SCHEMA = "akbs-daily-fact-sources-v2"
 SUPPORTED_DAILY_FACT_SOURCES_SCHEMAS = {
     DAILY_FACT_SOURCES_SCHEMA,
+    PREVIOUS_DAILY_FACT_SOURCES_SCHEMA,
     LEGACY_DAILY_GMS_FACT_SOURCES_SCHEMA,
     LEGACY_DAILY_WORK_FACT_SOURCES_SCHEMA,
     LEGACY_DAILY_FACT_SOURCES_SCHEMA,
@@ -118,6 +120,7 @@ def normalize_tomorrow_plan(value: Any) -> dict[str, list[dict[str, Any]]]:
         row: dict[str, Any] = {
             "project": find_company_project(clean_scope_text(item.get("project")))
             or clean_scope_text(item.get("project")),
+            "project_version": project_version(item),
             "customer": clean_scope_text(item.get("customer") or item.get("customer_name")),
             "work_type": clean_scope_text(item.get("work_type") or item.get("type")),
             "plan_items": normalize_plan_items(item.get("plan_items") or item.get("tomorrow_focus")),
@@ -157,16 +160,7 @@ def normalize_tomorrow_plan(value: Any) -> dict[str, list[dict[str, Any]]]:
 
 def tomorrow_plan_identity(collection: str, row: dict[str, Any]) -> tuple[str, ...]:
     if collection == "projects":
-        work_type = clean_scope_text(row.get("work_type"))
-        return (
-            find_company_project(clean_scope_text(row.get("project"))) or clean_scope_text(row.get("project")),
-            clean_scope_text(row.get("customer") or row.get("customer_name")),
-            clean_scope_text(row.get("downstream_customer")),
-            work_type,
-            clean_scope_text(row.get("app_name")).casefold() if work_type == "App" else "",
-            clean_scope_text(row.get("gms_release_type")).upper() if work_type == "GMS" else "",
-            clean_scope_text(row.get("gms_target")).casefold() if work_type == "GMS" else "",
-        )
+        return report_scope_key(row)
     name_field = "document_name" if collection == "documents" else "work_name"
     return (clean_scope_text(row.get("work_type")), clean_scope_text(row.get(name_field)).casefold())
 
@@ -210,7 +204,7 @@ def plan_row_from_daily_scope(collection: str, row: dict[str, Any]) -> dict[str,
             "work_type": row.get("work_type", ""),
             "plan_items": plan_items,
         }
-        for field in ("downstream_customer", "app_name", *GMS_PLAN_FIELDS):
+        for field in ("project_version", "downstream_customer", "app_name", *GMS_PLAN_FIELDS):
             if row.get(field):
                 plan_row[field] = row[field]
         return plan_row
@@ -328,12 +322,25 @@ def normalize_daily_project(
     project_items: dict[str, list[tuple[str, str]]],
     daily_work_items: dict[str, list[dict[str, Any]]],
     scope_count_by_project: dict[str, int],
+    inferred_scopes: Sequence[dict[str, Any]],
 ) -> dict[str, Any]:
     raw_project = clean_scope_text(value.get("project"))
     project = find_company_project(raw_project) or raw_project
     raw_work_items = value.get("work_items")
+    known_scopes = [
+        scope for scope in inferred_scopes
+        if scope.get("project") == project and (project_version(scope) or scope.get("inference_conflict"))
+    ]
     if isinstance(raw_work_items, list) and raw_work_items:
         work_items = [normalize_work_item(item) for item in raw_work_items]
+    elif known_scopes:
+        matching = [
+            scope for scope in known_scopes
+            if not scope.get("inference_conflict") and report_scope_key(scope) == report_scope_key(value)
+        ]
+        work_items = [
+            normalize_work_item(item) for item in matching[0].get("work_items", [])
+        ] if len(matching) == 1 else []
     elif scope_count_by_project.get(project, 0) <= 1:
         work_items = fallback_work_items(project, project_items, daily_work_items)
     else:
@@ -341,6 +348,7 @@ def normalize_daily_project(
     customer = clean_scope_text(value.get("customer") or value.get("customer_name"))
     row: dict[str, Any] = {
         "project": project,
+        "project_version": project_version(value),
         "customer": customer,
         "customer_name": customer,
         "work_type": clean_scope_text(value.get("work_type") or value.get("type")),
@@ -400,6 +408,7 @@ def validate_daily_projects(
     *,
     expected_project_customers: dict[str, Any] | None = None,
     require_current_gms: bool = True,
+    require_project_version: bool = True,
 ) -> list[str]:
     errors: list[str] = []
     seen_scopes: dict[tuple[str, ...], int] = {}
@@ -410,6 +419,8 @@ def validate_daily_projects(
         if not canonical or canonical.upper() != project.upper():
             errors.append(f"{prefix}.project 必须是规范公司项目名")
             continue
+        if require_project_version and not project_version(row):
+            errors.append(f"{prefix}.project_version 必须提供项目版本号")
         customer = clean_scope_text(row.get("customer") or row.get("customer_name"))
         downstream = clean_scope_text(row.get("downstream_customer"))
         if customer in REPORT_MISSING_CUSTOMER_VALUES or not clean_report_customer_name(customer):
@@ -503,6 +514,7 @@ def validate_tomorrow_plan(
     *,
     prefix: str = "tomorrow_plan",
     require_current_gms: bool = True,
+    require_project_version: bool = True,
 ) -> list[str]:
     if not isinstance(value, dict):
         return [f"{prefix} 必须是对象"]
@@ -527,6 +539,8 @@ def validate_tomorrow_plan(
                 canonical = find_company_project(project)
                 if not canonical or canonical.upper() != project.upper():
                     errors.append(f"{row_prefix}.project 必须是规范公司项目名")
+                if require_project_version and not project_version(row):
+                    errors.append(f"{row_prefix}.project_version 必须提供项目版本号")
                 customer = clean_scope_text(row.get("customer") or row.get("customer_name"))
                 downstream = clean_scope_text(row.get("downstream_customer"))
                 if customer in REPORT_MISSING_CUSTOMER_VALUES or not clean_report_customer_name(customer):
@@ -616,6 +630,7 @@ def load_explicit_facts(
     expected_project_customers: dict[str, Any] | None = None,
     include_documents: bool = False,
     include_all_scopes: bool = False,
+    inferred_scopes: Sequence[dict[str, Any]] = (),
 ) -> (
     list[dict[str, Any]]
     | tuple[list[dict[str, Any]], list[dict[str, Any]]]
@@ -661,6 +676,7 @@ def load_explicit_facts(
             project_items=project_items,
             daily_work_items=daily_work_items,
             scope_count_by_project=scope_count_by_project,
+            inferred_scopes=inferred_scopes,
         )
         for item in raw_projects
         if isinstance(item, dict)
@@ -767,6 +783,7 @@ def fallback_projects(
             work_type = "Patch" if synthetic else clean_scope_text(scope.get("work_type")) or "需成员确认"
             row: dict[str, Any] = {
                 "project": project,
+                "project_version": "fixture-v1" if synthetic else project_version(scope),
                 "customer": context["customer_name"],
                 "customer_name": context["customer_name"],
                 "work_type": work_type,
@@ -892,6 +909,7 @@ def build_daily_facts(
             daily_work_items=daily_work_items,
             expected_project_customers=project_customers,
             include_all_scopes=True,
+            inferred_scopes=inferred_scopes,
         )
         source = "explicit_daily_facts"
         source_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -914,6 +932,7 @@ def build_daily_facts(
             (
                 (
                     bool(find_company_project(clean_scope_text(row.get("project"))))
+                    and bool(project_version(row))
                     and clean_scope_text(row.get("work_type")) in PROJECT_WORK_TYPES
                     and (
                         clean_scope_text(row.get("work_type")) != "App"
@@ -953,6 +972,8 @@ def build_daily_facts(
         for row in projects:
             project = clean_scope_text(row.get("project"))
             work_type = clean_scope_text(row.get("work_type"))
+            if not project_version(row):
+                missing_fields.append(f"{project}.project_version")
             if work_type not in ALLOWED_WORK_TYPES:
                 missing_fields.append(f"{project}.work_type")
             elif work_type == "App" and not clean_scope_text(row.get("app_name")):

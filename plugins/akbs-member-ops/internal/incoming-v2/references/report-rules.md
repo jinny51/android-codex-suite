@@ -251,11 +251,12 @@ Daily and weekly reports are the primary human-readable product. The package als
   "payload": {
     "schema": "akbs-report-view-human-v1",
     "report_type": "daily",
-    "material_name": "TVE1086U（青鸾云）",
+    "material_name": "TVE1086U A16（青鸾云）",
     "material_summary": "TVE1086U：今日处理锁屏鼠标位置刷新、云电脑崩溃排查。",
     "projects": [
       {
         "project": "TVE1086U",
+        "project_version": "A16",
         "customer": "青鸾云",
         "work_type": "Patch",
         "today_topic": "锁屏鼠标位置刷新",
@@ -273,6 +274,7 @@ Daily and weekly reports are the primary human-readable product. The package als
       "projects": [
         {
           "project": "TVE1065M",
+          "project_version": "A16",
           "customer": "韩富友",
           "work_type": "GMS",
           "gms_release_type": "IR",
@@ -287,19 +289,15 @@ Daily and weekly reports are the primary human-readable product. The package als
 }
 ```
 
-`customer` is the direct customer. `downstream_customer` is optional and means
-the direct customer's customer. For example, `TVE1091U AOC 福建移动高清`
-becomes `project=TVE1091U`, `customer=AOC`, and
-`downstream_customer=福建移动高清`. Do not collapse the two customer levels
-into aliases. A two-segment identity such as `TVE1086U 青鸾云` remains valid.
+Every new project row carries a confirmed nonempty `project_version` separately from `project`, direct `customer` and optional `downstream_customer`. The version differs from patch Android version and GMS target. The same identity is used in project progress and plans. Older packages missing a version remain readable as 版本待核.
 
 Report card fields are authoritative:
 
-- `material_name`：项目 + 客户链路；独立文档写 `文档工作：<文档名称>`。多项目写 `TVE1086U（青鸾云）、TVE1091U（AOC → 福建移动高清）`，超过 3 个项目时只列前 3 个并追加 `等 N 个项目`。
+- `material_name`：项目、版本号和客户链路；独立文档写 `文档工作：<文档名称>`。多项目写 `TVE1086U A16（青鸾云）、TVE1091U R17.2（AOC → 福建移动高清）`，超过 3 个项目时只列前 3 个并追加 `等 N 个项目`。
 - `material_summary`：日报写各项目或文档的“今日主题”；周报写各项目或文档的“本周完成、剩余、风险/依赖”。它是卡片小字，不要拿日期、成员名或包路径充当摘要。
-- Daily today project rows contain `project/customer/[downstream_customer]/work_type/[app_name]/[gms_release_type/gms_target/gms_cycle_status/gms_current_stage/gms_self_test_round/gms_self_test_result/gms_submission_count/gms_submission_result]/today_topic/current_result/work_items/key_points/dependencies`; every work item contains `name/did/how/result/status` and status is one of `已完成/处理中/待验证/阻塞`.
+- Daily today project rows contain `project/project_version/customer/[downstream_customer]/work_type/[app_name]/[gms_release_type/gms_target/gms_cycle_status/gms_current_stage/gms_self_test_round/gms_self_test_result/gms_submission_count/gms_submission_result]/today_topic/current_result/work_items/key_points/dependencies`; every work item contains `name/did/how/result/status` and status is one of `已完成/处理中/待验证/阻塞`.
 - Daily `tomorrow_plan` contains parallel project, document, and standalone arrays. Plan rows carry only scope identity plus `plan_items[]`; tomorrow-only scopes never count as today progress or weekly progress.
-- Weekly project rows contain `project/customer/[downstream_customer]/work_type/[app_name]/[GMS progress fields]/project_role/week_summary/requirement_date/requirement_source/[requirement_structure/work_total]/completed_this_week/remaining/completed_items/remaining_items/key_points/risks/dependencies/next_week_plan`.
+- Weekly project rows contain `project/project_version/customer/[downstream_customer]/work_type/[app_name]/[GMS progress fields]/project_role/week_summary/requirement_date/requirement_source/[requirement_structure/work_total]/completed_this_week/remaining/completed_items/remaining_items/key_points/risks/dependencies/next_week_plan`.
 - Daily and weekly non-project Doc rows live in `documents[]` and use `document_name`; non-project Other rows live in `standalone_work[]` and use `work_name`. GMS never lives outside `projects[]`.
 - The current read model does not emit `display_title`, `ui_card`, `one_line_summary`, `project_ledgers`, `weekly_progress_summary`, or `weekly_detail_sections`.
 

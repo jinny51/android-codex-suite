@@ -150,8 +150,9 @@ def infer_report_project(
         payload["project_customers"] = []
         for project, context in sorted(project_customers.items()):
             row = {"project": project, "customer_name": context["customer_name"]}
-            if context.get("downstream_customer"):
-                row["downstream_customer"] = context["downstream_customer"]
+            for field in ("project_version", "downstream_customer"):
+                if context.get(field):
+                    row[field] = context[field]
             payload["project_customers"].append(row)
         payload["customer_basis"] = {
             project: basis[:5]

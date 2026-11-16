@@ -30,7 +30,7 @@ from .document_work import (
     validate_weekly_standalone_work,
 )
 from .gms import GMS_CURRENT_FIELDS, normalize_gms_fields, validate_gms_fields
-from .scope import PROJECT_WORK_TYPES, report_scope_key, report_scope_customer_context
+from .scope import PROJECT_WORK_TYPES, project_version, report_scope_key, report_scope_customer_context
 from .weekly_ledger import (
     BUSINESS_COUNT_KEYS,
     LEDGER_CHANGE_KEYS,
@@ -38,6 +38,7 @@ from .weekly_ledger import (
     matching_previous_scope,
     normalize_weekly_ledger,
     validate_v5_project_ledger,
+    weekly_scope_identity,
 )
 
 
@@ -45,7 +46,8 @@ WEEKLY_FACTS_SCHEMA = "akbs-weekly-work-facts-v6"
 PREVIOUS_WEEKLY_FACTS_SCHEMA = "akbs-weekly-work-facts-v5"
 LEGACY_WEEKLY_FACTS_SCHEMA = "akbs-weekly-work-facts-v4"
 OLDEST_WEEKLY_FACTS_SCHEMA = "akbs-weekly-project-facts-v3"
-WEEKLY_FACT_SOURCES_SCHEMA = "akbs-weekly-fact-sources-v3"
+WEEKLY_FACT_SOURCES_SCHEMA = "akbs-weekly-fact-sources-v4"
+PREVIOUS_WEEKLY_FACT_SOURCES_SCHEMA = "akbs-weekly-fact-sources-v3"
 LEGACY_WEEKLY_FACT_SOURCES_SCHEMA = "akbs-weekly-fact-sources-v2"
 OLDEST_WEEKLY_FACT_SOURCES_SCHEMA = "akbs-weekly-fact-sources-v1"
 COUNT_KEYS = ("demand", "migration", "bug", "bsp")
@@ -101,33 +103,15 @@ def clean_list(value: Any) -> list[str]:
     return result
 
 
-def attention_scope_key(
-    work_type: Any,
-    app_name: Any = "",
-    gms_release_type: Any = "",
-    gms_target: Any = "",
-    customer: Any = "",
-) -> tuple[str, str, str, str, str]:
-    normalized_type = clean_text(work_type)
-    normalized_app = clean_text(app_name).casefold() if normalized_type == "App" else ""
-    release_type = clean_text(gms_release_type).upper() if normalized_type == "GMS" else ""
-    target = clean_text(gms_target).casefold() if normalized_type == "GMS" else ""
-    return normalized_type, normalized_app, release_type, target, str(customer or "").strip()
+def attention_scope_key(row: dict[str, Any]) -> tuple[str, ...]:
+    return report_scope_key(row)[1:]
 
 
 def daily_scope_attention(daily_meta: dict[str, Any], row: dict[str, Any]) -> dict[str, list[str]]:
     scopes = daily_meta.get("attention_by_scope")
     if not isinstance(scopes, dict):
         return {"key_points": [], "dependencies": []}
-    value = scopes.get(
-        attention_scope_key(
-            row.get("work_type"),
-            row.get("app_name"),
-            row.get("gms_release_type"),
-            row.get("gms_target"),
-            row.get("customer") or row.get("customer_name"),
-        )
-    )
+    value = scopes.get(attention_scope_key(row))
     if not isinstance(value, dict):
         return {"key_points": [], "dependencies": []}
     return {
@@ -138,19 +122,7 @@ def daily_scope_attention(daily_meta: dict[str, Any], row: dict[str, Any]) -> di
 
 def daily_scope_plan(daily_meta: dict[str, Any], row: dict[str, Any]) -> list[str]:
     scopes = daily_meta.get("plan_by_scope")
-    if isinstance(scopes, dict):
-        value = scopes.get(
-            attention_scope_key(
-                row.get("work_type"),
-                row.get("app_name"),
-                row.get("gms_release_type"),
-                row.get("gms_target"),
-                row.get("customer") or row.get("customer_name"),
-            )
-        )
-        if value is not None:
-            return clean_list(value)
-    return clean_list(daily_meta.get("latest_focus"))
+    return clean_list(scopes.get(attention_scope_key(row))) if isinstance(scopes, dict) else []
 
 
 def append_attention_values(target: dict[str, Any], field: str, value: Any) -> None:
@@ -453,6 +425,7 @@ def _weekly_project_row(value: dict[str, Any]) -> dict[str, Any]:
     remaining_items = clean_list(value.get("remaining_items"))
     row = {
         "project": project,
+        "project_version": project_version(value),
         "customer": customer,
         "customer_name": customer,
         "downstream_customer": downstream_customer,
@@ -568,6 +541,7 @@ def project_customer_identity_conflicts(
             conflicts.append(
                 {
                     "project": project,
+                    "project_version": project_version(row),
                     "actual_customer": actual_customer,
                     "actual_downstream_customer": actual_downstream,
                     "expected_customer": expected_customer,
@@ -627,6 +601,7 @@ def load_explicit_facts(
     normalized: list[dict[str, Any]] = []
     errors: list[str] = []
     seen_scopes: dict[tuple[str, ...], int] = {}
+    claimed_previous_scopes: set[tuple[str, ...]] = set()
     for index, item in enumerate(projects):
         if not isinstance(item, dict):
             errors.append(f"projects[{index}] 必须是对象")
@@ -639,6 +614,8 @@ def load_explicit_facts(
             errors.append(
                 f"{project}.project 只能填写规范项目编号 {project}；其他内容请写入事项字段"
             )
+        if not project_version(item):
+            errors.append(f"projects[{index}].project_version 必须提供项目版本号")
         for field in ("customer", "work_type", "project_role", "requirement_date", "requirement_source"):
             if clean_text(item.get(field)) in MISSING_VALUES:
                 errors.append(f"{project}.{field} 必须提供")
@@ -674,7 +651,7 @@ def load_explicit_facts(
             elif not clean_text(item.get("current_stage")) and not clean_text(item.get("gms_cycle_status")):
                 errors.append(f"{project}.current_stage 历史 GMS 行必须提供")
         if item.get("display_name") or item.get("model"):
-            errors.append(f"{project}.display_name/model 不属于项目身份；项目标题只使用项目和客户")
+            errors.append(f"{project}.display_name/model 不属于项目身份；请使用项目名、版本号和客户链")
         if not project.startswith("projects["):
             scope = report_scope_key(item)
             previous_scope_index = seen_scopes.get(scope)
@@ -788,6 +765,13 @@ def load_explicit_facts(
             normalized_row,
             previous_projects or {},
         )
+        if previous is not None and work_type in {"Patch", "App"}:
+            previous_scope = weekly_scope_identity(previous)
+            if previous_scope[-1] and not weekly_scope_identity(normalized_row)[-1]:
+                errors.append(f"projects[{index}].downstream_customer 不得清空已确认的客户的客户")
+            if previous_scope in claimed_previous_scopes:
+                errors.append(f"projects[{index}].ledger 多个当前范围不能使用同一份上周台账")
+            claimed_previous_scopes.add(previous_scope)
         if schema == WEEKLY_FACTS_SCHEMA and work_type in {"Patch", "App"}:
             validate_v5_project_ledger(
                 item,
@@ -836,7 +820,7 @@ def load_explicit_facts(
 
 def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], dict[str, list[dict[str, str]]]]:
     metadata: dict[str, dict[str, Any]] = {}
-    records: dict[str, dict[str, dict[str, str]]] = {}
+    records: dict[str, dict[tuple[str, ...], dict[str, str]]] = {}
     for item in sorted(items, key=lambda row: (clean_text(row.get("report_date")), clean_text(row.get("package_key")))):
         report_date = clean_text(item.get("report_date"))
         view = report_item_view(item)
@@ -851,38 +835,31 @@ def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[
             work_type = clean_text(raw_project.get("work_type"))
             app_name = clean_text(raw_project.get("app_name"))
             gms_fields = normalize_gms_fields(raw_project)
-            scope = attention_scope_key(
-                work_type, app_name, gms_fields.get("gms_release_type"), gms_fields.get("gms_target"),
-                raw_project.get("customer") or raw_project.get("customer_name"),
-            )
             downstream_customer = clean_text(
                 raw_project.get("downstream_customer")
                 or raw_project.get("customer_of_customer")
                 or raw_project.get("end_customer")
             )
+            scope = attention_scope_key({**raw_project, **gms_fields, "downstream_customer": downstream_customer})
             identity_by_scope = project_meta.setdefault("identity_by_scope", {})
             identity_by_scope[scope] = {
                 "customer": clean_text(raw_project.get("customer") or raw_project.get("customer_name")),
+                "project_version": project_version(raw_project),
                 "downstream_customer": downstream_customer,
             }
             if len(identity_by_scope) == 1:
                 project_meta.update(identity_by_scope[scope])
             else:
                 project_meta.pop("customer", None)
+                project_meta.pop("project_version", None)
                 project_meta.pop("downstream_customer", None)
             focuses = clean_list(raw_project.get("tomorrow_focus"))
             if focuses:
-                project_meta["latest_focus"] = focuses
+                project_meta.setdefault("plan_by_scope", {})[scope] = focuses
             work_items = raw_project.get("work_items") if isinstance(raw_project.get("work_items"), list) else []
             attention_by_scope = project_meta.setdefault("attention_by_scope", {})
             scope_attention = attention_by_scope.setdefault(
-                attention_scope_key(
-                    work_type,
-                    app_name,
-                    gms_fields.get("gms_release_type"),
-                    gms_fields.get("gms_target"),
-                    raw_project.get("customer") or raw_project.get("customer_name"),
-                ),
+                scope,
                 {"key_points": [], "dependencies": []},
             )
             append_attention_values(scope_attention, "key_points", raw_project.get("key_points"))
@@ -903,16 +880,7 @@ def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[
                     )
                     if value
                 )
-                record_key = "|".join(
-                    (
-                        work_type,
-                        app_name.casefold() if work_type == "App" else "",
-                        clean_text(gms_fields.get("gms_release_type")).upper() if work_type == "GMS" else "",
-                        clean_text(gms_fields.get("gms_target")).casefold() if work_type == "GMS" else "",
-                        str(raw_project.get("customer") or raw_project.get("customer_name") or "").strip(),
-                        item_key(text) or text,
-                    )
-                )
+                record_key = (*scope, item_key(text) or text)
                 record = {
                     "date": report_date,
                     "text": text,
@@ -920,6 +888,7 @@ def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[
                     "work_type": work_type,
                     "app_name": app_name,
                     "customer": str(raw_project.get("customer") or raw_project.get("customer_name") or "").strip(),
+                    "project_version": project_version(raw_project),
                     "downstream_customer": downstream_customer,
                 }
                 record.update(gms_fields)
@@ -937,27 +906,16 @@ def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[
             if not project:
                 continue
             project_meta = metadata.setdefault(project, {})
-            scope = attention_scope_key(
-                raw_plan.get("work_type"), raw_plan.get("app_name"),
-                raw_plan.get("gms_release_type"), raw_plan.get("gms_target"),
-                raw_plan.get("customer") or raw_plan.get("customer_name"),
-            )
+            scope = attention_scope_key(raw_plan)
             planned_identities = project_meta.setdefault("planned_identity_by_scope", {})
             planned_identities[scope] = {
                 "customer": clean_text(raw_plan.get("customer") or raw_plan.get("customer_name")),
+                "project_version": project_version(raw_plan),
                 "downstream_customer": clean_text(raw_plan.get("downstream_customer")),
             }
             plans = clean_list(raw_plan.get("plan_items"))
             if plans:
-                project_meta.setdefault("plan_by_scope", {})[
-                    attention_scope_key(
-                        raw_plan.get("work_type"),
-                        raw_plan.get("app_name"),
-                        raw_plan.get("gms_release_type"),
-                        raw_plan.get("gms_target"),
-                        raw_plan.get("customer") or raw_plan.get("customer_name"),
-                    )
-                ] = plans
+                project_meta.setdefault("plan_by_scope", {})[scope] = plans
     return metadata, {project: list(project_records.values()) for project, project_records in records.items()}
 
 
@@ -1265,12 +1223,15 @@ def _history_project_row(
     scope_customer = str(prior.get("customer") or prior.get("customer_name") or "").strip()
     if not scope_customer and len(record_customers) == 1:
         scope_customer = next(iter(record_customers))
-    identity_scope = attention_scope_key(
-        work_type, prior.get("app_name"),
-        latest_gms_fields.get("gms_release_type") or prior.get("gms_release_type"),
-        latest_gms_fields.get("gms_target") or prior.get("gms_target"),
-        scope_customer,
-    )
+    record_downstreams = {clean_text(record.get("downstream_customer")) for record in daily_records}
+    scope_downstream = clean_text(prior.get("downstream_customer"))
+    if not scope_downstream and len(record_downstreams) == 1:
+        scope_downstream = next(iter(record_downstreams))
+    scope_row = {
+        **prior, **latest_gms_fields, "work_type": work_type,
+        "customer": scope_customer, "downstream_customer": scope_downstream,
+    }
+    identity_scope = attention_scope_key(scope_row)
     daily_identity = identity_by_scope.get(identity_scope, planned_identities.get(identity_scope, {}))
     if not identity_by_scope and not planned_identities:
         daily_identity = daily_meta
@@ -1296,7 +1257,7 @@ def _history_project_row(
         last_progress = max(recorded_dates) if recorded_dates else period_start - dt.timedelta(days=1)
         if (as_of - last_progress).days > 3:
             add_unique(risks, f"超过 3 天无进展：{item}（最后记录 {last_progress.isoformat()}）")
-    scope_row = {**prior, **latest_gms_fields, "customer": customer}
+    scope_row = {**scope_row, "customer": customer, "downstream_customer": downstream_customer}
     attention = daily_scope_attention(daily_meta, scope_row)
     key_points = clean_list(attention.get("key_points"))
     dependencies = clean_list(prior.get("dependencies"))
@@ -1311,6 +1272,7 @@ def _history_project_row(
 
     row = {
         "project": project,
+        "project_version": project_version(prior),
         "customer": customer,
         "customer_name": customer,
         "downstream_customer": downstream_customer,
@@ -1340,6 +1302,8 @@ def _history_project_row(
     }
     row.update(latest_gms_fields)
     missing: list[str] = []
+    if not project_version(row):
+        missing.append(f"{project}.project_version")
     for field in ("customer", "work_type", "project_role", "requirement_date", "requirement_source"):
         if clean_text(row.get(field)) in MISSING_VALUES or clean_text(row.get(field)).startswith("需成员补充"):
             missing.append(f"{project}.{field}")
@@ -1388,6 +1352,8 @@ def _history_project_row(
 def _project_missing_fields(row: dict[str, Any]) -> list[str]:
     project = clean_text(row.get("project"), "unknown")
     missing: list[str] = []
+    if not project_version(row):
+        missing.append(f"{project}.project_version")
     for field in ("customer", "work_type", "project_role", "requirement_date", "requirement_source"):
         value = clean_text(row.get(field))
         if value in MISSING_VALUES or value.startswith("需成员补充"):
@@ -1461,6 +1427,7 @@ def _session_fallback_projects(
         customer_context = report_customer_context_for_project(project, project_customers)
         row = {
             "project": project,
+            "project_version": "fixture-v1" if synthetic else "",
             "customer": customer_context["customer_name"],
             "customer_name": customer_context["customer_name"],
             "downstream_customer": customer_context.get("downstream_customer", ""),
@@ -1517,10 +1484,16 @@ def assign_daily_records_to_scopes(
         record_gms_release_type = clean_text(record.get("gms_release_type")).upper()
         record_gms_target = clean_text(record.get("gms_target")).casefold()
         record_customer = str(record.get("customer") or "").strip()
+        record_version = project_version(record)
+        record_downstream = clean_text(record.get("downstream_customer"))
         customer_candidates = [
             index for index, row in enumerate(prior_rows)
-            if not record_customer
-            or str(row.get("customer") or row.get("customer_name") or "").strip() == record_customer
+            if project_version(row) == record_version
+            and clean_text(row.get("downstream_customer")) == record_downstream
+            and (
+                not record_customer
+                or str(row.get("customer") or row.get("customer_name") or "").strip() == record_customer
+            )
         ]
         exact_candidates = [
             index
@@ -1570,18 +1543,12 @@ def assign_daily_records_to_scopes(
 
 def daily_scope_seed_rows(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    seen: set[tuple[str, str, str, str, str]] = set()
+    seen: set[tuple[str, ...]] = set()
     for record in records:
         work_type = clean_text(record.get("work_type"))
         app_name = clean_text(record.get("app_name"))
         gms_fields = normalize_gms_fields(record)
-        key = attention_scope_key(
-            work_type,
-            app_name,
-            gms_fields.get("gms_release_type"),
-            gms_fields.get("gms_target"),
-            record.get("customer"),
-        )
+        key = attention_scope_key({**record, **gms_fields})
         if work_type not in PROJECT_WORK_TYPES or key in seen:
             continue
         seen.add(key)
@@ -1589,6 +1556,7 @@ def daily_scope_seed_rows(records: list[dict[str, Any]]) -> list[dict[str, Any]]
                 "work_type": work_type,
                 "app_name": app_name,
                 "customer": str(record.get("customer") or "").strip(),
+                "project_version": project_version(record),
                 "downstream_customer": clean_text(record.get("downstream_customer")),
                 "project_role": "需成员确认",
                 "requirement_date": "需成员确认",
@@ -1660,7 +1628,11 @@ def build_weekly_facts(
         provenance = dict(provenance)
         as_of = min(end, local_now(config).date())
         daily_meta, daily_records = _daily_project_records(daily_items)
-        previous = _previous_week_projects(weekly_items)
+        previous = {
+            project: versioned
+            for project, rows in _previous_week_projects(weekly_items).items()
+            if (versioned := [row for row in rows if project_version(row)])
+        }
         daily_document_meta, daily_document_records = _daily_document_records(daily_items)
         previous_documents = _previous_week_documents(weekly_items)
         daily_standalone_meta, daily_standalone_records = _daily_standalone_records(daily_items)
@@ -1697,25 +1669,25 @@ def build_weekly_facts(
                     else ([records], False)
                 )
             else:
-                existing_scopes = {
-                    attention_scope_key(
-                        row.get("work_type"), row.get("app_name"),
-                        row.get("gms_release_type"), row.get("gms_target"),
-                        row.get("customer") or row.get("customer_name"),
-                    )
-                    for row in prior_rows
-                }
-                prior_rows = [
-                    *prior_rows,
-                    *[
-                        row for row in daily_scope_seed_rows(records)
-                        if attention_scope_key(
-                            row.get("work_type"), row.get("app_name"),
-                            row.get("gms_release_type"), row.get("gms_target"),
-                            row.get("customer") or row.get("customer_name"),
-                        ) not in existing_scopes
-                    ],
-                ]
+                existing_scopes = {attention_scope_key(row) for row in prior_rows}
+                seeds = daily_scope_seed_rows(records)
+                daily_scope_keys = {attention_scope_key(row) for row in seeds}
+                prior_rows = list(prior_rows)
+                for row in seeds:
+                    key = attention_scope_key(row)
+                    if key in existing_scopes:
+                        continue
+                    blank = (*key[:-1], "")
+                    # One daily scope can enrich one blank prior customer chain.
+                    if key[-1] and blank in existing_scopes and sum(
+                        candidate[:-1] == key[:-1] for candidate in daily_scope_keys
+                    ) == 1:
+                        indexes = [index for index, prior in enumerate(prior_rows) if attention_scope_key(prior) == blank]
+                        if len(indexes) == 1:
+                            index = indexes[0]
+                            prior_rows[index] = {**prior_rows[index], "downstream_customer": row["downstream_customer"]}
+                            continue
+                    prior_rows.append(row)
                 records_by_scope, ambiguous_scope = assign_daily_records_to_scopes(prior_rows, records)
             for prior, scope_records in zip(prior_rows, records_by_scope):
                 row, project_missing = _history_project_row(
@@ -1781,6 +1753,11 @@ def build_weekly_facts(
         "scope_change_candidates": [
             {
                 "project": clean_text(row.get("project")),
+                "project_version": project_version(row),
+                "customer": clean_text(row.get("customer")),
+                "downstream_customer": clean_text(row.get("downstream_customer")),
+                "work_type": clean_text(row.get("work_type")),
+                "app_name": clean_text(row.get("app_name")),
                 "items": clean_list(row.get("_scope_change_candidates")),
             }
             for row in projects
@@ -1792,6 +1769,9 @@ def build_weekly_facts(
                     value
                     for value in (
                         clean_text(row.get("project")),
+                        project_version(row),
+                        clean_text(row.get("customer")),
+                        clean_text(row.get("downstream_customer")),
                         clean_text(row.get("work_type")),
                         clean_text(row.get("app_name")),
                     )

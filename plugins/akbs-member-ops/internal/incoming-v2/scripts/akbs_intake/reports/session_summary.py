@@ -16,6 +16,7 @@ from akbs_intake.report_sessions import (
     compact_text,
     is_report_generation_request,
     project_anchor,
+    project_customer_contexts_from_text,
     should_skip_message,
     strip_project_anchor,
 )
@@ -328,7 +329,7 @@ def daily_work_scopes(
     )
     fallback_project = valid_projects[0] if len(valid_projects) == 1 else ""
     patch_projects = {find_company_project(patch.project) or fallback_project or patch.project for patch in patches}
-    result: dict[tuple[str, str, str], dict[str, Any]] = {}
+    result: dict[tuple[str, ...], dict[str, Any]] = {}
 
     for session in sorted(sessions, key=lambda item: (item.latest_at, item.session_id)):
         for segment in session_project_segments(session):
@@ -344,11 +345,21 @@ def daily_work_scopes(
                 if inferred.work_type == DOCUMENT_WORK_TYPE
                 else ""
             )
-            key = (project, inferred.work_type, scope_name)
+            identities = {
+                (context["project_version"], context["customer_name"], context.get("downstream_customer", ""))
+                for message in segment.messages
+                for name, context in project_customer_contexts_from_text(message)
+                if name == canonical_project and context.get("project_version")
+            }
+            version, customer, downstream = next(iter(identities)) if len(identities) == 1 else ("", "", "")
+            key = (project, inferred.work_type, scope_name, version, customer, downstream)
             scope = result.setdefault(
                 key,
                 {
                     "project": project,
+                    "project_version": version,
+                    "customer": customer,
+                    "downstream_customer": downstream,
                     "work_type": inferred.work_type,
                     "app_name": inferred.app_name if inferred.work_type == "App" else "",
                     "document_name": (
@@ -365,7 +376,7 @@ def daily_work_scopes(
             for basis in inferred.basis:
                 if basis not in scope["inference_basis"]:
                     scope["inference_basis"].append(basis)
-            scope["inference_conflict"] = bool(scope["inference_conflict"] or inferred.conflict)
+            scope["inference_conflict"] = bool(scope["inference_conflict"] or inferred.conflict or len(identities) > 1)
             segment_rows = daily_rows_for_segment(
                 segment,
                 has_patch=project in patch_projects and inferred.work_type == "Patch",
@@ -377,8 +388,8 @@ def daily_work_scopes(
 
     for patch in patches:
         project = find_company_project(patch.project) or fallback_project or patch.project
-        key = (project, "Patch", "")
-        if key not in result:
+        key = (project, "Patch", "", "", "", "")
+        if not any(existing[:2] == key[:2] for existing in result):
             result[key] = {
                 "project": project,
                 "work_type": "Patch",

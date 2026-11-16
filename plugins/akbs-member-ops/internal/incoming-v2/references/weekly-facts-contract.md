@@ -29,6 +29,7 @@ Do not write runtime facts into the plugin, skill, or plugin-cache directory.
   "projects": [
     {
       "project": "TVE1086U",
+      "project_version": "A16",
       "customer": "青鸾云",
       "work_type": "Patch",
       "project_role": "主责",
@@ -62,6 +63,7 @@ Do not write runtime facts into the plugin, skill, or plugin-cache directory.
     },
     {
       "project": "TVI2343R",
+      "project_version": "A16",
       "customer": "海信",
       "work_type": "App",
       "app_name": "蓝牙播放器",
@@ -96,6 +98,7 @@ Do not write runtime facts into the plugin, skill, or plugin-cache directory.
     },
     {
       "project": "TVE1065M",
+      "project_version": "A16",
       "customer": "韩富友",
       "work_type": "GMS",
       "project_role": "主责",
@@ -157,6 +160,7 @@ Rules:
 - `projects[]`, `documents[]`, and `standalone_work[]` are arrays; at least one
   must be non-empty.
 - `project` must be a recognized TVD/TVE/TVA/TVI company project.
+- `project_version` is a required confirmed nonempty string. It is separate from GMS target and patch Android version.
 - `customer` is the required direct customer. Optional `downstream_customer`
   means the direct customer's customer.
 - Project `work_type` is `Patch`, `App`, `GMS`, `Doc`, or `Other`; the five visible categories
@@ -165,12 +169,7 @@ Rules:
   type, target, cycle status, current stage, self-test round/result, and formal
   submission count/result.
   GMS/Doc/Other project rows do not carry Patch/App total or ledger fields.
-- Each reporting scope appears exactly once. Patch identity is `project + direct
-  customer + Patch`; App identity adds `app_name`; GMS identity adds
-  `gms_release_type + gms_target`. The same project may contain one Patch row,
-  multiple differently named App rows, separate IR/MR/SMR scopes, and one
-  scope for each remaining category. Feature names remain
-  work items and do not create additional rows.
+- Each scope appears once. The project, version, direct customer and known downstream customer identify the project scope. Work type, App name and GMS release/target keep their existing distinctions. Plans and ledger totals stay in their matching scope. Historical rows without a version cannot seed a versioned ledger. A single matching prior scope with an empty downstream customer continues its existing ledger when the customer is added.
 - A non-project document belongs in `documents[]`, uses only `work_type=Doc`,
   and requires `document_name`. Other non-project work belongs in
   `standalone_work[]`, uses only `work_type=Other`, and requires `work_name`.

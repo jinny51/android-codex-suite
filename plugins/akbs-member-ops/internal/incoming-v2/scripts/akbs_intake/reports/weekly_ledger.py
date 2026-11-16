@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from .scope import report_scope_key
+
 
 WEEKLY_LEDGER_SCHEMA = "akbs-weekly-project-ledger-v2"
 BUSINESS_COUNT_KEYS = ("demand", "migration", "bug")
@@ -117,26 +119,23 @@ def normalize_weekly_ledger(value: Any, work_type: str) -> dict[str, Any]:
 
 
 def weekly_scope_identity(row: dict[str, Any]) -> tuple[str, ...]:
-    work_type = clean_text(row.get("work_type"))
-    return (
-        clean_text(row.get("project")).upper(),
-        str(row.get("customer") or row.get("customer_name") or "").strip(),
-        work_type,
-        clean_text(row.get("app_name")).casefold() if work_type == "App" else "",
-        clean_text(row.get("gms_release_type")).upper() if work_type == "GMS" else "",
-        clean_text(row.get("gms_target")).casefold() if work_type == "GMS" else "",
-    )
+    return report_scope_key(row)
 
 
 def matching_previous_scope(
     row: dict[str, Any],
     previous_projects: dict[str, list[dict[str, Any]]],
 ) -> tuple[dict[str, Any] | None, bool]:
-    matches = [
-        previous
-        for previous in previous_projects.get(clean_text(row.get("project")).upper(), [])
-        if weekly_scope_identity(previous) == weekly_scope_identity(row)
-    ]
+    scope = weekly_scope_identity(row)
+    candidates = previous_projects.get(scope[0], [])
+    matches = [previous for previous in candidates if weekly_scope_identity(previous) == scope]
+    if not matches:
+        # Filling a missing downstream customer must still close the original ledger.
+        matches = [
+            previous for previous in candidates
+            if weekly_scope_identity(previous)[:-1] == scope[:-1]
+            and (not scope[-1] or not weekly_scope_identity(previous)[-1])
+        ]
     return (matches[0] if len(matches) == 1 else None, len(matches) > 1)
 
 

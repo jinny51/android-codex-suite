@@ -60,10 +60,15 @@ REPORT_CUSTOMER_WORK_TERM_RE = re.compile(
     r"(?:功能|模块|策略|需求|事项|问题|补丁|开发|修复|适配|排查|验证|联调|进度|状态栏|锁屏|鼠标|副屏)$"
 )
 REPORT_DIRECT_CUSTOMER_LABEL_RE = re.compile(
-    r"(?:直接)?客户(?:名|名称)?\s*(?:是|为|[:：])\s*([^，,。.;；、\n\r()（）]+)"
+    r"(?<!客户的)(?<!下游)(?<!终端)(?:直接)?客户(?:名|名称)?"
+    r"\s*(?:是|为|[:：])\s*([^，,。.;；、\n\r()（）|｜]+)"
 )
 REPORT_DOWNSTREAM_CUSTOMER_LABEL_RE = re.compile(
-    r"(?:客户的客户|下游客户|终端客户)\s*(?:是|为|[:：])\s*([^，,。.;；、\n\r()（）]+)"
+    r"(?:客户的客户|下游客户|终端客户)\s*(?:是|为|[:：])\s*([^，,。.;；、\n\r()（）|｜]+)"
+)
+REPORT_PROJECT_VERSION_LABEL_RE = re.compile(
+    r"(?:项目版本(?:号)?|版本号|project_version)\s*(?:是|为|[:：=])\s*"
+    r"([^，,。；;、\n\r|｜]+?)(?=\s*(?:(?:直接)?客户(?:名|名称)?\s*[:：]|[，,。；;、|｜]|$))"
 )
 REPORT_GENERATION_REQUEST_RE = re.compile(r"(?:帮我|请).{0,24}(?:生成|提交|上传).{0,24}(?:日报|周报|报告)")
 
@@ -301,16 +306,19 @@ def project_customer_contexts_from_text(text: Any) -> list[tuple[str, dict[str, 
             tail = raw_tail[:next_project.start()] if next_project else raw_tail
             direct_match = REPORT_DIRECT_CUSTOMER_LABEL_RE.search(tail)
             downstream_match = REPORT_DOWNSTREAM_CUSTOMER_LABEL_RE.search(tail)
+            version_match = REPORT_PROJECT_VERSION_LABEL_RE.search(tail)
             context: dict[str, str] = {}
             if direct_match:
                 customer = clean_report_customer_name(direct_match.group(1))
                 if customer:
                     context["customer_name"] = customer
+                    if version_match:
+                        context["project_version"] = version_match.group(1).strip()
                     if downstream_match:
                         downstream = clean_report_customer_name(downstream_match.group(1))
                         if downstream:
                             context["downstream_customer"] = downstream
-            elif raw_tail and raw_tail[0] in " \t":
+            elif not version_match and raw_tail and raw_tail[0] in " \t":
                 customer_part = REPORT_CUSTOMER_STOP_RE.split(tail.lstrip(" \t"), 1)[0]
                 context = split_report_customer_context(customer_part)
             if context and (project, context) not in contexts:
@@ -336,17 +344,22 @@ def report_project_customers_from_clues(clues: list[tuple[str, str]]) -> tuple[d
                 if current is None:
                     customers[project] = dict(context)
                 elif (current.get("customer_name") != context.get("customer_name") or
+                      current.get("project_version") and context.get("project_version") and
+                      current["project_version"] != context["project_version"] or
                       current.get("downstream_customer") and context.get("downstream_customer") and
                       current["downstream_customer"] != context["downstream_customer"]):
                     # Flat session hints cannot choose between separate App /
                     # Patch scopes, nor silently declare the first one correct.
                     ambiguous.add(project)
                     customers.pop(project, None)
-                elif context.get("downstream_customer"):
-                    current["downstream_customer"] = context["downstream_customer"]
+                else:
+                    for field in ("project_version", "downstream_customer"):
+                        if context.get(field):
+                            current[field] = context[field]
             chain = " ".join(
                 item
-                for item in (context.get("customer_name", ""), context.get("downstream_customer", ""))
+                for item in (context.get("project_version", ""), context.get("customer_name", ""),
+                             context.get("downstream_customer", ""))
                 if item
             )
             basis.setdefault(project, []).append(f"{label}: {project} {chain}")

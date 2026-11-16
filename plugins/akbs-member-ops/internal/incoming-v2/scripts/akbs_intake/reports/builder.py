@@ -45,7 +45,7 @@ def report_customer_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not row.get("project") or not customer:
             continue
         value = {"project": str(row["project"]), "customer_name": customer}
-        for field in ("work_type", "app_name", "gms_release_type", "gms_target", "downstream_customer"):
+        for field in ("project_version", "work_type", "app_name", "gms_release_type", "gms_target", "downstream_customer"):
             if field in row:
                 value[field] = row[field]
         customers.append(value)
@@ -172,8 +172,9 @@ def build_report_package(
         if not isinstance(item, dict) or not item.get("project") or not item.get("customer_name"):
             continue
         context = {"customer_name": str(item["customer_name"])}
-        if item.get("downstream_customer"):
-            context["downstream_customer"] = str(item["downstream_customer"])
+        for field in ("project_version", "downstream_customer"):
+            if item.get(field):
+                context[field] = str(item[field])
         project_customers[str(item["project"])] = context
     weekly_projects: list[dict[str, Any]] = []
     weekly_documents: list[dict[str, Any]] = []
@@ -238,11 +239,13 @@ def build_report_package(
         )
     summary = overview_text(report_type, items, patches)
     report_project, project_payload = infer_report_project(report_type, summary, items, sessions, patches)
+    project_payload["project_customers"] = report_customer_rows(daily_projects or weekly_projects)
+    if report_type == "daily":
+        project_payload["planned_project_customers"] = report_customer_rows(daily_tomorrow_plan["projects"])
     if daily_projects:
-        fact_customers = report_customer_rows(daily_projects)
+        fact_customers = project_payload["project_customers"]
         project_payload.pop("customer_name", None)
         project_payload.pop("downstream_customer", None)
-        project_payload["project_customers"] = fact_customers
         project_payload["projects"] = sorted({row["project"] for row in fact_customers})
         project_payload["customer_basis"] = {
             row["project"]: ["daily_fact_sources"]
@@ -260,10 +263,9 @@ def build_report_package(
             report_project = ""
             project_payload["project"] = ""
     if weekly_projects:
-        fact_customers = report_customer_rows(weekly_projects)
+        fact_customers = project_payload["project_customers"]
         project_payload.pop("customer_name", None)
         project_payload.pop("downstream_customer", None)
-        project_payload["project_customers"] = fact_customers
         project_payload["customer_basis"] = {
             row["project"]: ["weekly_fact_sources"]
             for row in fact_customers

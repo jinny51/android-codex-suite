@@ -274,12 +274,23 @@ def infer_work_scope(
     return inferred
 
 
+def project_version(row: dict[str, Any]) -> str:
+    value = row.get("project_version")
+    return value.strip() if isinstance(value, str) else ""
+
+
 def report_scope_key(row: dict[str, Any]) -> tuple[str, ...]:
     work_type = clean_scope_text(row.get("work_type"))
     app_name = clean_scope_text(row.get("app_name")).casefold() if work_type == "App" else ""
     release_type, target = gms_scope_identity(row) if work_type == "GMS" else ("", "")
     customer = str(row.get("customer") or row.get("customer_name") or "").strip()
-    return clean_scope_text(row.get("project")).upper(), work_type, app_name, release_type, target, customer
+    downstream_customer = clean_scope_text(
+        row.get("downstream_customer") or row.get("customer_of_customer") or row.get("end_customer")
+    )
+    return (
+        clean_scope_text(row.get("project")).upper(), work_type, app_name, release_type, target,
+        customer, project_version(row), downstream_customer,
+    )
 
 
 def report_scope_customer_context(
@@ -297,7 +308,9 @@ def report_scope_customer_context(
         if report_scope_key(value)[0] == scope[0]
     }
     if project_scopes == {scope}:
-        return contexts.get(scope[0], {})
+        context = contexts.get(scope[0], {})
+        if not isinstance(context, dict) or project_version(context) in {"", project_version(row)}:
+            return context
     return {}
 
 

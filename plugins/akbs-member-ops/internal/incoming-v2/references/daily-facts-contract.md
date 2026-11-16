@@ -23,6 +23,7 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
   "projects": [
     {
       "project": "TVE1086U",
+      "project_version": "A16",
       "customer": "青鸾云",
       "work_type": "Patch",
       "work_items": [{
@@ -37,6 +38,7 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
     },
     {
       "project": "TVE1086U",
+      "project_version": "A16",
       "customer": "青鸾云",
       "work_type": "App",
       "app_name": "设备管理工具",
@@ -52,6 +54,7 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
     },
     {
       "project": "TVE1065M",
+      "project_version": "A16",
       "customer": "韩富友",
       "work_type": "GMS",
       "gms_release_type": "IR",
@@ -111,6 +114,7 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
     "projects": [
       {
         "project": "TVE1065M",
+        "project_version": "A16",
         "customer": "韩富友",
         "work_type": "GMS",
         "gms_release_type": "IR",
@@ -142,7 +146,7 @@ Rules:
 - `projects[]`, `documents[]`, and `standalone_work[]` describe today's actual
   work; at least one must be non-empty. A plan alone cannot replace a daily
   work record.
-- In `projects[]`, `project` and direct `customer` are required. Optional
+- In today's and tomorrow's `projects[]`, require `project`, `project_version` and direct `customer`. `project_version` is a confirmed nonempty string and independent of the GMS target and patch Android version. Optional
   `downstream_customer` means the direct customer's customer. `customer`
   contains only the direct customer. Do not flatten a two-level chain into one
   whitespace-separated `customer` value; local validation rejects it until the

@@ -22,7 +22,7 @@ from akbs_intake.report_sessions import (
     report_customer_for_project,
     report_downstream_customer_for_project,
 )
-from akbs_intake.reports.scope import report_scope_suffix
+from akbs_intake.reports.scope import project_version, report_scope_suffix
 from akbs_intake.reports.gms import (
     GMS_CURRENT_FIELDS,
     gms_cycle_status_label,
@@ -82,6 +82,10 @@ def project_customer_title_label(project: Any, customer: Any, downstream_custome
     downstream_text = str(downstream_customer or "")
     chain = f"{customer_text} → {downstream_text}" if downstream_text else customer_text
     return f"{project}（{chain}）"
+
+
+def versioned_project_label(row: dict[str, Any]) -> str:
+    return f"{row.get('project') or MISSING_REPORT_PROJECT} {project_version(row) or '版本待核'}"
 
 
 def add_downstream_customer(row: dict[str, Any], downstream_customer: Any) -> dict[str, Any]:
@@ -364,7 +368,7 @@ def daily_material_summary(
 def daily_project_fact_summary(projects: list[dict[str, Any]], *, max_projects: int = 3) -> str:
     parts: list[str] = []
     for row in projects[:max_projects]:
-        project = str(row.get("project") or MISSING_REPORT_PROJECT)
+        project = versioned_project_label(row)
         if row.get("work_type") == "GMS":
             stage = gms_stage_label(row.get("gms_current_stage")) or gms_cycle_status_label(
                 row.get("gms_cycle_status")
@@ -456,6 +460,7 @@ def weekly_material_summary(
     if weekly_projects:
         parts = []
         for row in weekly_projects[:max_projects]:
+            project = versioned_project_label(row)
             risk_text = "有风险" if meaningful_fact_list(row.get("risks"), {"无超过 3 天无进展事项。"}) else "无明确风险"
             if row.get("work_type") == "App":
                 scope = f" / {row.get('app_name')}"
@@ -474,11 +479,11 @@ def weekly_material_summary(
                     else ""
                 )
                 progress = compact_text(str(row.get("week_summary") or gms_progress or "需补充进展"), 72)
-                parts.append(f"{row['project']}{scope}：{progress}，{risk_text}。")
+                parts.append(f"{project}{scope}：{progress}，{risk_text}。")
             else:
                 completed = weekly_fact_count_text(row, "completed_this_week_counts", include_bsp=False)
                 remaining = weekly_fact_count_text(row, "remaining_counts", include_bsp=True)
-                parts.append(f"{row['project']}{scope}：本周完成 {completed}，剩余 {remaining}，{risk_text}。")
+                parts.append(f"{project}{scope}：本周完成 {completed}，剩余 {remaining}，{risk_text}。")
         if len(weekly_projects) > max_projects:
             parts.append(f"另有 {len(weekly_projects) - max_projects} 个项目。")
         return compact_text("".join(parts), 220)
@@ -634,7 +639,7 @@ def weekly_bsp_pending_total(row: dict[str, Any]) -> int:
 def weekly_scope_heading(row: dict[str, Any]) -> str:
     context = row_customer_context(row)
     heading = project_customer_heading(
-        str(row["project"]),
+        versioned_project_label(row),
         context["customer_name"],
         context["downstream_customer"],
     )
@@ -649,7 +654,7 @@ def weekly_scope_heading(row: dict[str, Any]) -> str:
 def daily_scope_heading(row: dict[str, Any]) -> str:
     context = row_customer_context(row)
     heading = project_customer_heading(
-        str(row.get("project") or MISSING_REPORT_PROJECT),
+        versioned_project_label(row),
         context["customer_name"],
         context["downstream_customer"],
     )
@@ -1123,7 +1128,7 @@ def report_view_payload(
     if fact_rows:
         project_material_name = "、".join(dict.fromkeys(
             project_customer_title_label(
-                row.get("project"), row_customer_context(row)["customer_name"],
+                versioned_project_label(row), row_customer_context(row)["customer_name"],
                 row_customer_context(row)["downstream_customer"],
             )
             for row in fact_rows
@@ -1227,6 +1232,7 @@ def report_view_payload(
             customer = context["customer_name"]
             project_row = add_downstream_customer({
                     "project": str(row["project"]),
+                    "project_version": project_version(row),
                     "customer": customer,
                     "customer_name": customer,
                     "work_type": str(row.get("work_type") or "需成员确认"),

@@ -216,7 +216,7 @@ An explicit report request or a member-configured recurring task authorizes gene
 }
 ```
 
-Every new project row carries a confirmed nonempty `project_version` separately from `project`, direct `customer` and optional `downstream_customer`. The version differs from patch Android version and GMS target. The same identity is used in project progress and plans. Older packages missing a version remain readable as 版本待核.
+Every new project row carries a confirmed project Android system version `project_version` (such as A16 or A17) separately from `project`, direct `customer` and optional `downstream_customer`. App rows use the project Android version. APK, firmware and GMS certification versions are separate. The same identity is used in project progress and plans. Older packages missing a version remain readable as 版本待核.
 
 Daily and weekly report payloads contain parallel `projects[]`, `documents[]`,
 and `standalone_work[]` arrays, with at least one non-empty. Every project-bound

@@ -162,10 +162,10 @@ def test_daily_and_tomorrow_scopes_are_independent_but_required_and_unique() -> 
     assert daily_facts.validate_tomorrow_plan({**plan, "projects": plan_rows + [plan_rows[0]]})
     assert daily_facts.validate_tomorrow_plan({**plan, "projects": [
         {**plan_rows[0], "project_version": "  "},
-    ]}) == ["tomorrow_plan.projects[0].project_version 必须提供项目版本号"]
+    ]}) == ["tomorrow_plan.projects[0].project_version 必须填写项目 Android 版本（如 A16）"]
     assert daily_facts.validate_daily_projects(rows + [rows[0]])
     assert daily_facts.validate_daily_projects([{**rows[0], "project_version": None}]) == [
-        "projects[0].project_version 必须提供项目版本号",
+        "projects[0].project_version 必须填写项目 Android 版本（如 A16）",
     ]
     assert daily_facts.validate_daily_projects([{**rows[0], "customer": "", "customer_name": ""}])
 
@@ -348,19 +348,22 @@ def test_legacy_previous_ledger_does_not_seed_a_version_and_cannot_be_relabelled
     assert prior["project_version"] == "" and prior["work_total"] == 10
 
 
-def test_same_project_versions_keep_role_work_attention_and_plans_separate(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("legacy_version", ["", "BSP 17.2"])
+def test_same_project_versions_keep_role_work_attention_and_plans_separate(
+    monkeypatch: pytest.MonkeyPatch, legacy_version: str,
+) -> None:
     lead = {**weekly_raw_row("App"), "project_role": "主责", "work_total": 2,
             "completed_this_week": "本周完成 0 项", "remaining": "当前剩余 2 项",
             "remaining_items": ["核查接口", "修复输入法"]}
-    collaborator = {**weekly_raw_row("App"), "project_version": "A17",
+    collaborator = {**weekly_raw_row("App"), "project_version": "Android 17",
                     "completed_this_week": "本周完成 0 项", "remaining": "当前剩余 1 项",
                     "remaining_items": ["核查接口"]}
-    legacy = {**lead, "project_version": "", "remaining_items": ["旧版专属事项"]}
+    legacy = {**lead, "project_version": legacy_version, "remaining_items": ["旧版专属事项"]}
     history = [{"package_key": "previous", "week_range": "20260928-20261004",
                 "report_view": {"projects": [lead, collaborator, legacy]}}]
     daily_a = {**daily_row("App"), "key_points": ["A16客户确认"], "dependencies": ["A16设备"],
                "tomorrow_focus": ["A16旧格式计划"]}
-    daily_b = {**daily_row("App"), "project_version": "A17",
+    daily_b = {**daily_row("App"), "project_version": "Android 17",
                "key_points": ["A17发布说明"], "dependencies": ["A17账号"]}
     daily_b["work_items"][0].update(status="处理中", result="仍在核查")
     daily = [{"package_key": "today", "report_date": DATE.isoformat(), "report_view": {
@@ -409,17 +412,17 @@ def test_builder_preserves_scope_identity_in_view_and_source_evidence(
     if report_type == "weekly":
         facts = explicit_weekly(tmp_path, [weekly_raw_row("App", "CustomerA", "Factory"),
                                           {**weekly_raw_row("App" if same_work_type else "Patch", "CustomerB"),
-                                           "project_version": "BSP 17.2"}], week)
+                                           "project_version": "A17"}], week)
         kwargs = {"weekly_facts_path": str(facts)}
     else:
         facts = tmp_path / "daily-facts.json"
         write_json(facts, {"schema": daily_facts.DAILY_FACTS_SCHEMA, "report_date": date.isoformat(),
                            "projects": [daily_row("App", "CustomerA", "Factory"),
                                         {**daily_row("App" if same_work_type else "Patch", "CustomerB"),
-                                         "project_version": "BSP 17.2"}],
+                                         "project_version": "A17"}],
                            "documents": [], "standalone_work": [], "tomorrow_plan": {
                                **daily_facts.empty_tomorrow_plan(),
-                               "projects": [{**identity("Patch"), "project_version": "R18", "plan_items": ["验证新版"]}],
+                               "projects": [{**identity("Patch"), "project_version": "A18", "plan_items": ["验证新版"]}],
                            }})
         kwargs = {"daily_facts_path": str(facts)}
 
@@ -435,13 +438,13 @@ def test_builder_preserves_scope_identity_in_view_and_source_evidence(
             for r in source["project_customers"]} == expected
     assert {r["customer"]: (r["work_type"], r.get("downstream_customer", ""))
             for r in view["projects"]} == expected
-    assert [r["project_version"] for r in source["project_customers"]] == ["A16", "BSP 17.2"]
-    assert [r["project_version"] for r in view["projects"]] == ["A16", "BSP 17.2"]
+    assert [r["project_version"] for r in source["project_customers"]] == ["A16", "A17"]
+    assert [r["project_version"] for r in view["projects"]] == ["A16", "A17"]
     assert "CustomerA" in view["material_name"] and "CustomerB" in view["material_name"]
-    assert "A16" in view["material_name"] and "BSP 17.2" in view["material_name"]
+    assert "A16" in view["material_name"] and "A17" in view["material_name"]
     if report_type == "daily":
-        assert source["planned_project_customers"][0]["project_version"] == "R18"
-        assert view["tomorrow_plan"]["projects"][0]["project_version"] == "R18"
+        assert source["planned_project_customers"][0]["project_version"] == "A18"
+        assert view["tomorrow_plan"]["projects"][0]["project_version"] == "A18"
     assert "需成员补充客户名" not in view["material_name"]
     check = json.loads((package / "local-check.json").read_text())
     assert check["status"] == "PASS", check["errors"]
@@ -459,3 +462,22 @@ def test_builder_preserves_scope_identity_in_view_and_source_evidence(
     assert changed["status"] == "FAIL"
     assert any("来源证据一致" in error for error in changed["errors"])
     assert any("report_render_binding.report_view_sha256" in error for error in changed["errors"])
+
+
+@pytest.mark.parametrize("wrong", ["", "1.2.3", "R17.2", "BSP 17.2"])
+def test_current_report_rejects_non_android_project_version(wrong: str) -> None:
+    row = {**identity("App"), "project_version": wrong}
+    errors = validation.report_project_customer_errors(
+        "view", [row], "projects", allow_work_scopes=True, require_project_version=True,
+    )
+    assert any(PROJECT in error and "项目 Android 版本" in error for error in errors)
+
+
+@pytest.mark.parametrize(("label", "canonical"), [
+    ("Android 8.1", "A8.1"), ("安卓7.1.2", "A7.1.2"), ("android 12l", "A12L"),
+])
+def test_android_project_version_aliases_inherit_the_same_weekly_scope(label: str, canonical: str) -> None:
+    assert scope.normalize_project_android_version(label) == canonical
+    prior = {**identity("App"), "project_version": canonical}
+    record = {**prior, "project_version": label, "text": "核查接口", "progress": "已完成"}
+    assert weekly_facts.assign_daily_records_to_scopes([prior], [record]) == ([[record]], False)

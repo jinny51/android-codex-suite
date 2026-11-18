@@ -289,11 +289,11 @@ Daily and weekly reports are the primary human-readable product. The package als
 }
 ```
 
-Every new project row carries a confirmed nonempty `project_version` separately from `project`, direct `customer` and optional `downstream_customer`. The version differs from patch Android version and GMS target. The same identity is used in project progress and plans. Older packages missing a version remain readable as 版本待核.
+Every new project row carries a confirmed project Android system version `project_version` (such as A16 or A17) separately from `project`, direct `customer` and optional `downstream_customer`. App rows use the project Android version. APK, firmware and GMS certification versions are separate. The same identity is used in project progress and plans. Older packages missing a version remain readable as 版本待核.
 
 Report card fields are authoritative:
 
-- `material_name`：项目、版本号和客户链路；独立文档写 `文档工作：<文档名称>`。多项目写 `TVE1086U A16（青鸾云）、TVE1091U R17.2（AOC → 福建移动高清）`，超过 3 个项目时只列前 3 个并追加 `等 N 个项目`。
+- `material_name`：项目、版本号和客户链路；独立文档写 `文档工作：<文档名称>`。多项目写 `TVE1086U A16（青鸾云）、TVE1091U A17（AOC → 福建移动高清）`，超过 3 个项目时只列前 3 个并追加 `等 N 个项目`。
 - `material_summary`：日报写各项目或文档的“今日主题”；周报写各项目或文档的“本周完成、剩余、风险/依赖”。它是卡片小字，不要拿日期、成员名或包路径充当摘要。
 - Daily today project rows contain `project/project_version/customer/[downstream_customer]/work_type/[app_name]/[gms_release_type/gms_target/gms_cycle_status/gms_current_stage/gms_self_test_round/gms_self_test_result/gms_submission_count/gms_submission_result]/today_topic/current_result/work_items/key_points/dependencies`; every work item contains `name/did/how/result/status` and status is one of `已完成/处理中/待验证/阻塞`.
 - Daily `tomorrow_plan` contains parallel project, document, and standalone arrays. Plan rows carry only scope identity plus `plan_items[]`; tomorrow-only scopes never count as today progress or weekly progress.

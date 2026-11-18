@@ -184,7 +184,7 @@ categories; the displayed total must equal the category sum. For `App`, use
 plain counts without Patch categories:
 
 ```markdown
-### **TVI2343R** R17.2 海信｜App：蓝牙播放器
+### **TVI2343R** A17 海信｜App：蓝牙播放器
 
 - 类型：App
 - App 名称：蓝牙播放器
@@ -208,8 +208,8 @@ overview table in `本周概况`.
 Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `schema=akbs-report-view-human-v1`, `report_type=weekly`, `week_range`, `display_date`, `material_name`, `material_summary`, `projects[]`, `documents[]`, and `standalone_work[]`; at least one array must be non-empty. Patch/App project rows keep the existing total and ledger fields. GMS project rows carry the minimal release/target, cycle, self-test, and submission facts plus progress, key points, risks, dependencies, and plans without Patch/App totals. Project GMS titles are `项目 版本号 客户｜GMS：送测类别（目标版本）`; `display_name`, `model`, `work_name`, and `document_name` never replace that identity. Project-bound Doc/Other are progress scopes. Non-project Doc and Other use their own arrays and concrete names.
 
 Weekly card identity is not the week range. `material_name` must preserve the
-customer chain, such as `TVE1086U（青鸾云）` or
-`TVE1091U R17.2（AOC → 福建移动高清）`; multiple projects must keep each project
+customer chain, such as `TVE1086U A16（青鸾云）` or
+`TVE1091U A17（AOC → 福建移动高清）`; multiple projects must keep each project
 paired with its own customer chain. Standalone documentation uses
 `Doc：<文档名称>`. `material_summary` must summarize each project's or
 document's weekly completed and remaining state. The current read model emits
@@ -217,7 +217,7 @@ document's weekly completed and remaining state. The current read model emits
 emit `display_title`, `ui_card`, `one_line_summary`, `project_ledgers`,
 `weekly_progress_summary`, or `weekly_detail_sections`.
 
-Each project row requires the project name, the confirmed `project_version`, and direct `customer`. Fill `downstream_customer` when the customer's customer is known. The version accepts any nonempty version string and is separate from the GMS target and patch Android version. Resolve missing values in the structured facts.
+Each project row requires the project name, the confirmed `project_version`, and direct `customer`. Fill `downstream_customer` when the customer's customer is known. Record the Android system version of the project, including for an App, as A16 or A17. Keep the APK release, firmware release and GMS certification target separate. Resolve missing values in the structured facts.
 Complete the structured weekly facts and regenerate so `reports/weekly.md` and
 `report_view.json` remain the same-source views of one fact set. Any management-side
 aggregation happens outside the member workflow and should not be exposed as a
@@ -268,7 +268,7 @@ requires a recognized project, version and direct customer. A non-project docume
 the unresolved work is project work, and reply:
 
 ```text
-请补齐项目名、版本号、客户中缺失的字段。例如 TVE1086U｜版本号：A16｜客户：青鸾云。有客户的客户时另填一栏。
+请补齐项目名、项目 Android 版本、客户中缺失的字段。例如 TVE1086U｜Android 版本：A16｜客户：青鸾云。有客户的客户时另填一栏。
 ```
 
 If it is non-project documentation, ask only for the concrete document name and

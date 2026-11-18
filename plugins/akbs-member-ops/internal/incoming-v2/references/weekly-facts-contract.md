@@ -160,7 +160,7 @@ Rules:
 - `projects[]`, `documents[]`, and `standalone_work[]` are arrays; at least one
   must be non-empty.
 - `project` must be a recognized TVD/TVE/TVA/TVI company project.
-- `project_version` is a required confirmed nonempty string. It is separate from GMS target and patch Android version.
+- `project_version` is the required, confirmed Android system version of the project, including for App rows, written as A16 or A17. Keep APK, firmware and GMS certification versions separate.
 - `customer` is the required direct customer. Optional `downstream_customer`
   means the direct customer's customer.
 - Project `work_type` is `Patch`, `App`, `GMS`, `Doc`, or `Other`; the five visible categories

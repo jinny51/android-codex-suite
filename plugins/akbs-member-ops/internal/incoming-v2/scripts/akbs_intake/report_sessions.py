@@ -23,7 +23,7 @@ from akbs_member_ops.knowledge_rules import (
 from akbs_member_ops.project_registry import expand_home_path, registry_entries
 from akbs_intake.config import expanded_path
 from akbs_intake.reports.common import week_bounds, ymd
-from akbs_intake.reports.scope import path_scope_inference
+from akbs_intake.reports.scope import normalize_project_android_version, path_scope_inference
 from akbs_intake.session_privacy import (
     minimal_source_id,
     require_report_session_consent,
@@ -67,8 +67,11 @@ REPORT_DOWNSTREAM_CUSTOMER_LABEL_RE = re.compile(
     r"(?:客户的客户|下游客户|终端客户)\s*(?:是|为|[:：])\s*([^，,。.;；、\n\r()（）|｜]+)"
 )
 REPORT_PROJECT_VERSION_LABEL_RE = re.compile(
-    r"(?:项目版本(?:号)?|版本号|project_version)\s*(?:是|为|[:：=])\s*"
-    r"([^，,。；;、\n\r|｜]+?)(?=\s*(?:(?:直接)?客户(?:名|名称)?\s*[:：]|[，,。；;、|｜]|$))"
+    r"(?:^|[，,。；;、|｜])\s*"
+    r"(?:(?:项目\s*)?(?:Android|安卓)\s*(?:系统\s*)?版本(?:号)?|"
+    r"项目版本(?:号)?|版本号|project_version)\s*(?:是|为|[:：=])\s*"
+    r"([^，,。；;、\n\r|｜]+?)(?=\s*(?:(?:直接)?客户(?:名|名称)?\s*[:：]|[，,。；;、|｜]|$))",
+    re.IGNORECASE,
 )
 REPORT_GENERATION_REQUEST_RE = re.compile(r"(?:帮我|请).{0,24}(?:生成|提交|上传).{0,24}(?:日报|周报|报告)")
 
@@ -312,8 +315,8 @@ def project_customer_contexts_from_text(text: Any) -> list[tuple[str, dict[str, 
                 customer = clean_report_customer_name(direct_match.group(1))
                 if customer:
                     context["customer_name"] = customer
-                    if version_match:
-                        context["project_version"] = version_match.group(1).strip()
+                    if version_match and (version := normalize_project_android_version(version_match.group(1))):
+                        context["project_version"] = version
                     if downstream_match:
                         downstream = clean_report_customer_name(downstream_match.group(1))
                         if downstream:

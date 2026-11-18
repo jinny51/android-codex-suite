@@ -274,6 +274,17 @@ def infer_work_scope(
     return inferred
 
 
+def normalize_project_android_version(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    match = re.fullmatch(
+        r"(?:A|Android\s*|安卓\s*)(12L|[1-9][0-9]*(?:\.[0-9]+){0,2})",
+        value.strip(),
+        re.IGNORECASE,
+    )
+    return f"A{match.group(1).upper()}" if match else ""
+
+
 def project_version(row: dict[str, Any]) -> str:
     value = row.get("project_version")
     return value.strip() if isinstance(value, str) else ""
@@ -289,7 +300,7 @@ def report_scope_key(row: dict[str, Any]) -> tuple[str, ...]:
     )
     return (
         clean_scope_text(row.get("project")).upper(), work_type, app_name, release_type, target,
-        customer, project_version(row), downstream_customer,
+        customer, normalize_project_android_version(project_version(row)) or project_version(row), downstream_customer,
     )
 
 

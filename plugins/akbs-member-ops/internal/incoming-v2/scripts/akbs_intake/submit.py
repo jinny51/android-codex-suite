@@ -13,6 +13,7 @@ if OPS_PLUGIN_LIB.is_dir() and str(OPS_PLUGIN_LIB) not in sys.path:
     sys.path.insert(0, str(OPS_PLUGIN_LIB))
 
 from akbs_member_ops.http_client import HttpClientFailure, request_json_with_metadata
+from akbs_member_ops.knowledge_rules import canonical_company_project
 try:
     from .config import (
         submission_api_base_url,
@@ -23,7 +24,10 @@ try:
         require_current_patch_contract,
         validate_success_response,
     )
-    from .io_utils import read_optional_json_object, write_json
+    from .io_utils import read_optional_json_object, read_referenced_json, write_json
+    from .reports.daily_facts import DAILY_FACT_SOURCES_SCHEMA
+    from .reports.scope import normalize_project_android_version
+    from .reports.weekly_facts import WEEKLY_FACT_SOURCES_SCHEMA
     from .reports.common import ensure_report_submit_allowed, record_submitted_package
 except ImportError:  # pragma: no cover - direct script import fallback
     scripts_root = Path(__file__).resolve().parents[1]
@@ -38,7 +42,10 @@ except ImportError:  # pragma: no cover - direct script import fallback
         require_current_patch_contract,
         validate_success_response,
     )
-    from akbs_intake.io_utils import read_optional_json_object, write_json
+    from akbs_intake.io_utils import read_optional_json_object, read_referenced_json, write_json
+    from akbs_intake.reports.daily_facts import DAILY_FACT_SOURCES_SCHEMA
+    from akbs_intake.reports.scope import normalize_project_android_version
+    from akbs_intake.reports.weekly_facts import WEEKLY_FACT_SOURCES_SCHEMA
     from akbs_intake.reports.common import ensure_report_submit_allowed, record_submitted_package
 
 
@@ -102,6 +109,50 @@ def server_submit_package(
     )
 
 
+def _require_current_report_package(package_dir: Path, manifest: dict[str, Any]) -> None:
+    report = {
+        "daily_trace": ("daily", "日报", DAILY_FACT_SOURCES_SCHEMA),
+        "weekly_trace": ("weekly", "周报", WEEKLY_FACT_SOURCES_SCHEMA),
+    }.get(manifest.get("package_kind"))
+    declared = manifest.get("files")
+    if not report or not isinstance(declared, dict):
+        return
+    report_type, label, schema = report
+    evidence_kind = f"{report_type}_fact_sources"
+    files = declared.get("evidence")
+    if not isinstance(files, list):
+        return
+    for relative in files:
+        evidence = read_referenced_json(package_dir, str(relative)) or {}
+        facts = evidence.get("payload")
+        if evidence.get("kind") == evidence_kind and isinstance(facts, dict):
+            if facts.get("schema") == schema:
+                return
+            break
+    else:
+        return  # Existing contract validation reports absent or unreadable evidence.
+
+    projects = []
+    display = declared.get("display")
+    for relative in display if isinstance(display, list) else []:
+        view = read_referenced_json(package_dir, str(relative)) or {}
+        payload = view.get("payload")
+        if view.get("kind") != "report_view" or not isinstance(payload, dict):
+            continue
+        plan = payload.get("tomorrow_plan")
+        for section in (payload, plan):
+            rows = section.get("projects") if isinstance(section, dict) else None
+            if isinstance(rows, list):
+                projects.extend(rows)
+    missing = sorted({
+        project for row in projects
+        if isinstance(row, dict) and not normalize_project_android_version(row.get("project_version"))
+        if (project := canonical_company_project(row.get("project")))
+    })
+    details = f"，请补齐 {'、'.join(missing)} 的项目 Android 版本（如 A16）" if missing else ""
+    raise SystemExit(f"当前{label}使用旧格式，请按新版重新生成{details}。")
+
+
 def submit_package(
     package_dir: Path,
     config: dict[str, str],
@@ -113,9 +164,13 @@ def submit_package(
     manifest = read_json_file(package_dir / "manifest.json")
     require_current_patch_contract(manifest)
     _require_member_patch_workflow(manifest)
+    _require_current_report_package(package_dir, manifest)
     check = validate_package_fn(package_dir)
     write_json_fn(package_dir / "local-check.json", check)
     if check["status"] != "PASS":
+        reason = next((str(e) for e in check.get("errors", []) if "项目 Android 版本" in str(e)), "")
+        if reason:
+            raise SystemExit(reason)
         raise SystemExit("本地工作包校验失败，已停止提交。请查看 local-check.json。")
     ensure_report_submit_allowed(package_dir, config, manifest)
     gate_errors = patch_upload_gate_errors_fn(manifest)

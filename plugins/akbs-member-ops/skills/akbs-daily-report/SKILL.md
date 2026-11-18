@@ -136,9 +136,9 @@ pass it with `--daily-facts`. Read
 take precedence over inferred scope. For multiple unresolved scopes under one
 project, assign each work item to its scope explicitly.
 
-Daily card identity is not the date. Project identity includes the version and customer chain, such as `TVE1086U A16（青鸾云）` or `TVE1091U R17.2（AOC → 福建移动高清）`; non-project documents and standalone work use their concrete names. Multiple scopes use `、`. `material_summary` summarizes today's actual progress; tomorrow-only scopes do not enter the card identity or today's summary. The current read model emits `material_name`, `material_summary`, `projects`, `documents`, `standalone_work`, and `tomorrow_plan`; it does not emit `display_title`, `ui_card`, `one_line_summary`, top-level `work_items`, `risks`, or `outputs`.
+Daily card identity is not the date. Project identity includes the version and customer chain, such as `TVE1086U A16（青鸾云）` or `TVE1091U A17（AOC → 福建移动高清）`; non-project documents and standalone work use their concrete names. Multiple scopes use `、`. `material_summary` summarizes today's actual progress; tomorrow-only scopes do not enter the card identity or today's summary. The current read model emits `material_name`, `material_summary`, `projects`, `documents`, `standalone_work`, and `tomorrow_plan`; it does not emit `display_title`, `ui_card`, `one_line_summary`, top-level `work_items`, `risks`, or `outputs`.
 
-Each project-bound work and tomorrow-plan row requires `project`, the confirmed `project_version`, and direct `customer`. Use `downstream_customer` when the customer's customer is known. A version can be any nonempty version string. Preserve it separately from the GMS target and patch Android version. Ask only for missing facts, and keep different versions and confirmed customer chains in their own scopes. Independent documents and standalone work use their own names.
+Each project-bound work and tomorrow-plan row requires `project`, the confirmed `project_version`, and direct `customer`. Use `downstream_customer` when the customer's customer is known. Record the Android system version of the project, including for an App, as A16 or A17. Keep the APK release, firmware release and GMS certification target separate. Ask only for missing facts, and keep different versions and confirmed customer chains in their own scopes. Independent documents and standalone work use their own names.
 
 Before running `--prepare`, `--upload`, or `--submit-latest`, first decide
 whether the work is project-bound, a non-project document, or other non-project
@@ -149,9 +149,9 @@ neither a valid project scope nor a valid standalone scope can be established sh
 and reply:
 
 ```text
-请补齐项目名、版本号、客户中缺失的字段。
-例如：TVE1086U｜版本号：A16｜客户：青鸾云
-有客户的客户时再加一栏，例如：TVE1091U｜版本号：R17.2｜客户：AOC｜客户的客户：福建移动高清
+请补齐项目名、项目 Android 版本、客户中缺失的字段。
+例如：TVE1086U｜Android 版本：A16｜客户：青鸾云
+有客户的客户时再加一栏，例如：TVE1091U｜Android 版本：A17｜客户：AOC｜客户的客户：福建移动高清
 
 建议后续按正确流程开展：先创建项目，再在项目下创建开发会话。
 
@@ -184,7 +184,7 @@ An explicit report request or a member-configured recurring task authorizes gene
 Partial daily facts may use the existing single-project work-item fallback only
 with authorized session access for this run; the facts file itself is not consent.
 
-Generation is not submission or revision authorization. A generate-only task calls `--prepare`, returns the report content/link, and must not call `--upload`, `--submit-latest`, or a replacement option. Submit or revise only when explicitly included in the member's instructions. Project paths, branches and Git output may identify a project, never a customer. Use the member's same-line declaration (for example `TVI2343R｜版本号：A16｜客户：海信`) or structured facts for version and customer identity; do not convert an inferred candidate into "confirmed identity".
+Generation is not submission or revision authorization. A generate-only task calls `--prepare`, returns the report content/link, and must not call `--upload`, `--submit-latest`, or a replacement option. Submit or revise only when explicitly included in the member's instructions. Project paths, branches and Git output may identify a project, never a customer. Use the member's same-line declaration (for example `TVI2343R｜Android 版本：A16｜客户：海信`) or structured facts for version and customer identity; do not convert an inferred candidate into "confirmed identity".
 
 ## Commands
 

@@ -30,7 +30,7 @@ from .document_work import (
     validate_weekly_standalone_work,
 )
 from .gms import GMS_CURRENT_FIELDS, normalize_gms_fields, validate_gms_fields
-from .scope import PROJECT_WORK_TYPES, project_version, report_scope_key, report_scope_customer_context
+from .scope import PROJECT_WORK_TYPES, normalize_project_android_version, project_version, report_scope_key, report_scope_customer_context
 from .weekly_ledger import (
     BUSINESS_COUNT_KEYS,
     LEDGER_CHANGE_KEYS,
@@ -425,7 +425,7 @@ def _weekly_project_row(value: dict[str, Any]) -> dict[str, Any]:
     remaining_items = clean_list(value.get("remaining_items"))
     row = {
         "project": project,
-        "project_version": project_version(value),
+        "project_version": normalize_project_android_version(project_version(value)) or project_version(value),
         "customer": customer,
         "customer_name": customer,
         "downstream_customer": downstream_customer,
@@ -614,8 +614,8 @@ def load_explicit_facts(
             errors.append(
                 f"{project}.project 只能填写规范项目编号 {project}；其他内容请写入事项字段"
             )
-        if not project_version(item):
-            errors.append(f"projects[{index}].project_version 必须提供项目版本号")
+        if not normalize_project_android_version(project_version(item)):
+            errors.append(f"projects[{index}].project_version 必须填写项目 Android 版本（如 A16）")
         for field in ("customer", "work_type", "project_role", "requirement_date", "requirement_source"):
             if clean_text(item.get(field)) in MISSING_VALUES:
                 errors.append(f"{project}.{field} 必须提供")
@@ -1302,7 +1302,7 @@ def _history_project_row(
     }
     row.update(latest_gms_fields)
     missing: list[str] = []
-    if not project_version(row):
+    if not normalize_project_android_version(project_version(row)):
         missing.append(f"{project}.project_version")
     for field in ("customer", "work_type", "project_role", "requirement_date", "requirement_source"):
         if clean_text(row.get(field)) in MISSING_VALUES or clean_text(row.get(field)).startswith("需成员补充"):
@@ -1352,7 +1352,7 @@ def _history_project_row(
 def _project_missing_fields(row: dict[str, Any]) -> list[str]:
     project = clean_text(row.get("project"), "unknown")
     missing: list[str] = []
-    if not project_version(row):
+    if not normalize_project_android_version(project_version(row)):
         missing.append(f"{project}.project_version")
     for field in ("customer", "work_type", "project_role", "requirement_date", "requirement_source"):
         value = clean_text(row.get(field))
@@ -1427,7 +1427,7 @@ def _session_fallback_projects(
         customer_context = report_customer_context_for_project(project, project_customers)
         row = {
             "project": project,
-            "project_version": "fixture-v1" if synthetic else "",
+            "project_version": "A16" if synthetic else "",
             "customer": customer_context["customer_name"],
             "customer_name": customer_context["customer_name"],
             "downstream_customer": customer_context.get("downstream_customer", ""),
@@ -1485,10 +1485,11 @@ def assign_daily_records_to_scopes(
         record_gms_target = clean_text(record.get("gms_target")).casefold()
         record_customer = str(record.get("customer") or "").strip()
         record_version = project_version(record)
+        record_version = normalize_project_android_version(record_version) or record_version
         record_downstream = clean_text(record.get("downstream_customer"))
         customer_candidates = [
             index for index, row in enumerate(prior_rows)
-            if project_version(row) == record_version
+            if (normalize_project_android_version(project_version(row)) or project_version(row)) == record_version
             and clean_text(row.get("downstream_customer")) == record_downstream
             and (
                 not record_customer
@@ -1556,7 +1557,7 @@ def daily_scope_seed_rows(records: list[dict[str, Any]]) -> list[dict[str, Any]]
                 "work_type": work_type,
                 "app_name": app_name,
                 "customer": str(record.get("customer") or "").strip(),
-                "project_version": project_version(record),
+                "project_version": normalize_project_android_version(project_version(record)),
                 "downstream_customer": clean_text(record.get("downstream_customer")),
                 "project_role": "需成员确认",
                 "requirement_date": "需成员确认",
@@ -1631,7 +1632,7 @@ def build_weekly_facts(
         previous = {
             project: versioned
             for project, rows in _previous_week_projects(weekly_items).items()
-            if (versioned := [row for row in rows if project_version(row)])
+            if (versioned := [row for row in rows if normalize_project_android_version(project_version(row))])
         }
         daily_document_meta, daily_document_records = _daily_document_records(daily_items)
         previous_documents = _previous_week_documents(weekly_items)

@@ -28,7 +28,7 @@ from .document_work import (
 )
 from .gms import GMS_CURRENT_FIELDS, GMS_PLAN_FIELDS, normalize_gms_fields, validate_gms_fields
 from .scope import (
-    ALLOWED_WORK_TYPES, PROJECT_WORK_TYPES, clean_scope_text, project_version, report_scope_key,
+    ALLOWED_WORK_TYPES, PROJECT_WORK_TYPES, clean_scope_text, normalize_project_android_version, project_version, report_scope_key,
     report_scope_customer_context,
 )
 
@@ -120,7 +120,7 @@ def normalize_tomorrow_plan(value: Any) -> dict[str, list[dict[str, Any]]]:
         row: dict[str, Any] = {
             "project": find_company_project(clean_scope_text(item.get("project")))
             or clean_scope_text(item.get("project")),
-            "project_version": project_version(item),
+            "project_version": normalize_project_android_version(project_version(item)) or project_version(item),
             "customer": clean_scope_text(item.get("customer") or item.get("customer_name")),
             "work_type": clean_scope_text(item.get("work_type") or item.get("type")),
             "plan_items": normalize_plan_items(item.get("plan_items") or item.get("tomorrow_focus")),
@@ -348,7 +348,7 @@ def normalize_daily_project(
     customer = clean_scope_text(value.get("customer") or value.get("customer_name"))
     row: dict[str, Any] = {
         "project": project,
-        "project_version": project_version(value),
+        "project_version": normalize_project_android_version(project_version(value)) or project_version(value),
         "customer": customer,
         "customer_name": customer,
         "work_type": clean_scope_text(value.get("work_type") or value.get("type")),
@@ -419,8 +419,8 @@ def validate_daily_projects(
         if not canonical or canonical.upper() != project.upper():
             errors.append(f"{prefix}.project 必须是规范公司项目名")
             continue
-        if require_project_version and not project_version(row):
-            errors.append(f"{prefix}.project_version 必须提供项目版本号")
+        if require_project_version and not normalize_project_android_version(project_version(row)):
+            errors.append(f"{prefix}.project_version 必须填写项目 Android 版本（如 A16）")
         customer = clean_scope_text(row.get("customer") or row.get("customer_name"))
         downstream = clean_scope_text(row.get("downstream_customer"))
         if customer in REPORT_MISSING_CUSTOMER_VALUES or not clean_report_customer_name(customer):
@@ -539,8 +539,8 @@ def validate_tomorrow_plan(
                 canonical = find_company_project(project)
                 if not canonical or canonical.upper() != project.upper():
                     errors.append(f"{row_prefix}.project 必须是规范公司项目名")
-                if require_project_version and not project_version(row):
-                    errors.append(f"{row_prefix}.project_version 必须提供项目版本号")
+                if require_project_version and not normalize_project_android_version(project_version(row)):
+                    errors.append(f"{row_prefix}.project_version 必须填写项目 Android 版本（如 A16）")
                 customer = clean_scope_text(row.get("customer") or row.get("customer_name"))
                 downstream = clean_scope_text(row.get("downstream_customer"))
                 if customer in REPORT_MISSING_CUSTOMER_VALUES or not clean_report_customer_name(customer):
@@ -783,7 +783,7 @@ def fallback_projects(
             work_type = "Patch" if synthetic else clean_scope_text(scope.get("work_type")) or "需成员确认"
             row: dict[str, Any] = {
                 "project": project,
-                "project_version": "fixture-v1" if synthetic else project_version(scope),
+                "project_version": "A16" if synthetic else normalize_project_android_version(project_version(scope)),
                 "customer": context["customer_name"],
                 "customer_name": context["customer_name"],
                 "work_type": work_type,
@@ -932,7 +932,7 @@ def build_daily_facts(
             (
                 (
                     bool(find_company_project(clean_scope_text(row.get("project"))))
-                    and bool(project_version(row))
+                    and bool(normalize_project_android_version(project_version(row)))
                     and clean_scope_text(row.get("work_type")) in PROJECT_WORK_TYPES
                     and (
                         clean_scope_text(row.get("work_type")) != "App"
@@ -972,7 +972,7 @@ def build_daily_facts(
         for row in projects:
             project = clean_scope_text(row.get("project"))
             work_type = clean_scope_text(row.get("work_type"))
-            if not project_version(row):
+            if not normalize_project_android_version(project_version(row)):
                 missing_fields.append(f"{project}.project_version")
             if work_type not in ALLOWED_WORK_TYPES:
                 missing_fields.append(f"{project}.work_type")

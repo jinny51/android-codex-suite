@@ -390,7 +390,7 @@ def test_scheduled_generate_only_runs_with_each_date_window_and_never_submits(
     config = report_config(tmp_path)
     monkeypatch.setattr(intake, "load_config", lambda profile: (dict(config), []))
     read = Mock(return_value=[SessionWork(project="TVI2343R", messages=[
-        "TVI2343R｜版本号：release-16.2｜客户：海信；完成接口修复", "通过源码对照完成验证，结果已完成"],
+        "TVI2343R｜项目 Android 版本：Android 16｜客户：海信；完成接口修复", "通过源码对照完成验证，结果已完成"],
         commands=["git diff"], source_work_type_hint="Patch")])
     monkeypatch.setattr(intake, "parse_sessions", read)
     monkeypatch.setattr(intake, "discover_patches", lambda *args: [])
@@ -437,11 +437,11 @@ def test_same_line_customer_declaration_remains_supported(text: str) -> None:
 
 def test_named_report_version_is_independent_of_both_customer_fields() -> None:
     assert project_customer_contexts_from_text(
-        "TVI2343R｜版本号：BSP 17.2｜客户的客户：现场用户｜客户：海信"
-    ) == [("TVI2343R", {"project_version": "BSP 17.2", "customer_name": "海信",
+        "TVI2343R｜Android 版本：Android 17｜客户的客户：现场用户｜客户：海信"
+    ) == [("TVI2343R", {"project_version": "A17", "customer_name": "海信",
                          "downstream_customer": "现场用户"})]
-    assert project_customer_contexts_from_text("TVI2343R｜版本号：BSP 17.2｜下游客户：现场用户") == []
-    assert project_customer_contexts_from_text("TVI2343R 版本号：BSP 17.2 客户：海信")[0][1]["project_version"] == "BSP 17.2"
+    assert project_customer_contexts_from_text("TVI2343R｜Android 版本：Android 17｜下游客户：现场用户") == []
+    assert project_customer_contexts_from_text("TVI2343R Android 版本：Android 17 客户：海信")[0][1]["project_version"] == "A17"
 
 
 def test_metadata_candidates_cannot_override_member_declaration() -> None:
@@ -472,3 +472,32 @@ def test_absent_session_evidence_requires_real_fact_provenance_and_invalid_sessi
     facts = {"daily_fact_sources": {"payload": {"source": "explicit_daily_facts"}}}
     assert report_session_privacy_errors(facts) == []
     assert report_session_privacy_errors({**facts, "codex_sessions": {"payload": {"granted": True}}})
+
+
+def test_app_and_gms_version_labels_are_not_project_android_version() -> None:
+    from akbs_intake.report_sessions import project_customer_contexts_from_text
+
+    for wrong in ("App 版本号：1.2.3", "GMS 目标版本号：A17", "固件版本号：A17", "项目版本号：1.2.3"):
+        contexts = project_customer_contexts_from_text(f"TVI2343R｜{wrong}｜客户：海信")
+        assert contexts == [("TVI2343R", {"customer_name": "海信"})]
+
+
+@pytest.mark.parametrize(("kind", "schema"), [("daily", "akbs-daily-fact-sources-v4"), ("weekly", "akbs-weekly-fact-sources-v3")])
+def test_report_submit_blocks_old_pending_format_before_http(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str, schema: str,
+) -> None:
+    facts = f"materials/evidence/{kind}_fact_sources.json"
+    display = "materials/display/report_view.json"
+    write_json(tmp_path / "manifest.json", {"package_kind": f"{kind}_trace",
+               "files": {"evidence": [facts], "display": [display]}})
+    write_json(tmp_path / facts, {"kind": f"{kind}_fact_sources", "payload": {"schema": schema}})
+    write_json(tmp_path / display, {
+        "kind": "report_view", "payload": {"projects": [
+            {"project": "TVI2343R", "customer": "海信", "work_type": "App", "app_name": "Example"},
+        ]},
+    })
+    request = Mock()
+    monkeypatch.setattr(submit_module, "server_submit_package", request)
+    with pytest.raises(SystemExit, match="旧格式.*TVI2343R.*项目 Android 版本"):
+        intake.submit_package(tmp_path, {})
+    request.assert_not_called()

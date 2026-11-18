@@ -146,7 +146,7 @@ Rules:
 - `projects[]`, `documents[]`, and `standalone_work[]` describe today's actual
   work; at least one must be non-empty. A plan alone cannot replace a daily
   work record.
-- In today's and tomorrow's `projects[]`, require `project`, `project_version` and direct `customer`. `project_version` is a confirmed nonempty string and independent of the GMS target and patch Android version. Optional
+- In today's and tomorrow's `projects[]`, require `project`, `project_version` and direct `customer`. `project_version` is the confirmed Android system version of the project, including for an App, written as A16 or A17. APK, firmware and GMS certification versions are separate. Optional
   `downstream_customer` means the direct customer's customer. `customer`
   contains only the direct customer. Do not flatten a two-level chain into one
   whitespace-separated `customer` value; local validation rejects it until the

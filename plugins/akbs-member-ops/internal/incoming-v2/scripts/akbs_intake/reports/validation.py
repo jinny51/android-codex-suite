@@ -43,7 +43,7 @@ from .weekly_facts import (
     WEEKLY_FACT_SOURCES_SCHEMA,
 )
 from .weekly_ledger import WEEKLY_LEDGER_SCHEMA
-from .scope import project_version, report_scope_key
+from .scope import normalize_project_android_version, project_version, report_scope_key
 
 
 RequireFile = Callable[[Any, str], Path | None]
@@ -114,8 +114,13 @@ def report_project_customer_errors(
             row_errors.append(
                 f"{rel} payload.{label}[{index}].project 只能填写规范项目编号 {canonical_project}；其他内容应写入事项字段"
             )
-        if require_project_version and not project_version(row):
-            row_errors.append(f"{rel} payload.{label}[{index}].project_version 必须提供项目版本号")
+        if require_project_version:
+            version = normalize_project_android_version(row.get("project_version"))
+            if not version or version != row.get("project_version"):
+                row_errors.append(
+                    f"{rel} payload.{label}[{index}].project_version "
+                    f"{canonical_project or project} 必须填写项目 Android 版本（如 A16）"
+                )
         customer = str(row.get("customer") or row.get("customer_name") or "").strip()
         compatibility_customer = str(row.get("customer_name") or "").strip()
         if customer and compatibility_customer and customer != compatibility_customer:

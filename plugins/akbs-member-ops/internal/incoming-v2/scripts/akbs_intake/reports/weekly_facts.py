@@ -764,6 +764,7 @@ def load_explicit_facts(
         previous, previous_ambiguous = matching_previous_scope(
             normalized_row,
             previous_projects or {},
+            projects,
         )
         if previous is not None and work_type in {"Patch", "App"}:
             previous_scope = weekly_scope_identity(previous)
@@ -1629,11 +1630,30 @@ def build_weekly_facts(
         provenance = dict(provenance)
         as_of = min(end, local_now(config).date())
         daily_meta, daily_records = _daily_project_records(daily_items)
-        previous = {
-            project: versioned
-            for project, rows in _previous_week_projects(weekly_items).items()
-            if (versioned := [row for row in rows if normalize_project_android_version(project_version(row))])
-        }
+        previous = _previous_week_projects(weekly_items)
+        for project, rows in list(previous.items()):
+            confirmed = [{**row, "project": project} for row in daily_scope_seed_rows(daily_records.get(project, []))]
+            context = (project_customers or {}).get(project, {})
+            if isinstance(context, dict) and (version := normalize_project_android_version(project_version(context))):
+                confirmed.extend({**row, "project_version": version} for row in rows)
+            confirmed.extend(
+                {**row, "project_version": key[-2], "downstream_customer": key[-1]}
+                for key in (project_customers or {}) if isinstance(key, tuple) and len(key) == 8
+                for row in rows if weekly_scope_identity(row)[:-2] == key[:-2]
+            )
+            versioned = [row for row in rows if normalize_project_android_version(project_version(row))]
+            for prior in rows:
+                if project_version(prior):
+                    continue
+                candidates = [row for row in confirmed if matching_previous_scope(row, previous, confirmed) == (prior, False)]
+                scopes = {weekly_scope_identity(row) for row in candidates}
+                if len(scopes) == 1 and not any(weekly_scope_identity(row) in scopes for row in versioned):
+                    resolved = candidates[0]
+                    versioned.append({**prior, "project_version": project_version(resolved),
+                                      "downstream_customer": resolved.get("downstream_customer", "")})
+                elif not any(weekly_scope_identity(row)[:-2] == weekly_scope_identity(prior)[:-2] for row in versioned):
+                    versioned.append(prior)
+            previous[project] = versioned
         daily_document_meta, daily_document_records = _daily_document_records(daily_items)
         previous_documents = _previous_week_documents(weekly_items)
         daily_standalone_meta, daily_standalone_records = _daily_standalone_records(daily_items)

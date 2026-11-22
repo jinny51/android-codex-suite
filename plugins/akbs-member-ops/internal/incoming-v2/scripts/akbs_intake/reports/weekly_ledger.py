@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .scope import report_scope_key
+from .scope import normalize_project_android_version, project_version, report_scope_key
 
 
 WEEKLY_LEDGER_SCHEMA = "akbs-weekly-project-ledger-v2"
@@ -125,6 +125,7 @@ def weekly_scope_identity(row: dict[str, Any]) -> tuple[str, ...]:
 def matching_previous_scope(
     row: dict[str, Any],
     previous_projects: dict[str, list[dict[str, Any]]],
+    current_rows: list[dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any] | None, bool]:
     scope = weekly_scope_identity(row)
     candidates = previous_projects.get(scope[0], [])
@@ -136,6 +137,27 @@ def matching_previous_scope(
             if weekly_scope_identity(previous)[:-1] == scope[:-1]
             and (not scope[-1] or not weekly_scope_identity(previous)[-1])
         ]
+    if not matches and normalize_project_android_version(project_version(row)):
+        matches = [
+            previous for previous in candidates
+            if not project_version(previous)
+            and weekly_scope_identity(previous)[:-2] == scope[:-2]
+            and (weekly_scope_identity(previous)[-1] == scope[-1]
+                 or not weekly_scope_identity(previous)[-1] or not scope[-1])
+        ]
+        if matches and current_rows is not None:
+            for previous in matches:
+                previous_scope = weekly_scope_identity(previous)
+                current_scopes = {
+                    weekly_scope_identity(current)
+                    for current in current_rows
+                    if isinstance(current, dict)
+                    and weekly_scope_identity(current)[:-2] == previous_scope[:-2]
+                    and (weekly_scope_identity(current)[-1] == previous_scope[-1]
+                         or not weekly_scope_identity(current)[-1] or not previous_scope[-1])
+                }
+                if len(current_scopes) > 1:
+                    return None, True
     return (matches[0] if len(matches) == 1 else None, len(matches) > 1)
 
 

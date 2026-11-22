@@ -339,12 +339,14 @@ def test_legacy_previous_ledger_does_not_seed_a_version_and_cannot_be_relabelled
                "completed_this_week": 1, "remaining": 0}
     current["ledger"].update(opening=True, project_completed=1)
     previous = {PROJECT: [prior]}
-    rows = weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, [current]), WEEK, previous_projects=previous)
-    assert rows[0]["ledger"]["opening"] is True and rows[0]["work_total"] == 1
+    with pytest.raises(SystemExit, match="不得重新开项"):
+        weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, [current]), WEEK, previous_projects=previous)
+    current.update(work_total=10, remaining=9, remaining_items=["继续旧任务"], next_week_plan=["继续旧任务"])
     current["ledger"].update(opening=False, baseline_package_key=prior["_package_key"],
                              baseline_week_range=prior["_week_range"])
-    with pytest.raises(SystemExit, match="不得伪造上周基线"):
-        weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, [current]), WEEK, previous_projects=previous)
+    rows = weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, [current]), WEEK, previous_projects=previous)
+    assert rows[0]["ledger"]["baseline_package_key"] == prior["_package_key"]
+    assert rows[0]["work_total"] == 10
     assert prior["project_version"] == "" and prior["work_total"] == 10
 
 
@@ -481,3 +483,69 @@ def test_android_project_version_aliases_inherit_the_same_weekly_scope(label: st
     prior = {**identity("App"), "project_version": canonical}
     record = {**prior, "project_version": label, "text": "核查接口", "progress": "已完成"}
     assert weekly_facts.assign_daily_records_to_scopes([prior], [record]) == ([[record]], False)
+
+
+@pytest.mark.parametrize("name,total,remaining,version", [
+    ("RkVideoPlayer", 11, 0, "A12"), ("Music", 1, 1, "A13"), ("Weather", 1, 0, "A13"),
+])
+@pytest.mark.parametrize("downstream", ["", "下游客户"])
+def test_legacy_app_ledger_carries_confirmed_version_without_reset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, total: int,
+    remaining: int, version: str, downstream: str,
+) -> None:
+    old = {**weekly_raw_row("App"), "app_name": name, "project_version": "",
+           "project_role": "主责", "work_total": total, "remaining": remaining,
+           "remaining_items": ["未完成事项"] if remaining else [],
+           "next_week_plan": ["继续未完成事项"] if remaining else []}
+    prior = weekly_facts._weekly_project_row(old)
+    prior.update(_package_key="synthetic/legacy", _week_range="20260928-20261004")
+    current = {**old, "project_version": version, "downstream_customer": downstream}
+    current["ledger"].update(opening=False, baseline_package_key=prior["_package_key"], baseline_week_range=prior["_week_range"])
+    explicit = weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, [current]), WEEK,
+                                               previous_projects={PROJECT: [prior]})[0]
+    assert explicit["work_total"] == total and explicit["remaining_total"] == remaining
+    monkeypatch.setattr(weekly_facts, "local_now", lambda config: dt.datetime(2026, 10, 11))
+    auto = weekly_facts.build_weekly_facts(
+        {}, dt.date(2026, 10, 5), dt.date(2026, 10, 11), WEEK,
+        history=([], [{"package_key": prior["_package_key"], "week_range": prior["_week_range"],
+                       "report_view": {"projects": [old]}}], {}),
+        project_customers={scope.report_scope_key(current): {"customer_name": current["customer"]}},
+    )
+    assert len(auto.projects) == 1
+    row = auto.projects[0]
+    assert row["project_version"] == version and row["downstream_customer"] == downstream
+    assert row["work_total"] == total and row["remaining_total"] == remaining
+    assert row["completed_this_week_total"] == 0
+    assert explicit["ledger"]["baseline_package_key"] == prior["_package_key"]
+    assert prior["project_version"] == "" and old["project_version"] == ""
+
+
+@pytest.mark.parametrize("downstreams", [("", ""), ("客户甲", "客户乙")])
+def test_legacy_ledger_cannot_seed_two_android_versions(tmp_path: Path, downstreams: tuple[str, str]) -> None:
+    old = weekly_facts._weekly_project_row({**weekly_raw_row("App"), "project_version": ""})
+    old.update(_package_key="old", _week_range="20260928-20261004")
+    current = [{**weekly_raw_row("App"), "project_version": version, "downstream_customer": downstream}
+               for version, downstream in zip(("A16", "A17"), downstreams)]
+    with pytest.raises(SystemExit, match="无法确定唯一基线"):
+        weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, current), WEEK, previous_projects={PROJECT: [old]})
+
+
+@pytest.mark.parametrize("versions", [("A12",), ("A12", "A13")])
+def test_automatic_legacy_baseline_requires_one_confirmed_daily_version(
+    monkeypatch: pytest.MonkeyPatch, versions: tuple[str, ...],
+) -> None:
+    old = {**weekly_raw_row("App"), "project_version": "", "project_role": "主责",
+           "work_total": 11, "remaining": 0}
+    daily = [{**daily_row("App"), "project_version": version} for version in versions]
+    history = ([{"package_key": "daily", "report_date": DATE.isoformat(), "report_view": {"projects": daily}}],
+               [{"package_key": "old", "week_range": "20260928-20261004", "report_view": {"projects": [old]}}], {})
+    monkeypatch.setattr(weekly_facts, "local_now", lambda config: dt.datetime(2026, 10, 11))
+    result = weekly_facts.build_weekly_facts({}, dt.date(2026, 10, 5), dt.date(2026, 10, 11), WEEK, history=history)
+    if len(versions) == 1:
+        assert len(result.projects) == 1 and result.projects[0]["work_total"] == 12
+        assert result.projects[0]["project_version"] == "A12"
+        assert result.projects[0]["completed_this_week_total"] == 1
+    else:
+        assert f"{PROJECT}.project_version" in result.evidence["missing_fields"]
+        assert any(row["project_version"] == "" and row["work_total"] == 11 for row in result.projects)
+        assert all(row["work_total"] != 11 for row in result.projects if row["project_version"])

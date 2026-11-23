@@ -8,7 +8,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from akbs_member_ops.http_client import HttpClientFailure, request_json
 from akbs_member_ops.knowledge_rules import find_company_project
@@ -366,6 +366,71 @@ def _target_months(dates: Iterable[dt.date]) -> list[str]:
     return sorted({date.strftime("%Y-%m") for date in dates})
 
 
+def _week_key(week_start: dt.date) -> str:
+    return f"{week_start:%Y%m%d}-{week_start + dt.timedelta(days=6):%Y%m%d}"
+
+
+def _ledger_history_weeks(period: str, start: dt.date) -> list[dt.date]:
+    """Return the extra earlier weeks named by the member."""
+    if not period:
+        return []
+    try:
+        if re.fullmatch(r"[0-9]{4}-[0-9]{2}", period):
+            first = dt.date.fromisoformat(f"{period}-01")
+            week = first - dt.timedelta(days=first.weekday())
+            candidates = [week + dt.timedelta(weeks=offset) for offset in range(6)]
+            if first >= start:
+                raise ValueError("future month")
+            weeks = [day for day in candidates if day <= first or day.month == first.month]
+        elif re.fullmatch(r"[0-9]{8}-[0-9]{8}", period):
+            week = dt.datetime.strptime(period[:8], "%Y%m%d").date()
+            if week.weekday() != 0 or period != _week_key(week) or week >= start:
+                raise ValueError("not an earlier complete week")
+            weeks = [week]
+        else:
+            raise ValueError("invalid period")
+    except (ValueError, OverflowError):
+        raise SystemExit("--ledger-history-period 必须指定目标周之前的月份 YYYY-MM 或完整周 YYYYMMDD-YYYYMMDD") from None
+    return [week for week in weeks if week < start - dt.timedelta(weeks=4)]
+
+
+def _fetch_report_months(
+    config: dict[str, str], kind: str, months: list[str],
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    items: list[dict[str, Any]] = []
+    failures: dict[str, str] = {}
+    for month in months:
+        try:
+            items.extend(fetch_current_report_items(config, kind, month))
+        except (HttpClientFailure, ValueError) as error:
+            failures[month] = error.result.code if isinstance(error, HttpClientFailure) else "invalid_success_response"
+    return items, failures
+
+
+def _fetch_weekly_items(
+    config: dict[str, str], weeks: list[dt.date],
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    week_months = {
+        _week_key(week): set(_target_months((week, week + dt.timedelta(days=6)))) for week in weeks
+    }
+    if not _api_enabled(config):
+        return local_current_report_items(config, "weekly_trace", set(week_months)), {}
+    months = sorted({month for bounds in week_months.values() for month in bounds})
+    results, failures = _fetch_report_months(config, "weekly_trace", months)
+    items: dict[tuple[str, str], dict[str, Any]] = {}
+    for item in results:
+        week = clean_text(item.get("week_range"))
+        package = clean_text(item.get("package_key"))
+        if week in week_months and package:
+            items.setdefault((week, package), item)
+    available = {week for week, _ in items}
+    fallback = {week for week, bounds in week_months.items() if week not in available and bounds & failures.keys()}
+    effective = list(items.values())
+    if fallback:
+        effective.extend(local_current_report_items(config, "weekly_trace", fallback))
+    return effective, failures
+
+
 def load_history(
     config: dict[str, str],
     start: dt.date,
@@ -373,34 +438,35 @@ def load_history(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     current_dates = {start + dt.timedelta(days=offset) for offset in range((end - start).days + 1)}
     current_date_keys = {date.isoformat() for date in current_dates}
-    previous_start = start - dt.timedelta(days=7)
-    previous_end = end - dt.timedelta(days=7)
-    previous_key = f"{previous_start:%Y%m%d}-{previous_end:%Y%m%d}"
-    daily_items: list[dict[str, Any]] = []
-    weekly_items: list[dict[str, Any]] = []
-    api_errors: list[str] = []
-    api_complete = _api_enabled(config)
-    if api_complete:
-        try:
-            for month in _target_months(current_dates):
-                daily_items.extend(fetch_current_report_items(config, "daily_trace", month))
-            for month in _target_months((previous_start, previous_end)):
-                weekly_items.extend(fetch_current_report_items(config, "weekly_trace", month))
-        except (HttpClientFailure, ValueError) as error:
-            api_complete = False
-            code = error.result.code if isinstance(error, HttpClientFailure) else "invalid_success_response"
-            api_errors.append(code)
-    daily_items = [item for item in daily_items if clean_text(item.get("report_date")) in current_date_keys]
-    weekly_items = [item for item in weekly_items if clean_text(item.get("week_range")) == previous_key]
-    source = "akbs_api" if api_complete else "local_submitted"
-    if not api_complete:
+    prior_weeks = [start - dt.timedelta(weeks=offset) for offset in range(1, 5)]
+    previous_key = _week_key(prior_weeks[0])
+    daily_errors: dict[str, str] = {}
+    daily_months = _target_months(current_dates)
+    source = "local_submitted"
+    if _api_enabled(config):
+        daily_items, daily_errors = _fetch_report_months(config, "daily_trace", daily_months)
+        daily_items = [item for item in daily_items if clean_text(item.get("report_date")) in current_date_keys]
+        if daily_errors:
+            daily_items.extend(local_current_report_items(
+                config, "daily_trace", {day for day in current_date_keys if day[:7] in daily_errors},
+            ))
+        source = "akbs_api"
+    else:
         daily_items = local_current_report_items(config, "daily_trace", current_date_keys)
-        weekly_items = local_current_report_items(config, "weekly_trace", {previous_key})
+    weekly_items, weekly_errors = _fetch_weekly_items(config, prior_weeks)
+    weekly_months = {
+        month for week in prior_weeks for month in _target_months((week, week + dt.timedelta(days=6)))
+    }
+    if set(daily_errors) == set(daily_months) and weekly_errors.keys() == weekly_months:
+        source = "local_submitted"
     provenance = {
         "source": source,
-        "api_errors": sorted(set(api_errors)),
+        "api_errors": sorted(set(daily_errors.values()) | set(weekly_errors.values())),
         "daily_package_keys": sorted({clean_text(item.get("package_key")) for item in daily_items if item.get("package_key")}),
-        "previous_weekly_package_keys": sorted({clean_text(item.get("package_key")) for item in weekly_items if item.get("package_key")}),
+        "previous_weekly_package_keys": sorted({
+            clean_text(item["package_key"]) for item in weekly_items
+            if item.get("package_key") and item.get("week_range") == previous_key
+        }),
         "previous_week_range": previous_key,
     }
     return daily_items, weekly_items, provenance
@@ -559,6 +625,7 @@ def load_explicit_facts(
     include_documents: bool = False,
     include_all_scopes: bool = False,
     previous_projects: dict[str, list[dict[str, Any]]] | None = None,
+    extra_previous_projects: Callable[[], dict[str, list[dict[str, Any]]]] | None = None,
 ) -> (
     list[dict[str, Any]]
     | tuple[list[dict[str, Any]], list[dict[str, Any]]]
@@ -766,13 +833,18 @@ def load_explicit_facts(
             previous_projects or {},
             projects,
         )
+        if work_type in {"Patch", "App"} and previous is None and not previous_ambiguous and extra_previous_projects:
+            previous, previous_ambiguous = matching_previous_scope(
+                normalized_row, extra_previous_projects(), projects,
+            )
         if previous is not None and work_type in {"Patch", "App"}:
             previous_scope = weekly_scope_identity(previous)
+            previous_source = (*previous_scope, previous["_week_range"], previous["_package_key"])
             if previous_scope[-1] and not weekly_scope_identity(normalized_row)[-1]:
                 errors.append(f"projects[{index}].downstream_customer 不得清空已确认的客户的客户")
-            if previous_scope in claimed_previous_scopes:
-                errors.append(f"projects[{index}].ledger 多个当前范围不能使用同一份上周台账")
-            claimed_previous_scopes.add(previous_scope)
+            if previous_source in claimed_previous_scopes:
+                errors.append(f"projects[{index}].ledger 多个当前范围不能使用同一份历史台账")
+            claimed_previous_scopes.add(previous_source)
         if schema == WEEKLY_FACTS_SCHEMA and work_type in {"Patch", "App"}:
             validate_v5_project_ledger(
                 item,
@@ -783,8 +855,8 @@ def load_explicit_facts(
             )
         elif work_type in {"Patch", "App"} and (previous is not None or previous_ambiguous):
             errors.append(
-                f"{project}.ledger 已有上周台账的项目必须使用 {WEEKLY_FACTS_SCHEMA}；"
-                "旧显式事实不得绕过上周基线"
+                f"{project}.ledger 已有历史台账的项目必须使用 {WEEKLY_FACTS_SCHEMA}；"
+                "旧显式事实不得绕过历史基线"
             )
         normalized.append(normalized_row)
     for conflict in project_customer_identity_conflicts(normalized, expected_project_customers or {}):
@@ -1019,6 +1091,17 @@ def _previous_week_projects(items: list[dict[str, Any]]) -> dict[str, list[dict[
                 row["_week_range"] = clean_text(item.get("week_range"))
                 result.setdefault(project, []).append(row)
     return result
+
+
+def _rolling_ledger_row(prior: dict[str, Any], current: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **prior,
+        "project_version": project_version(current),
+        "downstream_customer": current["downstream_customer"] or prior["downstream_customer"],
+        "risks": [],
+        "dependencies": [],
+        "next_week_plan": [],
+    }
 
 
 def _previous_week_documents(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -1596,8 +1679,24 @@ def build_weekly_facts(
     fallback_items: dict[str, list[tuple[str, str]]] | None = None,
     project_customers: dict[str, Any] | None = None,
     history: tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]] | None = None,
+    ledger_history_period: str = "",
 ) -> WeeklyFactsResult:
     missing_fields: list[str] = []
+    extra_weeks = _ledger_history_weeks(ledger_history_period, start)
+    extra_projects: dict[str, list[dict[str, Any]]] | None = None
+    selected_package_keys: set[str] = set()
+    extra_errors: dict[str, str] = {}
+
+    def extra_previous_projects() -> dict[str, list[dict[str, Any]]]:
+        nonlocal extra_projects, extra_errors
+        if extra_projects is None:
+            if not extra_weeks or synthetic:
+                extra_projects = {}
+                return extra_projects
+            extra_items, extra_errors = _fetch_weekly_items(config, extra_weeks)
+            extra_projects = _previous_week_projects(extra_items)
+        return extra_projects
+
     if explicit_path:
         _, weekly_items, history_provenance = load_history(config, start, end)
         previous = _previous_week_projects(weekly_items)
@@ -1607,6 +1706,7 @@ def build_weekly_facts(
             expected_project_customers=project_customers,
             include_all_scopes=True,
             previous_projects=previous,
+            extra_previous_projects=extra_previous_projects if extra_weeks else None,
         )
         provenance = {
             **history_provenance,
@@ -1614,6 +1714,8 @@ def build_weekly_facts(
         }
         for row in projects:
             missing_fields.extend(_project_missing_fields(row))
+            if key := clean_text(row["ledger"].get("baseline_package_key")):
+                selected_package_keys.add(key)
     elif synthetic:
         provenance = {"source": "synthetic_fixture", "daily_package_keys": [], "previous_weekly_package_keys": []}
         projects, synthetic_missing = _session_fallback_projects(
@@ -1630,6 +1732,9 @@ def build_weekly_facts(
         provenance = dict(provenance)
         as_of = min(end, local_now(config).date())
         daily_meta, daily_records = _daily_project_records(daily_items)
+        history_projects = _previous_week_projects(weekly_items)
+        previous_key = _week_key(start - dt.timedelta(weeks=1))
+        weekly_items = [item for item in weekly_items if clean_text(item.get("week_range")) == previous_key]
         previous = _previous_week_projects(weekly_items)
         for project, rows in list(previous.items()):
             confirmed = [{**row, "project": project} for row in daily_scope_seed_rows(daily_records.get(project, []))]
@@ -1649,8 +1754,18 @@ def build_weekly_facts(
                 scopes = {weekly_scope_identity(row) for row in candidates}
                 if len(scopes) == 1 and not any(weekly_scope_identity(row) in scopes for row in versioned):
                     resolved = candidates[0]
-                    versioned.append({**prior, "project_version": project_version(resolved),
-                                      "downstream_customer": resolved.get("downstream_customer", "")})
+                    winning_baseline, needs_confirmation = matching_previous_scope(resolved, history_projects, confirmed)
+                    if needs_confirmation:
+                        missing_fields.append(f"{project}.ledger_baseline_confirmation")
+                        versioned.append(prior)
+                    elif winning_baseline and winning_baseline["_week_range"] != previous_key:
+                        if winning_baseline["downstream_customer"] and not resolved.get("downstream_customer"):
+                            missing_fields.append(f"{project}.ledger_baseline_confirmation")
+                            continue
+                        versioned.append(_rolling_ledger_row(winning_baseline, resolved))
+                    else:
+                        versioned.append({**prior, "project_version": project_version(resolved),
+                                          "downstream_customer": resolved.get("downstream_customer", "")})
                 elif not any(weekly_scope_identity(row)[:-2] == weekly_scope_identity(prior)[:-2] for row in versioned):
                     versioned.append(prior)
             previous[project] = versioned
@@ -1679,10 +1794,31 @@ def build_weekly_facts(
         projects = []
         project_names = sorted(set(previous) | set(daily_records))
         for project in project_names:
-            prior_rows = previous.get(project, [])
+            prior_rows = list(previous.get(project, []))
             records = daily_records.get(project, [])
+            seeds = daily_scope_seed_rows(records)
+            scopes = [{**seed, "project": project} for seed in seeds]
+            used_older_sources: set[tuple[str, ...]] = set()
+            for seed in scopes:
+                if seed["work_type"] not in {"Patch", "App"}:
+                    continue
+                adjacent, adjacent_ambiguous = matching_previous_scope(seed, {project: prior_rows}, scopes)
+                if adjacent is not None or adjacent_ambiguous:
+                    continue
+                older, ambiguous = matching_previous_scope(seed, history_projects, scopes)
+                if older is None and not ambiguous and extra_weeks:
+                    older, ambiguous = matching_previous_scope(seed, extra_previous_projects(), scopes)
+                if ambiguous:
+                    missing_fields.append(f"{project}.ledger_baseline_confirmation")
+                if older:
+                    source = (*weekly_scope_identity(older), older["_week_range"], older["_package_key"])
+                    if source in used_older_sources or (older["downstream_customer"] and not seed["downstream_customer"]):
+                        missing_fields.append(f"{project}.ledger_baseline_confirmation")
+                        continue
+                    used_older_sources.add(source)
+                    prior_rows.append(_rolling_ledger_row(older, seed))
             if not prior_rows:
-                seeded_rows = daily_scope_seed_rows(records)
+                seeded_rows = seeds
                 prior_rows = seeded_rows or [None]
                 records_by_scope, ambiguous_scope = (
                     assign_daily_records_to_scopes(prior_rows, records)
@@ -1691,7 +1827,6 @@ def build_weekly_facts(
                 )
             else:
                 existing_scopes = {attention_scope_key(row) for row in prior_rows}
-                seeds = daily_scope_seed_rows(records)
                 daily_scope_keys = {attention_scope_key(row) for row in seeds}
                 prior_rows = list(prior_rows)
                 for row in seeds:
@@ -1711,6 +1846,8 @@ def build_weekly_facts(
                     prior_rows.append(row)
                 records_by_scope, ambiguous_scope = assign_daily_records_to_scopes(prior_rows, records)
             for prior, scope_records in zip(prior_rows, records_by_scope):
+                if prior and (key := clean_text(prior.get("_package_key"))):
+                    selected_package_keys.add(key)
                 row, project_missing = _history_project_row(
                     project,
                     prior,
@@ -1761,6 +1898,12 @@ def build_weekly_facts(
         f"{conflict['project']}.customer_identity_conflict"
         for conflict in identity_conflicts
     )
+    if selected_package_keys:
+        provenance["previous_weekly_package_keys"] = sorted(
+            set(provenance.get("previous_weekly_package_keys", [])) | selected_package_keys
+        )
+    if extra_errors:
+        provenance["api_errors"] = sorted(set(provenance.get("api_errors", [])) | set(extra_errors.values()))
     evidence = {
         "schema": WEEKLY_FACT_SOURCES_SCHEMA,
         "week_range": week_key,

@@ -4,8 +4,8 @@ Before creating or replacing any weekly facts file, run
 `akbs_member_setup.py preflight-install-family` and require exit 0 with JSON
 `status=PASS`. Do not write facts first and rely on a later prepare/doctor gate.
 
-Use this contract only when effective AKBS daily reports and the previous weekly
-ledger cannot prove every required project fact. Ask the member only for fields
+Use this contract only when effective AKBS daily reports and recent weekly
+ledgers cannot prove every required project fact. Ask the member only for fields
 listed by `weekly_fact_sources.missing_fields`.
 
 Daily `tomorrow_plan` rows are plan context, not weekly progress evidence. A
@@ -206,8 +206,16 @@ Rules:
   hand-edit the JSON.
 - A main row for a new scope uses `opening=true`, provides the initial total,
   and leaves the baseline fields empty. Existing scopes use `opening=false`
-  and bind `baseline_package_key` and `baseline_week_range` to the current
-  effective previous-week report.
+  and bind `baseline_package_key` and `baseline_week_range` to the actual
+  effective report for each matching Patch/App scope. The four complete weeks
+  before the target week are checked newest first. A versionless legacy row
+  can be selected only where it is unambiguous. If a current scope has no
+  match and the member identifies an earlier period, pass
+  `--ledger-history-period YYYY-MM` or `--ledger-history-period YYYYMMDD-YYYYMMDD`
+  to the same command. A month includes weeks that touch it. An explicitly
+  named period does not override a recent match or resolve ambiguous scope
+  identity. Keep a known existing scope pending if no report can be verified.
+  Use `opening=true` only for a confirmed new scope.
 - Only the main may provide non-zero ledger changes. Collaborators keep every
   change at zero and report only personal completion and remaining work.
 - `project_completed` is the main-confirmed sum of this week's completion from
@@ -232,8 +240,8 @@ current BSP pending = previous BSP pending + transferred to BSP - BSP closed
 ```
 
 - Explicit legacy v5/v4/v3 facts may open a scope only when no previous scope exists.
-  They cannot replace an existing scope because that would bypass the previous
-  baseline; use v5 instead.
+  They cannot replace an existing scope because that would bypass the selected
+  historical baseline. Use v6 for an existing scope.
 - Automatic rolling writes unmatched existing-scope work to
   `weekly_fact_sources.scope_change_candidates`. Ask the main to classify only
   those exact items before producing v6 facts.

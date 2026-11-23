@@ -316,7 +316,7 @@ def test_downstream_supplement_cannot_reopen_existing_ledger_or_reset_total(tmp_
     assert rows[0]["downstream_customer"] == "Factory"
     assert rows[0]["ledger"]["baseline"]["total"] == 10
     also_enriched = {**current, "downstream_customer": "OtherFactory"}
-    with pytest.raises(SystemExit, match="多个当前范围不能使用同一份上周台账"):
+    with pytest.raises(SystemExit, match="多个当前范围不能使用同一份历史台账"):
         weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, [current, also_enriched]), WEEK,
                                          previous_projects=previous_projects)
     # A genuinely different direct customer is an independent new scope.
@@ -549,3 +549,163 @@ def test_automatic_legacy_baseline_requires_one_confirmed_daily_version(
         assert f"{PROJECT}.project_version" in result.evidence["missing_fields"]
         assert any(row["project_version"] == "" and row["work_total"] == 11 for row in result.projects)
         assert all(row["work_total"] != 11 for row in result.projects if row["project_version"])
+
+
+
+def test_weekly_history_loads_and_deduplicates_only_four_complete_weeks(monkeypatch: pytest.MonkeyPatch) -> None:
+    start = dt.date(2026, 11, 16)
+    previous = [
+        {"week_range": week, "package_key": key}
+        for week, key in [
+            ("20261109-20261115", "first"),
+            ("20261102-20261108", "second"),
+            ("20261026-20261101", "cross-month"),
+            ("20261019-20261025", "fourth"),
+            ("20261012-20261018", "outside"),
+            ("20261116-20261122", "current"),
+        ]
+    ]
+    fetched = []
+
+    def fetch(config, kind, month):
+        fetched.append((kind, month))
+        return previous if kind == "weekly_trace" else []
+
+    monkeypatch.setattr(weekly_facts, "fetch_current_report_items", fetch)
+    _, items, provenance = weekly_facts.load_history({}, start, start + dt.timedelta(days=6))
+    assert fetched == [("daily_trace", "2026-11"), ("weekly_trace", "2026-10"), ("weekly_trace", "2026-11")]
+    assert {row["package_key"] for row in items} == {"first", "second", "cross-month", "fourth"}
+    assert len(items) == 4
+    assert provenance["previous_week_range"] == "20261109-20261115"
+    assert provenance["previous_weekly_package_keys"] == ["first"]
+
+
+@pytest.mark.parametrize("period", ["2026-08", "20260831-20260906"])
+def test_explicit_weekly_uses_older_period_only_for_unmatched_scopes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, period: str,
+) -> None:
+    near_key, near_week = "latest-file", "20260921-20260927"
+    old_key, old_week = "august-source", "20260831-20260906"
+    latest = {**weekly_raw_row("App"), "app_name": "File", "work_total": 1, "remaining": 0}
+    historical = {**latest, "app_name": "Browser", "project_version": "", "work_total": 1, "remaining": 1,
+                  "remaining_items": ["核实链接"], "next_week_plan": ["继续核实链接"]}
+    items = [
+        {"package_key": near_key, "week_range": near_week, "report_view": {"projects": [latest]}},
+        {"package_key": "older-but-obsolete", "week_range": "20260914-20260920",
+         "report_view": {"projects": [{**latest, "work_total": 9}]}},
+    ]
+    extra_item = {"package_key": old_key, "week_range": old_week,
+                  "report_view": {"projects": [historical]}}
+    monkeypatch.setattr(weekly_facts, "load_history", lambda *args: ([], items, {}))
+    fetched = []
+
+    def fetch(config, kind, month):
+        fetched.append((kind, month))
+        return [extra_item]
+
+    monkeypatch.setattr(weekly_facts, "fetch_current_report_items", fetch)
+    recent = {**latest, "project_role": "主责"}
+    recent["ledger"] = {**latest["ledger"], "baseline_package_key": near_key, "baseline_week_range": near_week}
+    returning = {**historical, "project_version": "A16", "project_role": "主责"}
+    returning["ledger"] = {**historical["ledger"], "baseline_package_key": old_key, "baseline_week_range": old_week}
+    start, end = dt.date(2026, 10, 5), dt.date(2026, 10, 11)
+
+    def build(rows, hint=""):
+        return weekly_facts.build_weekly_facts(
+            {}, start, end, WEEK, explicit_path=str(explicit_weekly(tmp_path, rows)),
+            ledger_history_period=hint,
+        )
+
+    assert build([recent], period).projects[0]["ledger"]["baseline_package_key"] == near_key
+    assert not fetched
+    with pytest.raises(SystemExit, match="未找到匹配的历史台账"):
+        build([recent, returning])
+    assert not fetched
+    result = build([recent, returning], period)
+    produced = {row["app_name"]: row for row in result.projects}
+    assert produced["File"]["ledger"]["baseline_week_range"] == near_week
+    assert produced["Browser"]["ledger"]["baseline_week_range"] == old_week
+    assert produced["Browser"]["ledger"]["baseline_package_key"] == old_key
+    assert produced["Browser"]["work_total"] == produced["Browser"]["remaining_total"] == 1
+    assert old_key in result.evidence["previous_weekly_package_keys"]
+    expected_months = ["2026-08", "2026-09"]
+    if period == "2026-08":
+        expected_months.insert(0, "2026-07")  # August starts in a reporting week that begins in July.
+    assert fetched == [("weekly_trace", month) for month in expected_months]
+
+
+@pytest.mark.parametrize("period", ["2026-11", "20261005-20261011", "20260922-20260928", "20260921-20260926", "2026-13"])
+def test_weekly_history_period_requires_an_earlier_month_or_complete_week(period: str) -> None:
+    with pytest.raises(SystemExit, match="--ledger-history-period"):
+        weekly_facts._ledger_history_weeks(period, dt.date(2026, 10, 5))
+
+
+@pytest.mark.parametrize("downstream", ["", "OlderCustomer"])
+def test_automatic_weekly_uses_older_baselines_without_carrying_unrelated_work(
+    monkeypatch: pytest.MonkeyPatch, downstream: str,
+) -> None:
+    current = {**daily_row("App"), "app_name": "Resumed", "work_items": [
+        {"name": "持续验证", "did": ["持续验证"], "how": [], "result": "", "status": "进行中"},
+    ]}
+    old = {**weekly_raw_row("App", downstream=downstream), "app_name": "Resumed", "work_total": 1, "remaining": 1,
+           "remaining_items": ["持续验证"], "next_week_plan": ["过期旧计划"],
+           "dependencies": ["过期旧依赖"], "risks": ["过期旧风险"]}
+    unrelated = {**old, "app_name": "UnrelatedApp"}
+    daily = [{"package_key": "now", "report_date": DATE.isoformat(), "report_view": {"projects": [current]}}]
+    prior = [{"package_key": "older", "week_range": "20260921-20260927", "report_view": {
+        "projects": [old, unrelated], "documents": [{"document_name": "历史文档"}],
+        "standalone_work": [{"work_name": "历史独立工作"}],
+    }}]
+    monkeypatch.setattr(weekly_facts, "local_now", lambda config: dt.datetime(2026, 10, 11))
+    result = weekly_facts.build_weekly_facts(
+        {}, dt.date(2026, 10, 5), dt.date(2026, 10, 11), WEEK,
+        history=(daily, prior, {"previous_weekly_package_keys": ["older"]}),
+    )
+    assert [row["app_name"] for row in result.projects] == ["Resumed"]
+    project = result.projects[0]
+    assert project["work_total"] == project["remaining_total"] == 1
+    assert "过期旧计划" not in project["next_week_plan"]
+    assert "过期旧依赖" not in project["dependencies"]
+    assert "过期旧风险" not in project["risks"]
+    assert not result.documents and not result.standalone_work
+    assert (f"{PROJECT}.ledger_baseline_confirmation" in result.evidence["missing_fields"]) == bool(downstream)
+
+
+
+def test_older_month_failure_preserves_current_daily_and_recent_weekly(monkeypatch: pytest.MonkeyPatch) -> None:
+    recent = {"week_range": "20261109-20261115", "package_key": "recent-api"}
+    old = {"week_range": "20261019-20261025", "package_key": "earlier-local"}
+    today = {"report_date": "2026-11-19", "package_key": "today-api"}
+    requested = []
+
+    def fetch(config, kind, month):
+        requested.append((kind, month))
+        if kind == "daily_trace":
+            return [today]
+        if month == "2026-10":
+            raise ValueError("malformed older month")
+        return [recent]
+
+    def fallback(config, kind, weeks):
+        assert kind == "weekly_trace" and recent["week_range"] not in weeks
+        return [old]
+
+    monkeypatch.setattr(weekly_facts, "fetch_current_report_items", fetch)
+    monkeypatch.setattr(weekly_facts, "local_current_report_items", fallback)
+    daily, weekly, provenance = weekly_facts.load_history({}, dt.date(2026, 11, 16), dt.date(2026, 11, 22))
+    assert requested == [("daily_trace", "2026-11"), ("weekly_trace", "2026-10"), ("weekly_trace", "2026-11")]
+    assert daily == [today] and weekly == [recent, old]
+    assert provenance["api_errors"] == ["invalid_success_response"]
+
+
+def test_weekly_history_uses_latest_ledger_unless_a_legacy_version_is_ambiguous() -> None:
+    from akbs_intake.reports.weekly_ledger import matching_previous_scope
+
+    current = identity("App")
+    recent_unknown = {**current, "project_version": "", "remaining_total": 0, "_week_range": "20260928-20261004"}
+    older_a16 = {**current, "remaining_total": 1, "_week_range": "20260921-20260927"}
+    older_a17 = {**older_a16, "project_version": "A17"}
+    assert matching_previous_scope(current, {PROJECT: [recent_unknown, older_a16]}) == (recent_unknown, False)
+    assert matching_previous_scope(current, {PROJECT: [recent_unknown, older_a16, older_a17]}) == (older_a16, False)
+    assert matching_previous_scope(current, {PROJECT: [recent_unknown, older_a17]}) == (None, True)
+    assert matching_previous_scope(current, {PROJECT: [recent_unknown]}) == (recent_unknown, False)

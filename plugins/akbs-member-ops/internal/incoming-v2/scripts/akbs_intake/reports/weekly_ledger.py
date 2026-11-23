@@ -128,16 +128,58 @@ def matching_previous_scope(
     current_rows: list[dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any] | None, bool]:
     scope = weekly_scope_identity(row)
-    candidates = previous_projects.get(scope[0], [])
-    matches = [previous for previous in candidates if weekly_scope_identity(previous) == scope]
-    if not matches:
-        # Filling a missing downstream customer must still close the original ledger.
-        matches = [
-            previous for previous in candidates
-            if weekly_scope_identity(previous)[:-1] == scope[:-1]
-            and (not scope[-1] or not weekly_scope_identity(previous)[-1])
-        ]
-    if not matches and normalize_project_android_version(project_version(row)):
+    weeks: dict[str, list[dict[str, Any]]] = {}
+    for candidate in previous_projects.get(scope[0], []):
+        weeks.setdefault(clean_text(candidate.get("_week_range")), []).append(candidate)
+    unresolved_legacy = False
+    for week in sorted(weeks, reverse=True):
+        previous, ambiguous = _matching_ledger_in_week(scope, weeks[week], current_rows, unversioned=False)
+        if previous is not None or ambiguous:
+            return previous, ambiguous
+        if unresolved_legacy:
+            continue
+        previous, ambiguous = _matching_ledger_in_week(scope, weeks[week], current_rows, unversioned=True)
+        if previous is not None and not _has_other_confirmed_version(scope, previous, weeks):
+            return previous, False
+        # After an ambiguous legacy row, only a confirmed matching scope can be trusted.
+        unresolved_legacy = previous is not None or ambiguous
+    return None, unresolved_legacy
+
+
+def _has_other_confirmed_version(
+    scope: tuple[str, ...], legacy: dict[str, Any], weeks: dict[str, list[dict[str, Any]]],
+) -> bool:
+    legacy_scope = weekly_scope_identity(legacy)
+    for candidates in weeks.values():
+        for row in candidates:
+            historical = weekly_scope_identity(row)
+            if (
+                historical[:-2] == scope[:-2]
+                and normalize_project_android_version(historical[-2])
+                and historical[-2] != scope[-2]
+                and (not legacy_scope[-1] or not historical[-1] or legacy_scope[-1] == historical[-1])
+            ):
+                return True
+    return False
+
+
+def _matching_ledger_in_week(
+    scope: tuple[str, ...],
+    candidates: list[dict[str, Any]],
+    current_rows: list[dict[str, Any]] | None,
+    *,
+    unversioned: bool,
+) -> tuple[dict[str, Any] | None, bool]:
+    if not unversioned:
+        matches = [previous for previous in candidates if weekly_scope_identity(previous) == scope]
+        if not matches:
+            # Preserve a matching ledger when the downstream customer is filled in.
+            matches = [
+                previous for previous in candidates
+                if weekly_scope_identity(previous)[:-1] == scope[:-1]
+                and (not scope[-1] or not weekly_scope_identity(previous)[-1])
+            ]
+    elif normalize_project_android_version(scope[-2]):
         matches = [
             previous for previous in candidates
             if not project_version(previous)
@@ -158,6 +200,8 @@ def matching_previous_scope(
                 }
                 if len(current_scopes) > 1:
                     return None, True
+    else:
+        return None, False
     return (matches[0] if len(matches) == 1 else None, len(matches) > 1)
 
 
@@ -207,10 +251,10 @@ def validate_v5_project_ledger(
     role = clean_text(row.get("project_role"))
     raw_ledger = raw.get("ledger")
     if not isinstance(raw_ledger, dict):
-        errors.append(f"{project}.ledger v5 周报必须提供上周基线和本周变化")
+        errors.append(f"{project}.ledger v5 周报必须提供有效历史基线和本周变化")
         return
     if previous_ambiguous:
-        errors.append(f"{project}.ledger 上周存在多个相同统计对象，无法确定唯一基线")
+        errors.append(f"{project}.ledger 历史台账存在多个可能匹配的统计范围，无法确定唯一基线；请确认客户和 Android 版本")
         return
 
     allowed_ledger_keys = {
@@ -272,7 +316,7 @@ def validate_v5_project_ledger(
             if ledger["baseline_package_key"] != clean_text(previous.get("_package_key")):
                 errors.append(f"{project}.ledger.baseline_package_key 必须绑定上一份有效周报")
             if ledger["baseline_week_range"] != clean_text(previous.get("_week_range")):
-                errors.append(f"{project}.ledger.baseline_week_range 必须等于上一周周期")
+                errors.append(f"{project}.ledger.baseline_week_range 必须等于实际基线周报周期")
         return
     if role != "主责":
         return
@@ -280,19 +324,19 @@ def validate_v5_project_ledger(
     opening = bool(ledger["opening"])
     if previous is None:
         if not opening:
-            errors.append(f"{project}.ledger.opening 新项目主责必须设为 true")
+            errors.append(f"{project}.ledger.opening 未找到匹配的历史台账；延续已有工作时可指定 --ledger-history-period，只有确认新开项才设为 true")
         if ledger["baseline_package_key"] or ledger["baseline_week_range"]:
-            errors.append(f"{project}.ledger 新项目不得伪造上周基线")
+            errors.append(f"{project}.ledger 未找到匹配的历史基线，不能填入未经核实的基线")
         for key in ("added", "reopened", "removed"):
             if nonzero_ledger_count(normalized_changes[key]):
                 errors.append(f"{project}.ledger.changes.{key} 新项目已由初始总量覆盖，必须为 0")
     else:
         if opening:
-            errors.append(f"{project}.ledger.opening 已有上周台账的项目不得重新开项或重置总量")
+            errors.append(f"{project}.ledger.opening 已有历史台账的项目不得重新开项或重置总量")
         if ledger["baseline_package_key"] != clean_text(previous.get("_package_key")):
             errors.append(f"{project}.ledger.baseline_package_key 必须绑定上一份有效周报")
         if ledger["baseline_week_range"] != clean_text(previous.get("_week_range")):
-            errors.append(f"{project}.ledger.baseline_week_range 必须等于上一周周期")
+            errors.append(f"{project}.ledger.baseline_week_range 必须等于实际基线周报周期")
 
     if work_type == "App":
         if any(
@@ -323,7 +367,7 @@ def validate_v5_project_ledger(
             - int(normalized_changes["removed"])
         )
         if current_total != expected_total:
-            errors.append(f"{project}.work_total 应为 {expected_total}，不能绕过上周总量直接重填")
+            errors.append(f"{project}.work_total 应为 {expected_total}，不能绕过历史基线总量直接重填")
         if expected_remaining < 0 or current_remaining != expected_remaining:
             errors.append(f"{project}.remaining 应为 {max(0, expected_remaining)}，请补齐本周变化后重新计算")
         return
@@ -342,7 +386,7 @@ def validate_v5_project_ledger(
         if has_legacy_bsp(previous.get("requirement_structure_counts")) or has_legacy_bsp(
             previous.get("remaining_counts")
         ):
-            errors.append(f"{project}.ledger 上周 BSP 分类缺少原始需求/移植/Bug 类型，需主责先确认迁移")
+            errors.append(f"{project}.ledger 历史基线 BSP 分类缺少原始需求/移植/Bug 类型，需主责先确认迁移")
         prior_total = normalize_business_counts(previous.get("requirement_structure_counts"))
         prior_remaining = normalize_business_counts(previous.get("remaining_counts"))
         prior_bsp = previous.get("bsp_pending_counts")
@@ -383,8 +427,8 @@ def validate_v5_project_ledger(
             if count < 0:
                 errors.append(f"{project}.ledger {label}的 {category} 计算为负数，请检查本周变化")
     if current_total != expected_total:
-        errors.append(f"{project}.requirement_structure 与上周总量和主责本周变化不一致")
+        errors.append(f"{project}.requirement_structure 与历史基线总量和主责本周变化不一致")
     if current_remaining != expected_remaining:
-        errors.append(f"{project}.remaining 与上周剩余和本周流转不一致")
+        errors.append(f"{project}.remaining 与历史基线剩余和本周流转不一致")
     if ledger["bsp_pending"] != expected_bsp:
         errors.append(f"{project}.ledger.bsp_pending 与转 BSP/关闭 BSP 的流转不一致")

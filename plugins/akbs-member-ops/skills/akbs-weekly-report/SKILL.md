@@ -46,7 +46,10 @@ redefine the reporting period or exclude Monday's report.
 Weekly facts are resolved in this order:
 
 1. Current effective daily reports for the target week from the member AKBS API.
-2. The current effective previous-week report as the rolling project ledger.
+2. For each current Patch/App scope, take the latest matching effective ledger
+   in the four complete reporting weeks before the target week. A week without
+   work for that scope can omit it. An older ledger only supplies the baseline
+   of a current scope and does not add historical work to this week's report.
 3. Local `submitted` report packages as an offline fallback, with replacement
    leaves taking precedence over the reports they supersede.
 4. Sanitized Codex session summaries only as an authorized fallback when no
@@ -252,12 +255,22 @@ visible `本周完成` line remains that member's personal completion. Managemen
 aggregation must reject a mismatch between the main-confirmed value and the sum
 of submitted member rows.
 
-The baseline package key and week range must match the current effective
-previous-week report. A mismatch, an unexplained count gap, a total reset, or a
+The baseline package key and week range must identify the actual effective
+report selected for each scope. Compare project, direct customer, Android
+version, work type and App identity. Check weeks newest first. Accept a
+versionless legacy row only if the available history and current scopes identify
+it unambiguously. Otherwise continue to a confirmed matching scope or ask for
+clarification. Keep different confirmed Android versions separate.
+When the rolling four weeks have no match for an existing scope, ask the
+member for the approximate historical week or month and repeat the same command
+with only that period as a fallback. Bind to the effective report found for
+that scope. If the match is still missing or ambiguous, ask only to clarify
+that scope and keep it pending. A missing week never confirms a new opening.
+A mismatch, an unexplained count gap, a total reset, or a
 legacy explicit facts file targeting an existing scope blocks package creation
 and therefore also blocks upload.
-When automatic rolling finds work that does not match an item remaining from
-last week, `weekly_fact_sources.scope_change_candidates` lists the exact items.
+When automatic rolling finds work that does not match an item remaining in
+the effective baseline, `weekly_fact_sources.scope_change_candidates` lists the exact items.
 Ask the main only whether each candidate is added, reopened, removed, or already
 covered; do not ask them to reconstruct the full report.
 
@@ -282,7 +295,7 @@ update the plugin rather than guessing Friday. An all-rest week retains the peri
 display fallback for explicit material, without creating a reporting obligation.
 A late weekly submission still displays the weekly period date, not the upload day.
 
-An explicit report request or a member-configured recurring task authorizes generation within its stated scope; a scheduled generate-only request does not need a new human request on each run. Use complete `--weekly-facts` or current effective daily reports/previous-week ledger directly without reading local sessions or requiring session-consent flags. If no report source exists and the instructions authorize session-derived supplementary work, pass `--session-consent --session-field work_summary` for this run's exact week window. Add other derived fields only when needed; `patch_discovery` requires `project_hint`. If the available facts are incomplete, ask only for the missing business facts, not blanket access to sessions. Existing date/field limits and privacy checks remain mandatory when sessions are actually read.
+An explicit report request or a member-configured recurring task authorizes generation within its stated scope; a scheduled generate-only request does not need a new human request on each run. Use complete `--weekly-facts` or current effective daily reports/effective weekly history directly without reading local sessions or requiring session-consent flags. If no report source exists and the instructions authorize session-derived supplementary work, pass `--session-consent --session-field work_summary` for this run's exact week window. Add other derived fields only when needed; `patch_discovery` requires `project_hint`. If the available facts are incomplete, ask only for the missing business facts, not blanket access to sessions. Existing date/field limits and privacy checks remain mandatory when sessions are actually read.
 
 Generation is not submission or revision authorization. A generate-only task calls `--prepare`, returns the content/link, and must not call `--upload`, `--submit-latest`, or a replacement option. Submit or revise only when explicitly included in the member's instructions. Paths, branches and Git output may identify the project but never establish its customer. Preserve same-line member declarations and structured scope facts; an inferred candidate is not a confirmed identity.
 
@@ -293,6 +306,8 @@ python3 "scripts/akbs_weekly_report.py" --profile <member_alias> --prepare
 python3 "scripts/akbs_weekly_report.py" --profile <member_alias> --submit-latest
 python3 "scripts/akbs_weekly_report.py" --profile <member_alias> --session-consent --session-field work_summary --prepare --replace-weekly-run-id <old_run_id>
 python3 "scripts/akbs_weekly_report.py" --profile <member_alias> --weekly-facts "$CODEX_HOME/artifacts/akbs-member-ops/weekly-facts/<week>.json" --prepare
+# After an existing scope was not found in the four default weeks, use the member's period.
+python3 "scripts/akbs_weekly_report.py" --profile <member_alias> --ledger-history-period <YYYY-MM-or-YYYYMMDD-YYYYMMDD> --prepare
 ```
 
 Future periods are blocked. For a week with no existing effective report, the

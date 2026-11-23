@@ -111,6 +111,7 @@ def build_report_package(
     daily_facts_path: str = "",
     weekly_facts_path: str = "",
     *,
+    ledger_history_period: str = "",
     incoming_schema_version: str,
     validate_package_fn: ValidatePackage,
     write_package_source_fn: WritePackageSource,
@@ -134,7 +135,14 @@ def build_report_package(
         and explicit_facts_need_work_supplement(Path(explicit_facts).expanduser())
     )
     use_sessions = needs_daily_supplement or (
-        not explicit_facts and not (weekly_history and (weekly_history[0] or weekly_history[1]))
+        not explicit_facts and not (
+            weekly_history and (
+                weekly_history[0] or any(
+                    item.get("week_range") == weekly_facts_module._week_key(start - dt.timedelta(weeks=1))
+                    for item in weekly_history[1]
+                )
+            )
+        )
     )
     consent = require_report_session_consent(config, dates, synthetic=is_synthetic) if use_sessions else None
     run_id = run_id or f"{ymd(date)}-{local_now(config):%H%M%S}"
@@ -224,6 +232,7 @@ def build_report_package(
             fallback_items=session_items,
             project_customers=project_customers,
             history=weekly_history,
+            ledger_history_period=ledger_history_period,
         )
         weekly_projects = weekly_facts.projects
         weekly_documents = weekly_facts.documents

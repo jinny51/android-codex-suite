@@ -545,6 +545,7 @@ def prepare_package(
     replace_report_run_id: str = "",
     daily_facts_path: str = "",
     weekly_facts_path: str = "",
+    ledger_history_period: str = "",
 ) -> Path:
     return build_report_package(
         report_type,
@@ -555,6 +556,7 @@ def prepare_package(
         replace_report_run_id=replace_report_run_id,
         daily_facts_path=daily_facts_path,
         weekly_facts_path=weekly_facts_path,
+        ledger_history_period=ledger_history_period,
         incoming_schema_version=INCOMING_SCHEMA_VERSION,
         validate_package_fn=validate_package,
         write_package_source_fn=write_package_source,
@@ -716,6 +718,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                 "--weekly-facts",
                 default="",
                 help="authoritative akbs-weekly-work-facts-v6 JSON for unresolved project, GMS progress, ledger, or document facts",
+            )
+            sub.add_argument(
+                "--ledger-history-period",
+                default="",
+                help="weekly ledger fallback after the last four weeks: YYYY-MM or YYYYMMDD-YYYYMMDD",
             )
             sub.add_argument(
                 "--replace-weekly-run-id",
@@ -900,6 +907,7 @@ def main(argv: list[str] | None = None) -> int:
                 getattr(args, "replace_daily_run_id", "") or getattr(args, "replace_weekly_run_id", ""),
                 getattr(args, "daily_facts", ""),
                 getattr(args, "weekly_facts", ""),
+                getattr(args, "ledger_history_period", ""),
             )
         result = json.loads((package_dir / "local-check.json").read_text(encoding="utf-8"))
         output = {"package": str(package_dir), "local_check": result}
@@ -941,6 +949,7 @@ def main(argv: list[str] | None = None) -> int:
                 getattr(args, "replace_daily_run_id", "") or getattr(args, "replace_weekly_run_id", ""),
                 getattr(args, "daily_facts", ""),
                 getattr(args, "weekly_facts", ""),
+                getattr(args, "ledger_history_period", ""),
             )
         result = submit_package(package_dir, config)
         print(json.dumps({"package": str(package_dir), "submit": result}, ensure_ascii=False, indent=2))

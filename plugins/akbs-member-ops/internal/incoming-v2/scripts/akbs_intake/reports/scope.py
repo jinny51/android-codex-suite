@@ -290,6 +290,16 @@ def project_version(row: dict[str, Any]) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+def product_variant(row: dict[str, Any]) -> str:
+    value = row.get("product_variant")
+    return value.strip() if isinstance(value, str) else ""
+
+
+def product_variant_fields(row: dict[str, Any]) -> dict[str, str]:
+    name = product_variant(row)
+    return {"product_variant": name} if name else {}
+
+
 def report_scope_key(row: dict[str, Any]) -> tuple[str, ...]:
     work_type = clean_scope_text(row.get("work_type"))
     app_name = clean_scope_text(row.get("app_name")).casefold() if work_type == "App" else ""
@@ -298,9 +308,11 @@ def report_scope_key(row: dict[str, Any]) -> tuple[str, ...]:
     downstream_customer = clean_scope_text(
         row.get("downstream_customer") or row.get("customer_of_customer") or row.get("end_customer")
     )
+    # Keep the version and downstream customer last for legacy ledger matching.
     return (
         clean_scope_text(row.get("project")).upper(), work_type, app_name, release_type, target,
-        customer, normalize_project_android_version(project_version(row)) or project_version(row), downstream_customer,
+        product_variant(row).casefold(), customer,
+        normalize_project_android_version(project_version(row)) or project_version(row), downstream_customer,
     )
 
 

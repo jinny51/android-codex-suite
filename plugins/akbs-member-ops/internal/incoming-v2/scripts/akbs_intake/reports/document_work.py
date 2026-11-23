@@ -172,7 +172,7 @@ def _validate_daily_non_project_rows(
             errors.append(f"{row_prefix} 与 {prefix}[{seen[name.casefold()]}] 的{identity_label}重复")
         else:
             seen[name.casefold()] = index
-        for forbidden in ("project", "customer", "customer_name", "downstream_customer", "app_name"):
+        for forbidden in ("project", "customer", "customer_name", "downstream_customer", "product_variant", "app_name"):
             if clean_document_text(raw.get(forbidden)):
                 errors.append(f"{row_prefix}.{forbidden} {identity_label}不得伪造项目或客户字段")
         for field in ("today_topic", "current_result"):
@@ -240,7 +240,7 @@ def _validate_weekly_non_project_rows(
             errors.append(f"{row_prefix} 与 {prefix}[{seen[name.casefold()]}] 的{identity_label}重复")
         else:
             seen[name.casefold()] = index
-        for forbidden in ("project", "customer", "customer_name", "downstream_customer", "app_name"):
+        for forbidden in ("project", "customer", "customer_name", "downstream_customer", "product_variant", "app_name"):
             if clean_document_text(raw.get(forbidden)):
                 errors.append(f"{row_prefix}.{forbidden} {identity_label}不得伪造项目或客户字段")
         for field in ("week_summary", "completed_this_week", "remaining"):

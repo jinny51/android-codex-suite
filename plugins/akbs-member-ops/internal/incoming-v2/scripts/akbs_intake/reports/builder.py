@@ -45,7 +45,10 @@ def report_customer_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not row.get("project") or not customer:
             continue
         value = {"project": str(row["project"]), "customer_name": customer}
-        for field in ("project_version", "work_type", "app_name", "gms_release_type", "gms_target", "downstream_customer"):
+        for field in (
+            "project_version", "work_type", "app_name", "gms_release_type", "gms_target",
+            "downstream_customer", "product_variant",
+        ):
             if field in row:
                 value[field] = row[field]
         customers.append(value)

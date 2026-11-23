@@ -151,6 +151,12 @@ Rules:
   contains only the direct customer. Do not flatten a two-level chain into one
   whitespace-separated `customer` value; local validation rejects it until the
   two fields are separated.
+- Today's and tomorrow's project rows may carry `product_variant` as a string
+  when the member or a structured source confirms the product name. Trim
+  surrounding whitespace. An empty value is equivalent to omission. Product
+  identity ignores letter case and keeps the supplied spelling for display.
+  Include the product in scope matching independently of the customer,
+  Android version, App name and GMS target.
 - Project `work_type` is `Patch`, `App`, `GMS`, `Doc`, or `Other`. The five visible categories
   are `Patch`, `App`, `GMS`, `Doc`, and `Other`.
   Explicit facts override automatic inference. Never infer from vague work-item

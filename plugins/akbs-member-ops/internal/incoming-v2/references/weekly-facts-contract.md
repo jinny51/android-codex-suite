@@ -163,13 +163,16 @@ Rules:
 - `project_version` is the required, confirmed Android system version of the project, including for App rows, written as A16 or A17. Keep APK, firmware and GMS certification versions separate.
 - `customer` is the required direct customer. Optional `downstream_customer`
   means the direct customer's customer.
+- `product_variant` is the optional confirmed product name as a string. Trim
+  surrounding whitespace. An empty value is equivalent to omission. Identity
+  ignores letter case and display preserves the supplied spelling.
 - Project `work_type` is `Patch`, `App`, `GMS`, `Doc`, or `Other`; the five visible categories
   are `Patch`, `App`, `GMS`, `Doc`, and `Other`. `App` requires `app_name`;
   other project types must not provide it. Current GMS rows require release
   type, target, cycle status, current stage, self-test round/result, and formal
   submission count/result.
   GMS/Doc/Other project rows do not carry Patch/App total or ledger fields.
-- Each scope appears once. The project, version, direct customer and known downstream customer identify the project scope. Work type, App name and GMS release/target keep their existing distinctions. Plans and ledger totals stay in their matching scope. Historical rows without a version cannot seed a versioned ledger. A single matching prior scope with an empty downstream customer continues its existing ledger when the customer is added.
+- Each scope appears once. The project, version, direct customer, known downstream customer and stated product identify the project scope. Work type, App name and GMS release/target keep their existing distinctions. Plans and ledger totals stay in their matching scope. Historical rows without a version cannot seed a versioned ledger. A single matching prior scope with an empty downstream customer continues its existing ledger when the customer is added.
 - A non-project document belongs in `documents[]`, uses only `work_type=Doc`,
   and requires `document_name`. Other non-project work belongs in
   `standalone_work[]`, uses only `work_type=Other`, and requires `work_name`.
@@ -214,7 +217,8 @@ Rules:
   `--ledger-history-period YYYY-MM` or `--ledger-history-period YYYYMMDD-YYYYMMDD`
   to the same command. A month includes weeks that touch it. An explicitly
   named period does not override a recent match or resolve ambiguous scope
-  identity. Keep a known existing scope pending if no report can be verified.
+  identity. A named product can reuse only a baseline for the same product.
+  Keep a known existing scope pending if no report can be verified.
   Use `opening=true` only for a confirmed new scope.
 - Only the main may provide non-zero ledger changes. Collaborators keep every
   change at zero and report only personal completion and remaining work.

@@ -30,7 +30,10 @@ from .document_work import (
     validate_weekly_standalone_work,
 )
 from .gms import GMS_CURRENT_FIELDS, normalize_gms_fields, validate_gms_fields
-from .scope import PROJECT_WORK_TYPES, normalize_project_android_version, project_version, report_scope_key, report_scope_customer_context
+from .scope import (
+    PROJECT_WORK_TYPES, normalize_project_android_version, product_variant, product_variant_fields,
+    project_version, report_scope_key, report_scope_customer_context,
+)
 from .weekly_ledger import (
     BUSINESS_COUNT_KEYS,
     LEDGER_CHANGE_KEYS,
@@ -492,6 +495,7 @@ def _weekly_project_row(value: dict[str, Any]) -> dict[str, Any]:
     row = {
         "project": project,
         "project_version": normalize_project_android_version(project_version(value)) or project_version(value),
+        **product_variant_fields(value),
         "customer": customer,
         "customer_name": customer,
         "downstream_customer": downstream_customer,
@@ -608,6 +612,7 @@ def project_customer_identity_conflicts(
                 {
                     "project": project,
                     "project_version": project_version(row),
+                    **product_variant_fields(row),
                     "actual_customer": actual_customer,
                     "actual_downstream_customer": actual_downstream,
                     "expected_customer": expected_customer,
@@ -681,6 +686,8 @@ def load_explicit_facts(
             errors.append(
                 f"{project}.project 只能填写规范项目编号 {project}；其他内容请写入事项字段"
             )
+        if not isinstance(item.get("product_variant", ""), str):
+            errors.append(f"projects[{index}].product_variant 如提供则必须是字符串")
         if not normalize_project_android_version(project_version(item)):
             errors.append(f"projects[{index}].project_version 必须填写项目 Android 版本（如 A16）")
         for field in ("customer", "work_type", "project_role", "requirement_date", "requirement_source"):
@@ -962,6 +969,7 @@ def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[
                     "app_name": app_name,
                     "customer": str(raw_project.get("customer") or raw_project.get("customer_name") or "").strip(),
                     "project_version": project_version(raw_project),
+                    **product_variant_fields(raw_project),
                     "downstream_customer": downstream_customer,
                 }
                 record.update(gms_fields)
@@ -1097,6 +1105,7 @@ def _rolling_ledger_row(prior: dict[str, Any], current: dict[str, Any]) -> dict[
     return {
         **prior,
         "project_version": project_version(current),
+        **product_variant_fields(current),
         "downstream_customer": current["downstream_customer"] or prior["downstream_customer"],
         "risks": [],
         "dependencies": [],
@@ -1357,6 +1366,7 @@ def _history_project_row(
     row = {
         "project": project,
         "project_version": project_version(prior),
+        **product_variant_fields(prior),
         "customer": customer,
         "customer_name": customer,
         "downstream_customer": downstream_customer,
@@ -1571,10 +1581,12 @@ def assign_daily_records_to_scopes(
         record_version = project_version(record)
         record_version = normalize_project_android_version(record_version) or record_version
         record_downstream = clean_text(record.get("downstream_customer"))
+        record_product = product_variant(record).casefold()
         customer_candidates = [
             index for index, row in enumerate(prior_rows)
             if (normalize_project_android_version(project_version(row)) or project_version(row)) == record_version
             and clean_text(row.get("downstream_customer")) == record_downstream
+            and product_variant(row).casefold() == record_product
             and (
                 not record_customer
                 or str(row.get("customer") or row.get("customer_name") or "").strip() == record_customer
@@ -1642,6 +1654,7 @@ def daily_scope_seed_rows(records: list[dict[str, Any]]) -> list[dict[str, Any]]
                 "app_name": app_name,
                 "customer": str(record.get("customer") or "").strip(),
                 "project_version": normalize_project_android_version(project_version(record)),
+                **product_variant_fields(record),
                 "downstream_customer": clean_text(record.get("downstream_customer")),
                 "project_role": "需成员确认",
                 "requirement_date": "需成员确认",
@@ -1743,7 +1756,7 @@ def build_weekly_facts(
                 confirmed.extend({**row, "project_version": version} for row in rows)
             confirmed.extend(
                 {**row, "project_version": key[-2], "downstream_customer": key[-1]}
-                for key in (project_customers or {}) if isinstance(key, tuple) and len(key) == 8
+                for key in (project_customers or {}) if isinstance(key, tuple)
                 for row in rows if weekly_scope_identity(row)[:-2] == key[:-2]
             )
             versioned = [row for row in rows if normalize_project_android_version(project_version(row))]
@@ -1918,6 +1931,7 @@ def build_weekly_facts(
             {
                 "project": clean_text(row.get("project")),
                 "project_version": project_version(row),
+                **product_variant_fields(row),
                 "customer": clean_text(row.get("customer")),
                 "downstream_customer": clean_text(row.get("downstream_customer")),
                 "work_type": clean_text(row.get("work_type")),
@@ -1934,6 +1948,7 @@ def build_weekly_facts(
                     for value in (
                         clean_text(row.get("project")),
                         project_version(row),
+                        product_variant(row),
                         clean_text(row.get("customer")),
                         clean_text(row.get("downstream_customer")),
                         clean_text(row.get("work_type")),

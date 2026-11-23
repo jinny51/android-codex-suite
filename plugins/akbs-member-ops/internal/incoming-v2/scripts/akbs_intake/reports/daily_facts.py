@@ -28,8 +28,8 @@ from .document_work import (
 )
 from .gms import GMS_CURRENT_FIELDS, GMS_PLAN_FIELDS, normalize_gms_fields, validate_gms_fields
 from .scope import (
-    ALLOWED_WORK_TYPES, PROJECT_WORK_TYPES, clean_scope_text, normalize_project_android_version, project_version, report_scope_key,
-    report_scope_customer_context,
+    ALLOWED_WORK_TYPES, PROJECT_WORK_TYPES, clean_scope_text, normalize_project_android_version,
+    product_variant, product_variant_fields, project_version, report_scope_customer_context, report_scope_key,
 )
 
 
@@ -118,6 +118,7 @@ def normalize_tomorrow_plan(value: Any) -> dict[str, list[dict[str, Any]]]:
         if not isinstance(item, dict):
             continue
         row: dict[str, Any] = {
+            **product_variant_fields(item),
             "project": find_company_project(clean_scope_text(item.get("project")))
             or clean_scope_text(item.get("project")),
             "project_version": normalize_project_android_version(project_version(item)) or project_version(item),
@@ -204,7 +205,7 @@ def plan_row_from_daily_scope(collection: str, row: dict[str, Any]) -> dict[str,
             "work_type": row.get("work_type", ""),
             "plan_items": plan_items,
         }
-        for field in ("project_version", "downstream_customer", "app_name", *GMS_PLAN_FIELDS):
+        for field in ("project_version", "downstream_customer", "product_variant", "app_name", *GMS_PLAN_FIELDS):
             if row.get(field):
                 plan_row[field] = row[field]
         return plan_row
@@ -341,7 +342,7 @@ def normalize_daily_project(
         work_items = [
             normalize_work_item(item) for item in matching[0].get("work_items", [])
         ] if len(matching) == 1 else []
-    elif scope_count_by_project.get(project, 0) <= 1:
+    elif not product_variant(value) and scope_count_by_project.get(project, 0) <= 1:
         work_items = fallback_work_items(project, project_items, daily_work_items)
     else:
         work_items = []
@@ -349,6 +350,7 @@ def normalize_daily_project(
     row: dict[str, Any] = {
         "project": project,
         "project_version": normalize_project_android_version(project_version(value)) or project_version(value),
+        **product_variant_fields(value),
         "customer": customer,
         "customer_name": customer,
         "work_type": clean_scope_text(value.get("work_type") or value.get("type")),
@@ -419,6 +421,8 @@ def validate_daily_projects(
         if not canonical or canonical.upper() != project.upper():
             errors.append(f"{prefix}.project 必须是规范公司项目名")
             continue
+        if not isinstance(row.get("product_variant", ""), str):
+            errors.append(f"{prefix}.product_variant 如提供则必须是字符串")
         if require_project_version and not normalize_project_android_version(project_version(row)):
             errors.append(f"{prefix}.project_version 必须填写项目 Android 版本（如 A16）")
         customer = clean_scope_text(row.get("customer") or row.get("customer_name"))
@@ -539,6 +543,8 @@ def validate_tomorrow_plan(
                 canonical = find_company_project(project)
                 if not canonical or canonical.upper() != project.upper():
                     errors.append(f"{row_prefix}.project 必须是规范公司项目名")
+                if not isinstance(row.get("product_variant", ""), str):
+                    errors.append(f"{row_prefix}.product_variant 如提供则必须是字符串")
                 if require_project_version and not normalize_project_android_version(project_version(row)):
                     errors.append(f"{row_prefix}.project_version 必须填写项目 Android 版本（如 A16）")
                 customer = clean_scope_text(row.get("customer") or row.get("customer_name"))
@@ -684,6 +690,15 @@ def load_explicit_facts(
     documents = [normalize_daily_document(item) for item in raw_documents if isinstance(item, dict)]
     standalone_work = [normalize_daily_document(item) for item in raw_standalone_work if isinstance(item, dict)]
     normalized_counts = (len(projects), len(documents), len(standalone_work))
+    raw_product_errors = [
+        f"{label}[{index}].product_variant 如提供则必须是字符串"
+        for label, rows in (("projects", raw_projects), ("tomorrow_plan.projects", raw_tomorrow_plan.get("projects")))
+        if isinstance(rows, list)
+        for index, row in enumerate(rows)
+        if isinstance(row, dict) and not isinstance(row.get("product_variant", ""), str)
+    ]
+    if raw_product_errors:
+        raise SystemExit("daily facts 校验失败: " + "；".join(raw_product_errors))
     raw_plan_errors = validate_tomorrow_plan(raw_tomorrow_plan) if schema == DAILY_FACTS_SCHEMA else []
     if schema in {DAILY_FACTS_SCHEMA, LEGACY_DAILY_GMS_FACTS_SCHEMA}:
         legacy_fields = [

@@ -22,7 +22,7 @@ from akbs_intake.report_sessions import (
     report_customer_for_project,
     report_downstream_customer_for_project,
 )
-from akbs_intake.reports.scope import project_version, report_scope_suffix
+from akbs_intake.reports.scope import product_variant, product_variant_fields, project_version, report_scope_suffix
 from akbs_intake.reports.gms import (
     GMS_CURRENT_FIELDS,
     gms_cycle_status_label,
@@ -636,13 +636,18 @@ def weekly_bsp_pending_total(row: dict[str, Any]) -> int:
     return sum(counts[key] for key in ("demand", "migration", "bug"))
 
 
+def product_heading_suffix(row: dict[str, Any]) -> str:
+    product = product_variant(row)
+    return f"｜产品：{product}" if product else ""
+
+
 def weekly_scope_heading(row: dict[str, Any]) -> str:
     context = row_customer_context(row)
     heading = project_customer_heading(
         versioned_project_label(row),
         context["customer_name"],
         context["downstream_customer"],
-    )
+    ) + product_heading_suffix(row)
     if row.get("work_type") == "App":
         return f"{heading}｜App：{row.get('app_name') or '需成员确认'}"
     if row.get("work_type") == "GMS":
@@ -658,7 +663,7 @@ def daily_scope_heading(row: dict[str, Any]) -> str:
         context["customer_name"],
         context["downstream_customer"],
     )
-    return f"{heading}｜{report_scope_suffix(row)}"
+    return f"{heading}{product_heading_suffix(row)}｜{report_scope_suffix(row)}"
 
 
 def document_scope_heading(row: dict[str, Any]) -> str:
@@ -1130,7 +1135,7 @@ def report_view_payload(
             project_customer_title_label(
                 versioned_project_label(row), row_customer_context(row)["customer_name"],
                 row_customer_context(row)["downstream_customer"],
-            )
+            ) + product_heading_suffix(row)
             for row in fact_rows
         ))
     else:
@@ -1233,6 +1238,7 @@ def report_view_payload(
             project_row = add_downstream_customer({
                     "project": str(row["project"]),
                     "project_version": project_version(row),
+                    **product_variant_fields(row),
                     "customer": customer,
                     "customer_name": customer,
                     "work_type": str(row.get("work_type") or "需成员确认"),
@@ -1413,6 +1419,7 @@ def report_markdown_from_view(view: dict[str, Any]) -> str:
                             "customer",
                             "customer_name",
                             "downstream_customer",
+                            "product_variant",
                             "work_type",
                             "app_name",
                         )

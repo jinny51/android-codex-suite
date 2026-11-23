@@ -227,9 +227,20 @@ aggregation happens outside the member workflow and should not be exposed as a
 member responsibility. Direct and downstream customer aliases must be resolved
 within their own levels, never across the customer chain.
 
-There must be one `projects[]` row for each combination of project, version, direct customer, downstream customer and work scope. App adds `app_name`; GMS adds release type and target. Track each version’s role, counts, risks and next-week actions in its own row. A historical row with no version remains 版本待核 and cannot start a versioned ledger. When a sole matching ledger gains a downstream customer, continue that ledger with its existing totals. Feature names remain work items and do not create more rows. The
-gate is structural, not a vocabulary blacklist: it validates the canonical
-project, customer chain, work scope, and same-source identity consistency.
+Set the optional project field `product_variant` only when the member or a
+structured source identifies the product. For example, `TVI2343R A12（海信）`
+can have separate `Soundbar` and `全息屏` rows. Show it as `产品` when present.
+
+Use one `projects[]` row per project, Android version, direct customer,
+downstream customer, product (if stated) and work scope. App adds `app_name`;
+GMS adds release type and target. Record the role, counts, risks and next-week
+actions in their own scope. Match daily work, plans and prior weekly baselines
+only within the same product. An unnamed product matches only an unnamed
+product. A historical row with no version remains 版本待核 and cannot start a
+versioned ledger. When a sole matching ledger gains a downstream customer,
+continue that ledger with its existing totals. Keep feature names within work
+items. Validation checks the canonical project, customer chain, product,
+work scope and alignment with source evidence.
 Generation and `--submit-latest` reject conflicts before HTTP.
 An absent next-week action is an empty `next_week_plan[]`; do not write `无` and
 do not render that project's block under `下周计划`.

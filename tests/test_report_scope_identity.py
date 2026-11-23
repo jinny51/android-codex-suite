@@ -96,6 +96,54 @@ def test_version_and_both_customers_define_scope(work_type: str) -> None:
     assert validation.weekly_project_identity_consistency_errors("view", [first, second], [second, first]) == []
 
 
+def test_same_project_keeps_product_baselines_daily_work_and_plans_separate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    product_scope = {"project": "TVI2343R", "project_version": "A12"}
+    report_week = "20260928-20261004"
+    previous = [
+        {**weekly_raw_row("App", "海信"), **product_scope, "product_variant": product,
+         "project_role": role, "remaining_items": ["核查接口"], "remaining": "当前剩余 1 项"}
+        for product, role in (("Soundbar", "主责"), ("全息屏", "协作"), ("", "协作"))
+    ]
+    history = [{"package_key": "previous", "week_range": report_week, "report_view": {"projects": previous}}]
+    soundbar, hologram = [
+        {**daily_row("App", "海信"), **product_scope, "product_variant": product}
+        for product in ("soundbar", "全息屏")
+    ]
+    hologram["work_items"][0].update(status="处理中", result="仍在核查")
+    current = [{
+        "package_key": "today",
+        "report_date": DATE.isoformat(),
+        "report_view": {
+            "projects": [soundbar, hologram],
+            "tomorrow_plan": {"projects": [
+                {**identity("App", "海信"), **product_scope, "product_variant": product, "plan_items": [plan]}
+                for product, plan in (("Soundbar", "验证音量"), ("全息屏", "继续画面联调"))
+            ]},
+        },
+    }]
+    monkeypatch.setattr(weekly_facts, "local_now", lambda config: dt.datetime(2026, 10, 11))
+    result = weekly_facts.build_weekly_facts(
+        {}, dt.date(2026, 10, 5), dt.date(2026, 10, 11), WEEK, history=(current, history, {}),
+    )
+    rows = {row.get("product_variant", "").casefold(): row for row in result.projects}
+    assert set(rows) == {"soundbar", "全息屏", ""}
+    assert rows["soundbar"]["project_role"] == "主责"
+    assert rows["soundbar"]["completed_this_week_total"] == 1
+    assert rows["soundbar"]["next_week_plan"] == ["验证音量"]
+    assert rows["全息屏"]["project_role"] == "协作"
+    assert rows["全息屏"]["completed_this_week_total"] == 0
+    assert rows["全息屏"]["next_week_plan"] == ["继续画面联调"]
+    assert rows[""]["completed_this_week_total"] == 0
+    assert scope.report_scope_key(previous[-1]) == scope.report_scope_key({
+        key: value for key, value in previous[-1].items() if key != "product_variant"
+    })
+    previous_rows = weekly_facts._previous_week_projects(history)
+    unknown = {**soundbar, "product_variant": "未在历史中出现的产品"}
+    assert weekly_facts.matching_previous_scope(unknown, previous_rows) == (None, False)
+
+
 def test_distinct_apps_and_gms_targets_use_existing_scope_key() -> None:
     first = identity("App", "CustomerA")
     second = {**identity("App", "CustomerB"), "app_name": "AnotherApp"}
@@ -388,15 +436,28 @@ def test_same_project_versions_keep_role_work_attention_and_plans_separate(
 
 
 @pytest.mark.parametrize("report_type", ["daily", "weekly"])
-@pytest.mark.parametrize("same_work_type", [False, True])
+@pytest.mark.parametrize("scope_kind", ["type", "customer", "product"])
 def test_builder_preserves_scope_identity_in_view_and_source_evidence(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, report_type: str, same_work_type: bool,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, report_type: str, scope_kind: str,
 ) -> None:
+    shared_project = "TVI2343R" if scope_kind == "product" else PROJECT
+    second_work_type = "Patch" if scope_kind == "type" else "App"
+
+    def project_rows(make_row):
+        if scope_kind == "product":
+            return [
+                {**make_row("App", "海信"), "project": shared_project, "project_version": "A12",
+                 "product_variant": product}
+                for product in (" Soundbar ", "全息屏")
+            ]
+        return [make_row("App", "CustomerA", "Factory"),
+                {**make_row(second_work_type, "CustomerB"), "project_version": "A17"}]
+
     date = dt.date.today() - dt.timedelta(days=2)
     _, _, _, week = report_dates(report_type, date)
-    monkeypatch.setattr(builder, "infer_report_project", lambda *args: (PROJECT, {
-        "project": PROJECT, "projects": [PROJECT],
-        "project_customers": [{"project": PROJECT, "customer_name": "GenericHint"}],
+    monkeypatch.setattr(builder, "infer_report_project", lambda *args: (shared_project, {
+        "project": shared_project, "projects": [shared_project],
+        "project_customers": [{"project": shared_project, "customer_name": "GenericHint"}],
     }))
     monkeypatch.setattr(weekly_facts, "load_history", lambda *args: ([], [], {"source": "synthetic_fixture"}))
     config = {"member_alias": "synthetic-member", "member_name": "Synthetic Member",
@@ -412,19 +473,20 @@ def test_builder_preserves_scope_identity_in_view_and_source_evidence(
         "checked_at": dt.datetime.now().isoformat(),
     })
     if report_type == "weekly":
-        facts = explicit_weekly(tmp_path, [weekly_raw_row("App", "CustomerA", "Factory"),
-                                          {**weekly_raw_row("App" if same_work_type else "Patch", "CustomerB"),
-                                           "project_version": "A17"}], week)
+        facts = explicit_weekly(tmp_path, project_rows(weekly_raw_row), week)
         kwargs = {"weekly_facts_path": str(facts)}
     else:
         facts = tmp_path / "daily-facts.json"
+        plans = (
+            [{**row, "plan_items": ["继续验证"]} for row in project_rows(identity)]
+            if scope_kind == "product"
+            else [{**identity("Patch"), "project_version": "A18", "plan_items": ["验证新版"]}]
+        )
         write_json(facts, {"schema": daily_facts.DAILY_FACTS_SCHEMA, "report_date": date.isoformat(),
-                           "projects": [daily_row("App", "CustomerA", "Factory"),
-                                        {**daily_row("App" if same_work_type else "Patch", "CustomerB"),
-                                         "project_version": "A17"}],
+                           "projects": project_rows(daily_row),
                            "documents": [], "standalone_work": [], "tomorrow_plan": {
                                **daily_facts.empty_tomorrow_plan(),
-                               "projects": [{**identity("Patch"), "project_version": "A18", "plan_items": ["验证新版"]}],
+                               "projects": plans,
                            }})
         kwargs = {"daily_facts_path": str(facts)}
 
@@ -435,18 +497,32 @@ def test_builder_preserves_scope_identity_in_view_and_source_evidence(
     source = json.loads((package / "materials/evidence/project_inference.json").read_text())["payload"]
     view = json.loads((package / "materials/display/report_view.json").read_text())["payload"]
     assert "customer_name" not in source and "downstream_customer" not in source
-    expected = {"CustomerA": ("App", "Factory"), "CustomerB": ("App" if same_work_type else "Patch", "")}
-    assert {r["customer_name"]: (r["work_type"], r.get("downstream_customer", ""))
-            for r in source["project_customers"]} == expected
-    assert {r["customer"]: (r["work_type"], r.get("downstream_customer", ""))
-            for r in view["projects"]} == expected
-    assert [r["project_version"] for r in source["project_customers"]] == ["A16", "A17"]
-    assert [r["project_version"] for r in view["projects"]] == ["A16", "A17"]
-    assert "CustomerA" in view["material_name"] and "CustomerB" in view["material_name"]
-    assert "A16" in view["material_name"] and "A17" in view["material_name"]
-    if report_type == "daily":
-        assert source["planned_project_customers"][0]["project_version"] == "A18"
-        assert view["tomorrow_plan"]["projects"][0]["project_version"] == "A18"
+    if scope_kind == "product":
+        for rows in (source["project_customers"], view["projects"]):
+            assert [(row["project"], row["project_version"], row["customer_name"], row["product_variant"])
+                    for row in rows] == [
+                ("TVI2343R", "A12", "海信", "Soundbar"),
+                ("TVI2343R", "A12", "海信", "全息屏"),
+            ]
+        for product in ("Soundbar", "全息屏"):
+            assert f"产品：{product}" in view["material_name"]
+            assert f"产品：{product}" in (package / f"reports/{report_type}.md").read_text()
+        if report_type == "daily":
+            for rows in (source["planned_project_customers"], view["tomorrow_plan"]["projects"]):
+                assert [row["product_variant"] for row in rows] == ["Soundbar", "全息屏"]
+    else:
+        expected = {"CustomerA": ("App", "Factory"), "CustomerB": (second_work_type, "")}
+        assert {r["customer_name"]: (r["work_type"], r.get("downstream_customer", ""))
+                for r in source["project_customers"]} == expected
+        assert {r["customer"]: (r["work_type"], r.get("downstream_customer", ""))
+                for r in view["projects"]} == expected
+        assert [r["project_version"] for r in source["project_customers"]] == ["A16", "A17"]
+        assert [r["project_version"] for r in view["projects"]] == ["A16", "A17"]
+        assert "CustomerA" in view["material_name"] and "CustomerB" in view["material_name"]
+        assert "A16" in view["material_name"] and "A17" in view["material_name"]
+        if report_type == "daily":
+            assert source["planned_project_customers"][0]["project_version"] == "A18"
+            assert view["tomorrow_plan"]["projects"][0]["project_version"] == "A18"
     assert "需成员补充客户名" not in view["material_name"]
     check = json.loads((package / "local-check.json").read_text())
     assert check["status"] == "PASS", check["errors"]
@@ -458,7 +534,8 @@ def test_builder_preserves_scope_identity_in_view_and_source_evidence(
     # The formal package validator must reject display/source/hash drift.
     view_path = package / "materials/display/report_view.json"
     document = json.loads(view_path.read_text())
-    document["payload"]["projects"][0]["project_version"] = "ChangedAfterGeneration"
+    changed_field = "product_variant" if scope_kind == "product" else "project_version"
+    document["payload"]["projects"][0][changed_field] = "ChangedAfterGeneration"
     write_json(view_path, document)
     changed = intake.validate_package(package)
     assert changed["status"] == "FAIL"

@@ -140,6 +140,13 @@ Daily card identity is not the date. Project identity includes the version and c
 
 Each project-bound work and tomorrow-plan row requires `project`, the confirmed `project_version`, and direct `customer`. Use `downstream_customer` when the customer's customer is known. Record the Android system version of the project, including for an App, as A16 or A17. Keep the APK release, firmware release and GMS certification target separate. Ask only for missing facts, and keep different versions and confirmed customer chains in their own scopes. Independent documents and standalone work use their own names.
 
+Set the optional project field `product_variant` only when the member or a
+structured source identifies the product. Use it on today's work and
+tomorrow's project plans. For example, `TVI2343R A12（海信）` can have separate
+`Soundbar` and `全息屏` rows. Keep the product separate from the customer,
+Android version and App name. Omit it if unknown. Confirm the product for each
+row independently and show it as `产品` when present.
+
 Before running `--prepare`, `--upload`, or `--submit-latest`, first decide
 whether the work is project-bound, a non-project document, or other non-project
 work. All project-bound types require a recognized project, version and direct customer.

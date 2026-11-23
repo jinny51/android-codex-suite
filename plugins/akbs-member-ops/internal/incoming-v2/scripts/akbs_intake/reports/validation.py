@@ -43,7 +43,7 @@ from .weekly_facts import (
     WEEKLY_FACT_SOURCES_SCHEMA,
 )
 from .weekly_ledger import WEEKLY_LEDGER_SCHEMA
-from .scope import normalize_project_android_version, project_version, report_scope_key
+from .scope import normalize_project_android_version, product_variant, project_version, report_scope_key
 
 
 RequireFile = Callable[[Any, str], Path | None]
@@ -114,6 +114,8 @@ def report_project_customer_errors(
             row_errors.append(
                 f"{rel} payload.{label}[{index}].project 只能填写规范项目编号 {canonical_project}；其他内容应写入事项字段"
             )
+        if not isinstance(row.get("product_variant", ""), str):
+            row_errors.append(f"{rel} payload.{label}[{index}].product_variant 如提供则必须是字符串")
         if require_project_version:
             version = normalize_project_android_version(row.get("project_version"))
             if not version or version != row.get("project_version"):
@@ -395,6 +397,8 @@ def weekly_project_identity_consistency_errors(
                 if require_project_version:
                     identity_errors.append(f"{rel} payload.{label} 工作范围来源必须是对象")
                 continue
+            if not isinstance(value.get("product_variant", ""), str):
+                identity_errors.append(f"{rel} payload.{label} 工作范围的 product_variant 如提供则必须是字符串")
             project = find_company_project(str(value.get("project") or ""))
             customer = str(value.get("customer") or value.get("customer_name") or "").strip()
             downstream = str(value.get("downstream_customer") or "").strip()
@@ -413,7 +417,8 @@ def weekly_project_identity_consistency_errors(
     if identity_errors:
         return identity_errors
     if not require_project_version and all(
-        not str(value.get("work_type") or "").strip() for value in expected_rows if isinstance(value, dict)
+        not (str(value.get("work_type") or "").strip() or product_variant(value))
+        for value in expected_rows if isinstance(value, dict)
     ):
         # A flat source still describes several scopes when their chains agree.
         by_project: dict[str, set[tuple[str, str]]] = {}
@@ -429,9 +434,9 @@ def weekly_project_identity_consistency_errors(
         }
     if actual == expected:
         return []
-    return [
-        f"{rel} payload.{label} 项目、版本和客户链必须与 project_inference 来源证据一致"
-    ]
+    if any(isinstance(value, dict) and value.get("product_variant") for value in [*rows, *expected_rows]):
+        return [f"{rel} payload.{label} 项目、版本、客户链和产品必须与 project_inference 来源证据一致"]
+    return [f"{rel} payload.{label} 项目、版本和客户链必须与 project_inference 来源证据一致"]
 
 
 def validate_daily_report_view_project(
@@ -873,7 +878,7 @@ def validate_weekly_report_view_non_project(
             errors.append(f"{row_prefix} 与 {prefix}[{seen[name.casefold()]}] 的文档重复")
         else:
             seen[name.casefold()] = index
-        for forbidden in ("project", "customer", "customer_name", "downstream_customer", "app_name"):
+        for forbidden in ("project", "customer", "customer_name", "downstream_customer", "product_variant", "app_name"):
             if str(document.get(forbidden) or "").strip():
                 errors.append(f"{row_prefix}.{forbidden} 文档工作不得伪造项目或客户字段")
         if not str(document.get("week_summary") or "").strip():

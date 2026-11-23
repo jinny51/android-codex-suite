@@ -11,7 +11,9 @@ import sys
 import time
 import urllib.request
 from pathlib import Path
-from typing import Any
+from queue import Empty, Queue
+from threading import Thread
+from typing import Any, BinaryIO
 
 try:
     from .config import CONFIG_DEFAULTS, default_codex_home, expanded_path, local_now, parse_bool
@@ -146,8 +148,38 @@ def _strict_rpc_json(raw: bytes) -> dict[str, Any]:
     return payload
 
 
+def _windows_pipe_line(stream: BinaryIO, timeout: float) -> bytes:
+    """Use the bounded pipe reader pattern from the engineering install gate."""
+    if timeout <= 0:
+        raise TimeoutError("Codex installed plugin inventory timed out")
+    messages: Queue[bytes | OSError] = Queue(maxsize=1)
+
+    def read() -> None:
+        try:
+            messages.put(stream.readline(MAX_RPC_LINE_BYTES + 2))
+        except OSError as exc:
+            messages.put(exc)
+
+    Thread(target=read, daemon=True).start()
+    try:
+        value = messages.get(timeout=timeout)
+    except Empty as exc:
+        raise TimeoutError("Codex installed plugin inventory timed out") from exc
+    if isinstance(value, OSError):
+        raise value
+    if not value:
+        raise ValueError("Codex app-server closed before answering plugin/installed")
+    if len(value) > MAX_RPC_LINE_BYTES + 1:
+        raise ValueError("Codex plugin inventory response is too large")
+    if not value.endswith(b"\n"):
+        raise ValueError("Codex plugin inventory response did not end in a newline")
+    return value[:-1]
+
+
 def _rpc_line(process: subprocess.Popen[bytes], deadline: float, pending: bytearray) -> dict[str, Any]:
     assert process.stdout is not None
+    if os.name == "nt":
+        return _strict_rpc_json(_windows_pipe_line(process.stdout, deadline - time.monotonic()))
     while True:
         newline = pending.find(b"\n")
         if newline >= 0:

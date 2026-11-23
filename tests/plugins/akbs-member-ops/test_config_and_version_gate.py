@@ -10,6 +10,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from threading import Event
 from unittest import mock
 
 import pytest
@@ -138,6 +139,55 @@ def test_member_one_shot_app_server_always_exits() -> None:
             pid = int(pid_file.read_text())
             with pytest.raises(ProcessLookupError):
                 os.kill(pid, 0)
+
+
+def test_member_windows_pipe_uses_strict_rpc_and_skips_notifications(monkeypatch: pytest.MonkeyPatch) -> None:
+    windows_os = mock.Mock(wraps=os)
+    windows_os.name = "nt"
+    monkeypatch.setattr(version_gate, "os", windows_os)
+    process = mock.Mock(
+        stdin=io.BytesIO(),
+        stdout=io.BytesIO(
+            b'{"method":"notice"}\r\n'
+            b'{"id":2,"result":{}}\r\n'
+            b'{"id":3,"result":{},"result":{}}\r\n'
+        ),
+    )
+    deadline = time.monotonic() + 5
+    pending = bytearray()
+    response = version_gate._rpc_response(process, {"id": 2}, 2, deadline, pending)
+    assert response == {"id": 2, "result": {}}
+    assert process.stdin.getvalue() == b'{"id":2}\n'
+    with pytest.raises(ValueError, match="duplicate key"):
+        version_gate._rpc_line(process, deadline, pending)
+
+
+@pytest.mark.parametrize(("reply", "error"), [
+    (b"", "closed"),
+    (b"{}", "did not end in a newline"),
+    (b"x" * 18 + b"\n", "too large"),
+])
+def test_member_windows_pipe_rejects_bad_framing(
+    reply: bytes, error: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(version_gate, "MAX_RPC_LINE_BYTES", 16)
+    with pytest.raises(ValueError, match=error):
+        version_gate._windows_pipe_line(io.BytesIO(reply), 5)
+
+
+def test_member_windows_pipe_preserves_deadline() -> None:
+    release = Event()
+
+    def delayed_readline(size: int) -> bytes:
+        release.wait(timeout=2)
+        return b"{}\n"
+
+    stream = mock.Mock(readline=delayed_readline)
+    try:
+        with pytest.raises(TimeoutError, match="timed out"):
+            version_gate._windows_pipe_line(stream, 0.05)
+    finally:
+        release.set()
 
 
 def test_member_cleanup_tolerates_child_exit_after_poll() -> None:

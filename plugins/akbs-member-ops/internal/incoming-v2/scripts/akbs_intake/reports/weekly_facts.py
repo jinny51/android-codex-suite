@@ -38,6 +38,8 @@ from .weekly_ledger import (
     BUSINESS_COUNT_KEYS,
     LEDGER_CHANGE_KEYS,
     WEEKLY_LEDGER_SCHEMA,
+    is_missing_product_baseline,
+    ledger_scope_label,
     matching_previous_scope,
     normalize_weekly_ledger,
     validate_v5_project_ledger,
@@ -835,15 +837,23 @@ def load_explicit_facts(
         if remaining_total > 0 and not clean_list(item.get("next_week_plan")):
             errors.append(f"{project}.next_week_plan 当前有剩余时必须提供")
         normalized_row = _weekly_project_row(item)
+        history = previous_projects or {}
+        confirmed_legacy = schema == WEEKLY_FACTS_SCHEMA
         previous, previous_ambiguous = matching_previous_scope(
-            normalized_row,
-            previous_projects or {},
-            projects,
+            normalized_row, history, projects, confirmed_legacy=confirmed_legacy,
         )
-        if work_type in {"Patch", "App"} and previous is None and not previous_ambiguous and extra_previous_projects:
-            previous, previous_ambiguous = matching_previous_scope(
-                normalized_row, extra_previous_projects(), projects,
+        if work_type in {"Patch", "App"} and previous is None and extra_previous_projects:
+            reference = normalized_row["ledger"]["baseline_week_range"]
+            should_search = not previous_ambiguous or (
+                confirmed_legacy and reference
+                and reference not in {clean_text(row.get("_week_range")) for row in history.get(project, [])}
             )
+            if should_search:
+                extra = extra_previous_projects()
+                combined = {project: [*history.get(project, []), *extra.get(project, [])]}
+                previous, previous_ambiguous = matching_previous_scope(
+                    normalized_row, combined, projects, confirmed_legacy=confirmed_legacy,
+                )
         if previous is not None and work_type in {"Patch", "App"}:
             previous_scope = weekly_scope_identity(previous)
             previous_source = (*previous_scope, previous["_week_range"], previous["_package_key"])
@@ -1815,14 +1825,21 @@ def build_weekly_facts(
             for seed in scopes:
                 if seed["work_type"] not in {"Patch", "App"}:
                     continue
-                adjacent, adjacent_ambiguous = matching_previous_scope(seed, {project: prior_rows}, scopes)
-                if adjacent is not None or adjacent_ambiguous:
+                adjacent, _ = matching_previous_scope(seed, {project: prior_rows}, scopes)
+                if adjacent is not None:
                     continue
                 older, ambiguous = matching_previous_scope(seed, history_projects, scopes)
                 if older is None and not ambiguous and extra_weeks:
                     older, ambiguous = matching_previous_scope(seed, extra_previous_projects(), scopes)
                 if ambiguous:
-                    missing_fields.append(f"{project}.ledger_baseline_confirmation")
+                    missing_fields.append(f"{ledger_scope_label(seed)}.ledger_baseline_confirmation")
+                    # The unresolved history remains in its original package. Do not roll it
+                    # into this draft as an additional scope alongside its named candidate.
+                    prior_rows = [
+                        candidate for candidate in prior_rows
+                        if not is_missing_product_baseline(seed, candidate)
+                        or any(weekly_scope_identity(current) == weekly_scope_identity(candidate) for current in scopes)
+                    ]
                 if older:
                     source = (*weekly_scope_identity(older), older["_week_range"], older["_package_key"])
                     if source in used_older_sources or (older["downstream_customer"] and not seed["downstream_customer"]):

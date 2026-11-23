@@ -141,8 +141,96 @@ def test_same_project_keeps_product_baselines_daily_work_and_plans_separate(
     })
     previous_rows = weekly_facts._previous_week_projects(history)
     unknown = {**soundbar, "product_variant": "未在历史中出现的产品"}
-    assert weekly_facts.matching_previous_scope(unknown, previous_rows) == (None, False)
+    assert weekly_facts.matching_previous_scope(unknown, previous_rows) == (None, True)
 
+
+
+@pytest.mark.parametrize("historical_version", ["", "A16"])
+def test_named_product_inherits_only_the_confirmed_unnamed_weekly_ledger(
+    tmp_path: Path, historical_version: str,
+) -> None:
+    original = {**weekly_raw_row("App"), "product_variant": "", "project_version": historical_version,
+                "project_role": "主责", "work_total": 5, "remaining": 2,
+                "remaining_items": ["继续核查"], "next_week_plan": ["继续核查"]}
+    prior = weekly_facts._weekly_project_row(original)
+    prior.update(_package_key="actual-old", _week_range="20260928-20261004")
+    history = {PROJECT: [prior]}
+    named = {**original, "project_version": "A16", "product_variant": "Soundbar",
+             "ledger": {**original["ledger"], "opening": False, "baseline_package_key": "actual-old",
+                        "baseline_week_range": "20260928-20261004"}}
+    assert weekly_facts.matching_previous_scope(named, history) == (None, True)
+    selected = weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, [named]), WEEK,
+                                               previous_projects=history)[0]
+    assert selected["product_variant"] == "Soundbar" and selected["project_version"] == "A16"
+    assert selected["work_total"] == 5 and selected["remaining_total"] == 2
+    assert selected["ledger"]["baseline"]["android_remaining"] == 2
+    assert not prior.get("product_variant") and prior["project_version"] == historical_version
+
+    unrelated = {**named, "product_variant": "全息屏"}
+    with pytest.raises(SystemExit, match="多个当前范围不能使用同一份历史台账"):
+        weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, [named, unrelated]), WEEK,
+                                         previous_projects=history)
+
+    independent_opening = {
+        **unrelated, "work_total": 0, "remaining": 0, "remaining_items": [], "next_week_plan": [],
+        "ledger": {**named["ledger"], "opening": True, "baseline_package_key": "", "baseline_week_range": ""},
+    }
+    continued, opened = weekly_facts.load_explicit_facts(
+        explicit_weekly(tmp_path, [named, independent_opening]), WEEK, previous_projects=history,
+    )
+    assert continued["work_total"] == 5 and continued["remaining_total"] == 2
+    assert opened["ledger"]["opening"] is True and opened["work_total"] == 0
+
+    earlier = {**prior, "_package_key": "actual-earlier", "_week_range": "20260921-20260927"}
+    prior["ledger"].update(baseline_package_key="actual-earlier", baseline_week_range="20260921-20260927")
+    current = weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, [named]), WEEK,
+                                               previous_projects={PROJECT: [prior, earlier]})[0]
+    assert current["ledger"]["baseline_package_key"] == "actual-old"
+    earlier_claim = {**unrelated, "ledger": {**unrelated["ledger"],
+                                            "baseline_package_key": "actual-earlier",
+                                            "baseline_week_range": "20260921-20260927"}}
+    with pytest.raises(SystemExit, match="全息屏.*无法确定唯一基线"):
+        weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, [named, earlier_claim]), WEEK,
+                                         previous_projects={PROJECT: [prior, earlier]})
+
+    reset = {**named, "ledger": {**named["ledger"], "opening": True}}
+    with pytest.raises(SystemExit, match="Soundbar.*无法确定唯一基线"):
+        weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, [reset]), WEEK,
+                                         previous_projects=history)
+
+    wrong_key = {**named, "ledger": {**named["ledger"], "baseline_package_key": "not-effective"}}
+    with pytest.raises(SystemExit, match="Soundbar.*无法确定唯一基线"):
+        weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, [wrong_key]), WEEK,
+                                         previous_projects=history)
+
+    linked = {**selected, "_package_key": "already-named", "_week_range": WEEK}
+    with pytest.raises(SystemExit, match="全息屏.*无法确定唯一基线"):
+        weekly_facts.load_explicit_facts(explicit_weekly(tmp_path, [unrelated]), WEEK,
+                                         previous_projects={PROJECT: [linked, prior]})
+    assert weekly_facts.matching_previous_scope(
+        named, {PROJECT: [{**prior, "project_version": "A17"}]}, confirmed_legacy=True,
+    ) == (None, False)
+    assert weekly_facts.matching_previous_scope(
+        named, {PROJECT: [{**prior, "product_variant": "平板"}]}, confirmed_legacy=True,
+    ) == (None, False)
+
+
+def test_auto_weekly_requests_only_unresolved_product_baseline(monkeypatch: pytest.MonkeyPatch) -> None:
+    old = {**weekly_raw_row("App"), "project_version": "", "project_role": "主责", "work_total": 3}
+    known = {**weekly_raw_row("App"), "app_name": "Known", "project_role": "主责"}
+    current = [{**daily_row("App"), "product_variant": "Soundbar"},
+               {**daily_row("App"), "app_name": "Known"}]
+    daily = [{"package_key": "today", "report_date": DATE.isoformat(), "report_view": {"projects": current}}]
+    history = [{"package_key": "prior", "week_range": "20260928-20261004",
+                "report_view": {"projects": [old, known]}}]
+    monkeypatch.setattr(weekly_facts, "local_now", lambda config: dt.datetime(2026, 10, 11))
+    result = weekly_facts.build_weekly_facts({}, dt.date(2026, 10, 5), dt.date(2026, 10, 11),
+                                            WEEK, history=(daily, history, {}))
+    baselines = [field for field in result.evidence["missing_fields"] if "ledger_baseline_confirmation" in field]
+    assert len(baselines) == 1 and "A16 / Soundbar" in baselines[0]
+    assert len(result.projects) == 2
+    assert any(row["app_name"] == "Known" and row["project_role"] == "主责" for row in result.projects)
+    assert not any(row.get("product_variant") == "Soundbar" and row["work_total"] == 3 for row in result.projects)
 
 def test_distinct_apps_and_gms_targets_use_existing_scope_key() -> None:
     first = identity("App", "CustomerA")

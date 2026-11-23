@@ -144,8 +144,13 @@ Set the optional project field `product_variant` only when the member or a
 structured source identifies the product. Use it on today's work and
 tomorrow's project plans. For example, `TVI2343R A12（海信）` can have separate
 `Soundbar` and `全息屏` rows. Keep the product separate from the customer,
-Android version and App name. Omit it if unknown. Confirm the product for each
+Android version and App name. Omit it if unknown. Earlier reports can omit
+both Android version and product. Use them as written; confirm a missing
+identity only for the current scope when it matters. Confirm the product for each
 row independently and show it as `产品` when present.
+For one App that runs on multiple Android versions or products, keep its App
+identity. Record common work once. Use separate delivery rows for independently
+tracked adaptations.
 
 Before running `--prepare`, `--upload`, or `--submit-latest`, first decide
 whether the work is project-bound, a non-project document, or other non-project

@@ -122,10 +122,66 @@ def weekly_scope_identity(row: dict[str, Any]) -> tuple[str, ...]:
     return report_scope_key(row)
 
 
+def _baseline_reference(row: dict[str, Any]) -> tuple[str, str]:
+    ledger = row.get("ledger")
+    if not isinstance(ledger, dict) or ledger.get("opening") is not False:
+        return "", ""
+    return clean_text(ledger.get("baseline_package_key")), clean_text(ledger.get("baseline_week_range"))
+
+
+def _row_reference(row: dict[str, Any]) -> tuple[str, str]:
+    return clean_text(row.get("_package_key")), clean_text(row.get("_week_range"))
+
+
+def _same_scope_after_fill(scope: tuple[str, ...], historical: tuple[str, ...]) -> bool:
+    # Keep the project, workstream and direct customer fixed. Only fill blanks.
+    return (
+        historical[:-4] == scope[:-4] and historical[-3] == scope[-3]
+        and all(not historical[index] or historical[index] == scope[index] for index in (-4, -2, -1))
+    )
+
+
+def _missing_product_candidate(scope: tuple[str, ...], historical: tuple[str, ...]) -> bool:
+    return bool(scope[-4] and not historical[-4] and _same_scope_after_fill(scope, historical))
+
+
+def is_missing_product_baseline(row: dict[str, Any], candidate: dict[str, Any]) -> bool:
+    return _missing_product_candidate(weekly_scope_identity(row), weekly_scope_identity(candidate))
+
+
+def _is_latest_legacy_source(source: dict[str, Any], history: list[dict[str, Any]]) -> bool:
+    scope = weekly_scope_identity(source)
+    _, source_week = _row_reference(source)
+    # Repeated effective rows of the same old scope are one ledger. A later
+    # confirmed row may also have already filled the original scope's blanks.
+    equivalent_references = {
+        _row_reference(candidate) for candidate in history if weekly_scope_identity(candidate) == scope
+    }
+    if any(week > source_week for _, week in equivalent_references):
+        return False
+    return not any(
+        reference in equivalent_references
+        and _row_reference(candidate)[1] > reference[1]
+        and weekly_scope_identity(candidate) != scope
+        and _same_scope_after_fill(weekly_scope_identity(candidate), scope)
+        for candidate in history
+        if all(reference := _baseline_reference(candidate))
+    )
+
+
+def ledger_scope_label(row: dict[str, Any]) -> str:
+    project, work_type, app_name, _, _, _, customer, version, downstream = weekly_scope_identity(row)
+    return " / ".join(filter(None, (
+        project, version, clean_text(row.get("product_variant")), customer, downstream, work_type, app_name,
+    )))
+
+
 def matching_previous_scope(
     row: dict[str, Any],
     previous_projects: dict[str, list[dict[str, Any]]],
     current_rows: list[dict[str, Any]] | None = None,
+    *,
+    confirmed_legacy: bool = False,
 ) -> tuple[dict[str, Any] | None, bool]:
     scope = weekly_scope_identity(row)
     weeks: dict[str, list[dict[str, Any]]] = {}
@@ -143,7 +199,34 @@ def matching_previous_scope(
             return previous, False
         # After an ambiguous legacy row, only a confirmed matching scope can be trusted.
         unresolved_legacy = previous is not None or ambiguous
-    return None, unresolved_legacy
+    history = previous_projects.get(scope[0], [])
+    unnamed = [candidate for candidate in history if is_missing_product_baseline(row, candidate)]
+    if not unnamed:
+        return None, unresolved_legacy
+    if not confirmed_legacy:
+        return None, True
+    available = [candidate for candidate in unnamed if _is_latest_legacy_source(candidate, history)]
+    reference = _baseline_reference(row)
+    if all(reference):
+        sources = [candidate for candidate in available if _row_reference(candidate) == reference]
+        if len(sources) == 1:
+            return sources[0], False
+    ledger = row.get("ledger", {})
+    if isinstance(ledger, dict) and ledger.get("opening") is True:
+        # A confirmed new product can open when every possible previous row is
+        # already assigned to another current product or continued in history.
+        if all(
+            any(
+                weekly_scope_identity(current) != scope
+                and _baseline_reference(current) == _row_reference(candidate)
+                and is_missing_product_baseline(current, candidate)
+                for current in current_rows or ()
+                if isinstance(current, dict)
+            )
+            for candidate in available
+        ):
+            return None, False
+    return None, True
 
 
 def _has_other_confirmed_version(
@@ -254,7 +337,10 @@ def validate_v5_project_ledger(
         errors.append(f"{project}.ledger v5 周报必须提供有效历史基线和本周变化")
         return
     if previous_ambiguous:
-        errors.append(f"{project}.ledger 历史台账存在多个可能匹配的统计范围，无法确定唯一基线；请确认客户和 Android 版本")
+        errors.append(
+            f"{ledger_scope_label(row)}.ledger 无法确定唯一基线；"
+            "请确认这一项的原有效周报及对应的版本或产品，使用原包键和周次续账"
+        )
         return
 
     allowed_ledger_keys = {

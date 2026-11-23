@@ -217,9 +217,16 @@ Rules:
   `--ledger-history-period YYYY-MM` or `--ledger-history-period YYYYMMDD-YYYYMMDD`
   to the same command. A month includes weeks that touch it. An explicitly
   named period does not override a recent match or resolve ambiguous scope
-  identity. A named product can reuse only a baseline for the same product.
-  Keep a known existing scope pending if no report can be verified.
+  identity. A historical row may omit the Android version, the product, or
+  both. If the member confirms that it is the same ledger, bind its actual
+  effective package and week as above. For a named product, the latest available
+  row of an unnamed ledger needs that explicit link. A legacy ledger can be
+  inherited only once, even if it appears in several weekly reports. Keep a
+  known existing scope pending if no report can be verified.
   Use `opening=true` only for a confirmed new scope.
+- For one App that runs on multiple Android versions or products, keep its App
+  identity. Record common work once. Use separate delivery rows for independently
+  tracked adaptations.
 - Only the main may provide non-zero ledger changes. Collaborators keep every
   change at zero and report only personal completion and remaining work.
 - `project_completed` is the main-confirmed sum of this week's completion from

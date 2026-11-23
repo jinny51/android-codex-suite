@@ -235,9 +235,14 @@ Use one `projects[]` row per project, Android version, direct customer,
 downstream customer, product (if stated) and work scope. App adds `app_name`;
 GMS adds release type and target. Record the role, counts, risks and next-week
 actions in their own scope. Match daily work, plans and prior weekly baselines
-only within the same product. An unnamed product matches only an unnamed
-product. A historical row with no version remains 版本待核 and cannot start a
-versioned ledger. When a sole matching ledger gains a downstream customer,
+only within the same product. A historical report may omit the version,
+the product, or both. Read its original totals unchanged. Keep its named values
+if present. When the member confirms that an unnamed historical row and a
+named current row are the same ledger, link that row through its actual
+`baseline_package_key` and `baseline_week_range` in the existing weekly facts
+with `opening: false`. Ask only about the affected scope if the link is
+uncertain. One historical row can be inherited only once. When a sole matching
+ledger gains a downstream customer,
 continue that ledger with its existing totals. Keep feature names within work
 items. Validation checks the canonical project, customer chain, product,
 work scope and alignment with source evidence.
@@ -270,8 +275,8 @@ The baseline package key and week range must identify the actual effective
 report selected for each scope. Compare project, direct customer, Android
 version, work type and App identity. Check weeks newest first. Accept a
 versionless legacy row only if the available history and current scopes identify
-it unambiguously. Otherwise continue to a confirmed matching scope or ask for
-clarification. Keep different confirmed Android versions separate.
+it unambiguously. If its product is missing too, use the confirmed link above
+to fill it. Keep different confirmed Android versions and products separate.
 When the rolling four weeks have no match for an existing scope, ask the
 member for the approximate historical week or month and repeat the same command
 with only that period as a fallback. Bind to the effective report found for

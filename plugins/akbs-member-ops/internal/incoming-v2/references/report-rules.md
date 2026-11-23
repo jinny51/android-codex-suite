@@ -137,8 +137,8 @@ Settings 和 Framework 服务等系统源码修改属于 Patch；独立交付的
 ## Weekly Template
 
 Weekly project facts are not derived by counting sessions. Resolve current
-effective daily reports from AKBS, carry the current previous-week project
-ledger forward and apply report replacement chains without reading local
+effective daily reports from AKBS, use each scope's nearest effective ledger
+within the allowed history, and apply replacement chains without reading local
 sessions. Only when no report source exists and the request authorizes it may
 sessions provide supplementary work. `weekly_fact_sources`
 records this provenance. Missing ledger fields block upload and are completed
@@ -188,8 +188,8 @@ candidates only; they are never silently accepted as current weekly facts.
 
 新项目初始总量及后续新增、重新打开、无需修改关闭、移出、转 BSP 和 BSP 关闭
 只能由主责确认。协作只填写个人完成和个人剩余；发现文档外事项时先标记待主责
-确认，不得自行修改项目总量。Codex 绑定上一份有效周报并自动计算当前总量和剩余；
-显式事实也不得绕过上周基线。主责在机器台账中同时确认项目全员本周完成量，
+确认，不得自行修改项目总量。Codex 为每个范围绑定最近的有效历史台账并计算总量和剩余；
+显式事实使用同一基线。主责在机器台账中同时确认项目全员本周完成量，
 管理端必须再与主责、协作各自完成量之和核对；成员 Markdown 仍只显示个人完成量。
 
 以上分类只用于 `Patch`。`App` 使用独立的简单计数，不填写需求、移植、Bug

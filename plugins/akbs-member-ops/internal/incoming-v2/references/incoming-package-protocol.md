@@ -241,11 +241,11 @@ week range, not the upload day. Daily work items use fixed-enum status
 Every new `weekly_trace` also carries `weekly_fact_sources` evidence with
 `schema=akbs-weekly-fact-sources-v3`, the exact `week_range`, source package
 keys, unique project, document, and standalone-work counts, work-scope count, a sanitized facts hash, and `missing_fields`. The member
-client resolves current AKBS daily reports and the current previous-week report
-before local submitted replacement leaves without reading local sessions;
+client resolves current AKBS daily reports and the effective weekly ledger for
+each current scope before local submitted replacement leaves, without reading local sessions;
 only an authorized fallback with no report source reads sessions. Non-empty `missing_fields` fails local upload validation and is
 closed through an explicit `akbs-weekly-work-facts-v6` artifact. V6 binds the
-effective previous-week package and records main-owned project changes, so
+selected effective historical package for each scope and records main-owned project changes, so
 explicit facts cannot reset an existing total or hide a remaining-count gap.
 Current daily `dependencies[]`, legacy keyword matches, and previous-week dependencies
 are exposed in `attention_review_candidates`; the member must confirm the

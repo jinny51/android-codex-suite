@@ -96,7 +96,7 @@ def test_manifest_fetch_uses_the_injected_opener_and_bounded_read() -> None:
     b'{"value":Infinity}',
     b'[]',
     b'\xff',
-    b' ' * (update.MAX_MANIFEST_BYTES + 1),
+    pytest.param(b' ' * (update.MAX_MANIFEST_BYTES + 1), id="oversized"),
 ])
 def test_manifest_fetch_rejects_invalid_or_oversized_json(raw: bytes) -> None:
     with pytest.raises((ValueError, UnicodeError)):
@@ -188,3 +188,34 @@ def test_verifier_exception_and_unsupported_target_are_not_successes() -> None:
     result = update.update_plugin("jinny-android-practices", run_command=runner, verify_install=mock.Mock())
     assert result["attempted"] is False
     runner.assert_not_called()
+
+
+def test_windows_codex_resolves_native_npm_binary_when_only_cmd_is_on_path(monkeypatch, tmp_path):
+    shim = tmp_path / "codex.cmd"
+    native = tmp_path / (
+        "node_modules/@openai/codex/node_modules/@openai/codex-win32-x64/"
+        "vendor/x86_64-pc-windows-msvc/bin/codex.exe"
+    )
+    native.parent.mkdir(parents=True)
+    native.touch()
+    monkeypatch.setattr(update.platform, "machine", lambda: "AMD64")
+    monkeypatch.setattr(update.shutil, "which", lambda name: str(shim) if name == "codex.cmd" else None)
+    assert update._windows_codex_executable() == str(native.resolve())
+    native.unlink()
+    with pytest.raises(FileNotFoundError, match="Native Windows codex.exe"):
+        update._windows_codex_executable()
+
+
+def test_wsl_codex_rejects_windows_npm_shim_and_uses_native_cli(monkeypatch, tmp_path):
+    native = tmp_path / ".local/share/codex/desktop-cli/public/current/codex"
+    native.parent.mkdir(parents=True)
+    native.touch()
+    native.chmod(0o700)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    shim = "/mnt/c/Users/member/AppData/Roaming/npm/codex"
+    monkeypatch.setattr(update.shutil, "which", lambda name, path=None: shim if path is None else None)
+    monkeypatch.setattr(update.os, "get_exec_path", lambda: [str(Path(shim).parent)])
+    assert update._wsl_codex_executable("codex") == str(native.resolve())
+    native.unlink()
+    with pytest.raises(FileNotFoundError, match="native Linux Codex in WSL"):
+        update._wsl_codex_executable("codex")

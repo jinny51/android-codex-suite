@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import io
 import json
+import os
 import sys
 import tarfile
 from pathlib import Path
@@ -15,7 +16,7 @@ for path in (PLUGIN / "lib", PLUGIN / "internal/incoming-v2/scripts"):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from akbs_member_ops import doc_submit as doc
+from akbs_member_ops import artifact_paths, doc_submit as doc
 
 
 @pytest.fixture
@@ -40,6 +41,38 @@ def test_prepare_keeps_original_and_uses_only_minimal_doc_contract(prepared):
     assert doc.document_file(package, manifest).read_bytes() == original.read_bytes()
     assert doc.validate_package(package)["status"] == "PASS"
     assert not (package / doc.RECEIPT).exists()
+
+
+def test_prepare_recovers_when_its_owner_marker_cannot_be_finished(tmp_path, monkeypatch):
+    original = tmp_path / "操作 说明.md"
+    original.write_text("example", encoding="utf-8")
+    config = {"member_alias": "auditmember", "member_name": "测试成员",
+              "out_dir": str(tmp_path / "artifacts")}
+    date = dt.date(2026, 9, 24)
+    run_id = "20261022-120000-retry"
+    path = tmp_path / "artifacts/pending/20260924/auditmember" / run_id
+    original_chmod = Path.chmod
+
+    def fail_marker_chmod(self, mode):
+        if self.name == artifact_paths.OWNED_ARTIFACT_MARKER:
+            raise PermissionError("interrupted marker write")
+        return original_chmod(self, mode)
+
+    def prepare():
+        return doc.prepare_document(
+            source=original, title="操作说明", summary="设备核对",
+            date=date, config=config, run_id=run_id,
+        )
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "chmod", fail_marker_chmod)
+        with pytest.raises(PermissionError, match="interrupted marker write"):
+            prepare()
+    assert not path.exists()
+    package = prepare()
+    assert package == path
+    assert not (package / artifact_paths.OWNED_ARTIFACT_MARKER).exists()
+    assert doc.validate_package(package)["status"] == "PASS"
 
 
 def test_validate_is_read_only_and_detects_original_drift(prepared):
@@ -108,7 +141,7 @@ def test_member_submit_uses_shared_transport_and_pins_receipt(prepared, monkeypa
     second = doc.submit_document(package, config)
     assert first["document_id"] == second["document_id"] == "doc-example"
     assert len(calls) == 2
-    assert json.loads((package / doc.RECEIPT).read_text())["revision"] == 1
+    assert json.loads((package / doc.RECEIPT).read_text(encoding="utf-8"))["revision"] == 1
 
 
 def test_member_submit_does_not_pin_a_receipt_for_different_original(prepared, monkeypatch):
@@ -154,6 +187,7 @@ def test_help_does_not_read_profile_or_call_network(monkeypatch):
     assert exc.value.code == 0
 
 
+@pytest.mark.skipif(os.name == "nt", reason="WSL path translation uses POSIX pathlib")
 def test_wsl_windows_file_uri_is_converted_with_system_wslpath(monkeypatch):
     monkeypatch.setattr(doc.platform, "release", lambda: "6.6.87.1-microsoft-standard-WSL2")
     calls = []
@@ -165,3 +199,13 @@ def test_wsl_windows_file_uri_is_converted_with_system_wslpath(monkeypatch):
     monkeypatch.setattr(doc.subprocess, "run", convert)
     assert str(doc.input_path("file:///C:/Users/example/guide.md")) == "/mnt/c/Users/example/guide.md"
     assert calls == [["wslpath", "-u", "C:/Users/example/guide.md"]]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows path handling uses Windows pathlib")
+def test_native_windows_file_uri_uses_the_local_path(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        doc.subprocess, "run", lambda *a, **kw: pytest.fail("native Windows must not invoke wslpath")
+    )
+    path = tmp_path / "操作 说明.md"
+    path.write_text("example", encoding="utf-8")
+    assert doc.input_path(path.as_uri()) == path

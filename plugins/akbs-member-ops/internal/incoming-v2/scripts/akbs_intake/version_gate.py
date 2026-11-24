@@ -56,6 +56,8 @@ def run(
     cwd: Path | None = None,
     timeout: float | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    if cmd and cmd[0] == "codex":
+        cmd = [_plugin_update.resolve_codex_executable(), *cmd[1:]]
     cp = subprocess.run(
         cmd,
         cwd=str(cwd) if cwd else None,
@@ -286,7 +288,7 @@ def _app_server_installed_payload(cwd: Path | None = None) -> dict[str, Any]:
         if not effective_cwd.is_dir():
             raise ValueError("Codex plugin inventory cwd is not a directory")
         process = subprocess.Popen(
-            ["codex", "app-server", "--stdio"],
+            [_plugin_update.resolve_codex_executable(), "app-server", "--stdio"],
             cwd=effective_cwd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,

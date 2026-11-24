@@ -10,14 +10,19 @@ from __future__ import annotations
 import errno
 import json
 import math
+import os
+import platform
 import re
 import shlex
+import shutil
 import subprocess
 import socket
 import ssl
+import sys
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import Any
 
 
@@ -40,6 +45,97 @@ def manifest_transport_unavailable(error: BaseException) -> bool:
         isinstance(error, OSError)
         and error.errno in {errno.ENETDOWN, errno.ENETUNREACH, errno.EHOSTUNREACH}
     )
+
+
+def _linux_codex_runtime_executable() -> str | None:
+    """Find the executing Codex app-server or sandbox binary."""
+    pid = os.getppid()
+    for _ in range(32):
+        if pid < 1:
+            break
+        process = Path("/proc") / str(pid)
+        try:
+            parent = next(
+                line for line in (process / "status").read_text().splitlines()
+                if line.startswith("PPid:")
+            )
+            executable = (process / "exe").readlink()
+            if executable.name == "codex":
+                argv = (process / "cmdline").read_bytes().split(b"\0")
+                if (b"app-server" in argv[1:] or argv[0] == b"codex-linux-sandbox") and executable.is_file():
+                    return str(executable)
+            pid = int(parent.partition(":")[2])
+        except (OSError, StopIteration, ValueError):
+            break
+    return None
+
+
+def _windows_codex_executable() -> str:
+    native = shutil.which("codex.exe")
+    if native:
+        return native
+
+    # The official npm installation may add only its .cmd shim to PATH.
+    # Run the native dependency directly so all callers keep shell=False.
+    shim = shutil.which("codex.cmd")
+    target = {"amd64": ("x64", "x86_64"), "x86_64": ("x64", "x86_64"),
+              "arm64": ("arm64", "aarch64"), "aarch64": ("arm64", "aarch64")}.get(platform.machine().casefold())
+    if shim and target:
+        shim_dir = Path(shim).parent
+        modules = shim_dir.parent if shim_dir.name == ".bin" else shim_dir / "node_modules"
+        architecture, triplet = target
+        windows_package = f"codex-win32-{architecture}"
+        vendor = Path("vendor") / f"{triplet}-pc-windows-msvc"
+        npm_codex = modules / "@openai" / "codex"
+        for package in (
+            npm_codex / "node_modules" / "@openai" / windows_package,
+            modules / "@openai" / windows_package,
+            npm_codex,
+        ):
+            for relative in (Path("bin/codex.exe"), Path("codex/codex.exe")):
+                executable = package / vendor / relative
+                if executable.is_file():
+                    return str(executable.resolve())
+    raise FileNotFoundError("Native Windows codex.exe was not found on PATH or in the Codex npm installation.")
+
+
+def _wsl_codex_executable(executable: str) -> str:
+    windows_npm_shim = re.compile(r"/mnt/[a-z]/.*?/appdata/roaming/npm/codex", re.IGNORECASE)
+
+    def is_windows_shim(path: Path) -> bool:
+        return bool(windows_npm_shim.fullmatch(path.as_posix()) or windows_npm_shim.fullmatch(path.resolve().as_posix()))
+
+    from_path = shutil.which(executable)
+    if from_path and is_windows_shim(Path(from_path)):
+        native_search_path = os.pathsep.join(
+            entry for entry in os.get_exec_path() if not is_windows_shim(Path(entry) / executable)
+        )
+        from_path = shutil.which(executable, path=native_search_path) if native_search_path else None
+    if from_path:
+        return from_path
+    desktop = Path.home() / ".local/share/codex/desktop-cli/public/current/codex"
+    if desktop.is_file() and os.access(desktop, os.X_OK):
+        return str(desktop.resolve())
+    raise FileNotFoundError("Use a native Linux Codex in WSL; the Windows npm Codex shim cannot run here.")
+
+
+def resolve_codex_executable(executable: str = "codex") -> str:
+    """Choose the native CLI without borrowing another host's npm shim."""
+    if executable != "codex":
+        return executable
+    if os.name == "nt":
+        return _windows_codex_executable()
+    if sys.platform.startswith("linux"):
+        server = _linux_codex_runtime_executable()
+        if server:
+            return server
+        try:
+            kernel = Path("/proc/sys/kernel/osrelease").read_text(encoding="ascii").casefold()
+        except OSError:
+            return executable
+        if "microsoft" in kernel or "wsl" in kernel:
+            return _wsl_codex_executable(executable)
+    return executable
 
 
 def version_parts(value: str) -> tuple[int, ...]:

@@ -10,18 +10,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-try:
-    from zoneinfo import ZoneInfo
-except ImportError:  # pragma: no cover
-    ZoneInfo = None
-
 from akbs_member_ops.knowledge_rules import (
     PROJECT_ANCHOR_RE,
     canonical_company_project,
     find_company_project,
 )
 from akbs_member_ops.project_registry import expand_home_path, registry_entries
-from akbs_intake.config import expanded_path
+from akbs_intake.config import expanded_path, report_timezone
 from akbs_intake.reports.common import week_bounds, ymd
 from akbs_intake.reports.scope import normalize_project_android_version, path_scope_inference
 from akbs_intake.session_privacy import (
@@ -109,11 +104,10 @@ def local_date(value: str, config: dict[str, str]) -> dt.date | None:
         parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
-    if ZoneInfo is not None:
-        parsed = parsed.astimezone(ZoneInfo(config.get("timezone", "Asia/Shanghai")))
-    else:
-        parsed = parsed.astimezone()
-    return parsed.date()
+    timezone = report_timezone(config.get("timezone", "Asia/Shanghai"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone)
+    return parsed.astimezone(timezone).date()
 
 
 def extract_input_text(content: Any) -> str:
@@ -141,7 +135,7 @@ def session_files(codex_home: Path, dates: set[dt.date], timezone_name: str = "A
             candidates.extend(day_dir.glob("*.jsonl"))
     start = min(dates)
     end = max(dates)
-    timezone = ZoneInfo(timezone_name) if ZoneInfo is not None else None
+    timezone = report_timezone(timezone_name)
     threshold = dt.datetime.combine(start, dt.time.min, tzinfo=timezone).timestamp()
     for path in root.glob("*/*/*/*.jsonl"):
         try:
@@ -481,7 +475,7 @@ def parse_sessions(
                     try:
                         timestamp = dt.datetime.fromisoformat(str(row["timestamp"]).replace("Z", "+00:00"))
                         if timestamp.tzinfo is None:
-                            timestamp = timestamp.replace(tzinfo=ZoneInfo(config.get("timezone", "Asia/Shanghai")) if ZoneInfo else dt.timezone.utc)
+                            timestamp = timestamp.replace(tzinfo=report_timezone(config.get("timezone", "Asia/Shanghai")))
                     except (KeyError, ValueError, TypeError):
                         continue
                     rows.append((timestamp, row))

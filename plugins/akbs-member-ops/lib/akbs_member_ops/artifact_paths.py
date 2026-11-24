@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import shutil
+import stat
 import sys
 import uuid
 from dataclasses import dataclass
@@ -150,6 +151,24 @@ def _absolute_without_following(path: Path) -> Path:
     return Path(os.path.abspath(path.expanduser()))
 
 
+def _is_artifact_link(path: Path) -> bool:
+    if os.name == "nt":
+        attributes = path.lstat().st_file_attributes
+        return bool(attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+    return path.is_symlink()
+
+
+def _artifact_owner(path: Path) -> dict[str, int | list[int]]:
+    if os.name != "nt":
+        return {"uid": os.getuid()}
+    # Windows st_uid does not identify an owner. Bind the marker to the
+    # exact directory created by this run, in addition to its token and path.
+    identity = path.stat(follow_symlinks=False)
+    if not identity.st_ino:
+        raise RuntimeError(f"无法识别实际产物目录，拒绝接管或清理: {path}")
+    return {"windows_directory_id": [identity.st_dev, identity.st_ino]}
+
+
 @dataclass
 class OwnedArtifactDirectory:
     path: Path
@@ -165,25 +184,33 @@ class OwnedArtifactDirectory:
     @classmethod
     def create(cls, path: Path, *, purpose: str) -> OwnedArtifactDirectory:
         raw = _absolute_without_following(path)
-        if raw.exists() or raw.is_symlink():
+        if os.path.lexists(raw):
             raise RuntimeError(f"{purpose} 已存在，拒绝接管或清理: {raw}")
         canonical = require_safe_artifact_path(raw, purpose=purpose)
-        raw.mkdir(parents=True, mode=0o700)
         token = uuid.uuid4().hex
         owned = cls(raw, canonical, token, purpose)
-        payload = {
-            "schema": OWNED_ARTIFACT_SCHEMA,
-            "token": token,
-            "path": str(canonical),
-            "purpose": purpose,
-            "uid": os.getuid(),
-        }
+        raw.mkdir(parents=True, mode=0o700)
+        created_marker = None
         try:
+            payload = {
+                "schema": OWNED_ARTIFACT_SCHEMA,
+                "token": token,
+                "path": str(canonical),
+                "purpose": purpose,
+                **_artifact_owner(raw),
+            }
             with owned.marker.open("x", encoding="utf-8") as stream:
+                created_marker = owned.marker.lstat()
                 json.dump(payload, stream, sort_keys=True)
                 stream.write("\n")
             owned.marker.chmod(0o600)
         except BaseException:
+            if created_marker is not None:
+                try:
+                    if os.path.samestat(created_marker, owned.marker.lstat()):
+                        owned.marker.unlink()
+                except OSError:
+                    pass
             try:
                 raw.rmdir()
             except OSError:
@@ -194,20 +221,25 @@ class OwnedArtifactDirectory:
     @classmethod
     def load(cls, path: Path, *, token: str, purpose: str) -> OwnedArtifactDirectory:
         raw = _absolute_without_following(path)
-        if not raw.exists() and not raw.is_symlink():
+        if not os.path.lexists(raw):
             return cls(raw, raw, token, purpose, committed=True)
-        if raw.is_symlink() or not raw.is_dir():
+        if _is_artifact_link(raw) or not raw.is_dir():
             raise RuntimeError(f"{purpose} 所有权路径不是实际目录，拒绝清理: {raw}")
         canonical = require_safe_artifact_path(raw, purpose=purpose)
         marker = raw / OWNED_ARTIFACT_MARKER
-        if marker.is_symlink() or not marker.is_file():
+        if not os.path.lexists(marker) or _is_artifact_link(marker) or not marker.is_file():
             raise RuntimeError(f"{purpose} 缺少有效所有权标记，拒绝清理: {raw}")
         payload = json.loads(marker.read_text(encoding="utf-8"))
         if not isinstance(payload, dict) or payload.get("schema") != OWNED_ARTIFACT_SCHEMA:
             raise RuntimeError(f"{purpose} 所有权标记 schema 无效，拒绝清理: {raw}")
         if payload.get("token") != token:
             raise RuntimeError(f"{purpose} 所有权 token 不匹配，拒绝清理: {raw}")
-        if payload.get("uid") != os.getuid() or raw.stat().st_uid != os.getuid() or marker.stat().st_uid != os.getuid():
+        expected_owner = _artifact_owner(raw)
+        if any(payload.get(key) != value for key, value in expected_owner.items()):
+            raise RuntimeError(f"{purpose} 产物目录所有权不匹配，拒绝清理: {raw}")
+        if "uid" in expected_owner and (
+            raw.stat().st_uid != expected_owner["uid"] or marker.stat().st_uid != expected_owner["uid"]
+        ):
             raise RuntimeError(f"{purpose} 所有权 uid 不匹配，拒绝清理: {raw}")
         if Path(str(payload.get("path"))).resolve() != canonical:
             raise RuntimeError(f"{purpose} canonical path 已变化，拒绝清理: {raw}")

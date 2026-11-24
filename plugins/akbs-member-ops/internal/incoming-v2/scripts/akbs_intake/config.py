@@ -3,14 +3,11 @@ from __future__ import annotations
 import datetime as dt
 import os
 import sys
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-try:
-    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-except ImportError:  # pragma: no cover
-    ZoneInfo = None
-    ZoneInfoNotFoundError = KeyError
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[4]
@@ -29,7 +26,6 @@ from akbs_member_ops.member_config import (
     parse_toml_scalar,
 )
 from akbs_member_ops.member.profile import MemberProfileError, load_member_profile
-from akbs_intake.diagnostics import warn_local_input
 
 INCOMING_SCHEMA_VERSION = "2"
 ENV_PREFIXES = ("CODEX_REPORT_", "CODEX_WORK_REPORT_")
@@ -290,18 +286,30 @@ def enforce_mode_allowed(config: dict[str, str], report_type: str) -> None:
         raise SystemExit(f"profile {profile} 不允许执行 {report_type}，允许类型: {', '.join(sorted(modes))}")
 
 
+@lru_cache(maxsize=1)
+def _bundled_shanghai_timezone() -> ZoneInfo:
+    with Path(__file__).with_name("asia-shanghai-tzif.bin").open("rb") as stream:
+        return ZoneInfo.from_file(stream, key="Asia/Shanghai")
+
+
+def report_timezone(timezone_name: str) -> dt.tzinfo:
+    try:
+        return ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        if timezone_name == "Asia/Shanghai":
+            return _bundled_shanghai_timezone()
+        if timezone_name in {"UTC", "Etc/UTC"}:
+            return dt.timezone.utc
+        raise SystemExit(
+            f"无法加载配置的报表时区 {timezone_name!r}。请核对 IANA 时区名称，"
+            "并在运行插件的 Python 环境安装 tzdata（python -m pip install tzdata）。"
+        ) from None
+    except (TypeError, ValueError):
+        raise SystemExit(f"报表时区无效 {timezone_name!r}，请使用有效的 IANA 时区名称。") from None
+
+
 def local_now(config: dict[str, str]) -> dt.datetime:
-    tz_name = config.get("timezone", "Asia/Shanghai")
-    if ZoneInfo is not None:
-        try:
-            return dt.datetime.now(ZoneInfo(tz_name))
-        except (ZoneInfoNotFoundError, TypeError, ValueError):
-            warn_local_input("timezone_invalid", "config.timezone")
-            try:
-                return dt.datetime.now(ZoneInfo(CONFIG_DEFAULTS["timezone"]))
-            except (ZoneInfoNotFoundError, TypeError, ValueError):
-                warn_local_input("timezone_default_unavailable", "config.default_timezone")
-    return dt.datetime.now()
+    return dt.datetime.now(report_timezone(config.get("timezone", CONFIG_DEFAULTS["timezone"])))
 
 
 def parse_date_arg(value: str | None, config: dict[str, str]) -> dt.date:

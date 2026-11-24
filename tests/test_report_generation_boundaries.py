@@ -16,7 +16,7 @@ for path in (MEMBER / "lib", MEMBER / "internal/incoming-v2/scripts"):
         sys.path.insert(0, str(path))
 
 import akbs_member_intake as intake  # noqa: E402
-from akbs_intake import submit as submit_module  # noqa: E402
+from akbs_intake import report_sessions, submit as submit_module  # noqa: E402
 from akbs_intake.io_utils import write_json  # noqa: E402
 from akbs_intake.report_sessions import (  # noqa: E402
     SessionWork, project_customer_contexts_from_text, report_project_customers_from_clues,
@@ -28,6 +28,32 @@ from akbs_intake.reports.common import (  # noqa: E402
 from akbs_intake.reports.identity import infer_report_project  # noqa: E402
 from akbs_intake.session_privacy import configure_report_session_consent, sanitize_work_summary  # noqa: E402
 from akbs_member_ops.http_client import HttpClientFailure, failure_result  # noqa: E402
+
+
+def test_report_timezone_uses_packaged_shanghai_rules_when_host_data_is_absent(tmp_path, monkeypatch):
+    from importlib import import_module
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    report_config = import_module("akbs_intake.config")
+
+    class MissingHostTimezone:
+        from_file = staticmethod(ZoneInfo.from_file)
+
+        def __new__(cls, key):
+            raise ZoneInfoNotFoundError(key)
+
+    monkeypatch.setattr(report_config, "ZoneInfo", MissingHostTimezone)
+    config = {"timezone": "Asia/Shanghai"}
+    assert report_config.local_now(config).utcoffset() == dt.timedelta(hours=8)
+    assert report_sessions.local_date("2026-11-23T16:20:00Z", config) == dt.date(2026, 11, 24)
+    # The fallback uses existing tzdb rules, including historical daylight saving.
+    assert report_sessions.local_date("1990-07-01T15:05:00Z", config) == dt.date(1990, 7, 2)
+    session = tmp_path / "sessions/2026/11/24/example.jsonl"
+    session.parent.mkdir(parents=True)
+    session.touch()
+    assert report_sessions.session_files(tmp_path, {dt.date(2026, 11, 24)}) == [session]
+    with pytest.raises(SystemExit, match=r"Europe/Berlin.*tzdata"):
+        report_config.local_now({"timezone": "Europe/Berlin"})
 
 
 GIT_STATUS = "On branch TVI2343R_CRB2\nYour branch is up to date with origin/TVI2343R_CRB2."
@@ -98,7 +124,7 @@ def report_config(tmp_path: Path) -> dict[str, str]:
 
 @pytest.fixture
 def provenance(monkeypatch: pytest.MonkeyPatch) -> None:
-    version = json.loads((MEMBER / ".codex-plugin/plugin.json").read_text())["version"]
+    version = json.loads((MEMBER / ".codex-plugin/plugin.json").read_text(encoding="utf-8"))["version"]
     monkeypatch.setattr(intake, "plugin_install_metadata", lambda: {
         "plugin_name": "akbs-member-ops", "plugin_version": version,
     })

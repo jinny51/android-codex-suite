@@ -1,6 +1,6 @@
 # AKBS Member Ops
 
-Standalone AKBS member plugin, version 2.3.30. It owns member setup, knowledge
+Standalone AKBS member plugin, version 2.3.31. It owns member setup, knowledge
 search and merge review, personal daily/weekly reports, independent document
 submission, and Android change package handling without depending on the engineering or optional practices
 plugins at runtime.
@@ -27,6 +27,23 @@ App knowledge uses `akbs-knowledge-search` for published capabilities, exact Lin
 versions and explicit actual-use feedback. Source stays in its existing personal or
 SysPros repository. The existing curation pass reads linked Git changes; members do
 not submit an additional App package or register App capabilities themselves.
+
+## Windows and WSL
+
+Use the member plugin from the Codex backend where it is installed. Native
+Windows uses its own Codex executable, including the native binary behind an
+official npm installation. On WSL, use the Linux Codex backend.
+
+Reports use the configured IANA timezone. The plugin includes the default
+`Asia/Shanghai` zone for Python environments without a timezone database.
+For another timezone, use host IANA data or install `tzdata` in the Python
+environment that runs the plugin. A missing configured timezone produces a
+clear error before report generation.
+
+The fallback `asia-shanghai-tzif.bin` is the compiled `Asia/Shanghai` file from
+Ubuntu `tzdata 2026e-0ubuntu0.22.04.1`, derived from the
+[IANA public-domain tzdb 2026e Asia source](https://data.iana.org/time-zones/tzdb-2026e/asia).
+SHA-256 `64ffc2e43a94435a043c040d1d3af7e92d031adc78e7737af1861baa4eeef3e6`.
 
 ## Configuration and artifacts
 

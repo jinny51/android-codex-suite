@@ -41,7 +41,7 @@ jinny-android-practices
 - `android-change-workflow` 是 Android 工程总流程；当前用户任务负责集成和最终答复。
 - 强制变更策略是 `android-engineering-ops` 内部共享合同和校验模块，由 workflow 在修改前应用、capture 在打包时校验；成员不需要单独选择或调用一个 policy Skill。
 - `akbs-patch-submit` 面向所有受支持的 Android change domain，不把补丁业务限定为 Framework。
-- `android-source-access` 自动识别 WSL 或 macOS，并选择插件内对应适配器；成员不再按操作系统安装两个入口插件。
+- `android-source-access` 自动识别原生 Windows、WSL 或 macOS，并使用同一插件内的适配器。原生 Windows 使用已映射的 SMB 共享和可用的 OpenSSH 连接来登记项目。
 - 日报、周报、知识检索和补丁提交属于 AKBS 成员能力；源码修改、构建和本地材料采集属于 Android 工程能力。
 - 独立技术文档由 `akbs-doc-submit` 直接提交真实原件给 AKBS，不依赖 Git、LincHub 或工程插件。Patch/App 配套 README 不因另存成文件就变成独立 Doc；Doc 经管理端审校沉淀后，通过现有知识搜索查看方法、限制及原文，不另建搜索入口。
 - 当前产品源码补丁材料默认由远端通道一步生成最新快照并原子打包，避免人工衔接命令导致快照仅因等待而过期；独立 App 的本地开发不套用这条补丁采集路径。
@@ -103,6 +103,8 @@ verifier、researcher 或 reviewer。每种角色包含可复用的任务边界�
   不会把所有角色机械地创建一遍。
 
 ## 安装与升级
+
+在实际运行 Codex 的宿主内安装和更新。原生 Windows 使用 Windows Codex，WSL 使用其 Linux Codex。两端使用同一份 marketplace 和同两个插件，配置与缓存按各自的 Codex 后端保存。
 
 首次安装 marketplace 和两个必需插件：
 
@@ -181,5 +183,4 @@ plugins/<plugin>/skills/<skill>/agents/openai.yaml
 docs/skills/<plugin>/<skill>/README.md
 ```
 
-Runtime Skill 目录不放 README；GitHub 说明统一放在 `docs/skills/`。发布前还要在真实 WSL、
-macOS、构建服务器和设备上完成相应 Pilot，不能用 fake fixture 替代外部事实。
+Runtime Skill 目录不放 README；GitHub 说明统一放在 `docs/skills/`。涉及 Windows 或 WSL 兼容的发布，要在实际 Windows 和 WSL Codex 后端分别验收同一候选的冷装、旧版升级及受影响的工作流。macOS、构建服务器和设备按本次受影响范围验收。

@@ -991,39 +991,34 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
                 self.write_manifest(source)
                 self.write_manifest(old_cache)
                 inventory = {"installed": [self.target_row(source)]}
-                commands: list[list[str]] = []
-
-                def simulate(command: list[str], *, timeout: float | None = None) -> subprocess.CompletedProcess[str]:
-                    commands.append(command)
-                    self.assertEqual(timeout, version_gate._plugin_update.UPDATE_COMMAND_TIMEOUT)
-                    if command == ["codex", "plugin", "marketplace", "upgrade", "android-codex-suite", "--json"]:
-                        self.write_manifest(source, version="2.0.1")
-                    elif command == ["codex", "plugin", "add", "akbs-member-ops@android-codex-suite", "--json"]:
-                        self.write_manifest(new_cache, version="2.0.1")
-                        inventory["installed"] = [self.target_row(source, version="2.0.1")]
-                        if outcome == "no-active":
-                            inventory["installed"] = []
-                        elif outcome == "content-mismatch":
-                            (new_cache / "unexpected.txt").write_text("different content", encoding="utf-8")
-                    else:
-                        self.fail(f"unexpected command: {command}")
-                    return subprocess.CompletedProcess(command, 0, stdout="updated", stderr="")
+                def simulate(plugin_name, *, run_command, verify_install, codex_home, expected_version):
+                    self.assertEqual(plugin_name, "akbs-member-ops")
+                    self.assertEqual(run_command, version_gate.run)
+                    self.assertEqual(codex_home, home)
+                    self.assertEqual(expected_version, "2.0.1")
+                    self.write_manifest(source, version="2.0.1")
+                    self.write_manifest(new_cache, version="2.0.1")
+                    inventory["installed"] = [self.target_row(source, version="2.0.1")]
+                    if outcome == "no-active":
+                        inventory["installed"] = []
+                    elif outcome == "content-mismatch":
+                        (new_cache / "unexpected.txt").write_text("different content", encoding="utf-8")
+                    try:
+                        evidence = version_gate._plugin_update._verified_evidence(verify_install, expected_version)
+                    except version_gate._plugin_update.UpdateError as exc:
+                        return {"status": "FAIL", "reason": exc.reason, "restart_required": False}
+                    return {**evidence, "status": "PASS", "restart_required": True}
 
                 original_family = version_gate.installed_plugin_family_status
                 with mock.patch.object(version_gate, "PLUGIN_ROOT", old_cache), mock.patch.object(
-                    version_gate, "run", side_effect=simulate
+                    version_gate._plugin_update, "update_plugin", side_effect=simulate
                 ), mock.patch.object(
                     version_gate, "_app_server_installed_payload", side_effect=lambda _cwd: inventory.copy()
                 ), mock.patch.object(
                     version_gate, "installed_plugin_family_status", wraps=original_family
                 ) as family:
-                    with mock.patch.object(
-                        version_gate, "_active_target_binding", wraps=version_gate._active_target_binding
-                    ) as binding:
-                        result = version_gate.auto_update_packaged_plugin("akbs-member-ops")
-                    self.assertEqual(binding.call_count, 1 if outcome == "no-active" else 2)
+                    result = version_gate.auto_update_packaged_plugin("akbs-member-ops", expected_version="2.0.1")
                     self.assertEqual(version_gate.PLUGIN_ROOT, old_cache)
-                self.assertEqual(len(commands), 2)
                 self.assertEqual(family.call_count, 1 if outcome == "no-active" else 2)
                 self.assertEqual(result["status"], "PASS" if outcome == "valid" else "FAIL")
                 self.assertEqual(result["restart_required"], outcome == "valid")
@@ -1032,8 +1027,8 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
                     self.assertEqual(Path(result["installed_plugin_path"]), new_cache)
                     self.assertTrue(result["installed_plugin_binding"]["valid"])
                     self.assertEqual(result["install_family"]["status"], "PASS")
-                if outcome == "content-mismatch":
-                    self.assertEqual(result["install_family"]["status"], "ACTIVE_IDENTITY_MISMATCH")
+                else:
+                    self.assertEqual(result["reason"], "install_verification_failed")
 
     def test_packaged_freshness_rejects_an_update_that_did_not_reach_remote_version(self) -> None:
         metadata = {"plugin_name": "akbs-member-ops", "plugin_version": "2.0.0"}
@@ -1047,7 +1042,7 @@ class InstalledPluginAuthorityTest(unittest.TestCase):
             return_value={"status": "PASS", "installed_plugin_version": "2.0.1", "restart_required": True},
         ) as update:
             result = version_gate.packaged_plugin_freshness(metadata, fetch=True, require=True)
-        update.assert_called_once_with("akbs-member-ops")
+        update.assert_called_once_with("akbs-member-ops", expected_version="2.0.2")
         self.assertEqual(result["status"], "STALE")
         self.assertTrue(result["blocking"])
         self.assertEqual(result["auto_update"]["reason"], "installed_version_mismatch")

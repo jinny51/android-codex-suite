@@ -20,15 +20,22 @@ LIB = PLUGIN / "lib"
 if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
+import codex_plugin_update as updater
 from android_engineering_ops import install_family, task_start  # noqa: E402
 
 
 CURRENT = "2.0.3"
 NEXT = "2.0.10"
 TASK = "engineering-task-a"
-UPGRADE = ["codex", "plugin", "marketplace", "upgrade", "android-codex-suite", "--json"]
+MARKET = "android-codex-suite"
+OLD_REF = "a" * 40
+NEW_REF = "b" * 40
+CATALOG = ["codex", "plugin", "marketplace", "list", "--json"]
+REMOVE = ["codex", "plugin", "marketplace", "remove", MARKET, "--json"]
+PIN = ["codex", "plugin", "marketplace", "add", updater.OFFICIAL_REPOSITORY, "--ref", NEW_REF, "--json"]
+RESTORE = [*PIN[:-2], OLD_REF, "--json"]
 ADD = ["codex", "plugin", "add", "android-engineering-ops@android-codex-suite", "--json"]
-LIST = ["codex", "plugin", "list", "--json"]
+LIST = ["codex", "plugin", "list", "--marketplace", MARKET, "--json"]
 
 
 class FakeInstallation:
@@ -38,6 +45,8 @@ class FakeInstallation:
         self.home = home
         self.source = home / ".tmp/marketplaces/android-codex-suite/plugins/android-engineering-ops"
         self.cache = home / "plugins/cache/android-codex-suite/android-engineering-ops"
+        (self.source.parents[1] / ".git").mkdir(parents=True)
+        self.ref = OLD_REF
         self.inventory: dict[str, Any] = {"installed": []}
         self.remote: dict[str, Any] = self.manifest(CURRENT)
         self.fetches = 0
@@ -50,6 +59,7 @@ class FakeInstallation:
         monkeypatch.setattr(task_start, "_read_active_inventory", self.read_inventory)
         monkeypatch.setattr(task_start, "fetch_remote_manifest", self.fetch)
         monkeypatch.setattr(task_start, "run_codex", self.run)
+        monkeypatch.setattr(updater, "_stage_release", self.stage)
         monkeypatch.setattr(socket, "create_connection", self.unexpected_network)
 
     @staticmethod
@@ -93,26 +103,44 @@ class FakeInstallation:
         self.fetches += 1
         return copy.deepcopy(self.remote)
 
-    def run(self, command: list[str]) -> subprocess.CompletedProcess[str]:
+    def stage(self, _run, _mirror, _source, _repo, versions):
+        return OLD_REF, NEW_REF, {name: str(self.remote["version"]) for name in versions}
+
+    def run(self, command: list[str], **_options: Any) -> subprocess.CompletedProcess[str]:
         self.commands.append(list(command))
-        assert command in (UPGRADE, ADD, LIST), f"unexpected Codex command: {command}"
+        if command == CATALOG:
+            payload = {"marketplaces": [{
+                "name": MARKET, "root": str(self.source.parents[1]),
+                "marketplaceSource": {"sourceType": "git", "source": updater.OFFICIAL_REPOSITORY},
+            }] if self.ref else []}
+            return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
         if command == LIST:
             return subprocess.CompletedProcess(command, 0, json.dumps(self.inventory), "")
         if command == self.command_failure:
+            self.command_failure = None
             return subprocess.CompletedProcess(command, 1, "", "simulated plugin command failure")
-        if command == ADD and self.update_mode != "no_effect":
-            runtime = self.install(str(self.remote["version"]))
-            if self.update_mode == "hash_mismatch":
-                (runtime / "README.md").write_text("stale cached content\n", encoding="utf-8")
-            elif self.update_mode == "inactive":
-                self.inventory["installed"][0]["enabled"] = False
-            elif self.update_mode == "wrong_marketplace":
-                self.inventory["installed"][0]["marketplaceName"] = "untrusted-marketplace"
+        if command == REMOVE:
+            self.ref = ""
+        elif command in (PIN, RESTORE):
+            self.ref = command[-2]
+        elif command == ADD:
+            if self.ref == OLD_REF:
+                self.install(CURRENT)
+            elif self.update_mode != "no_effect":
+                runtime = self.install(str(self.remote["version"]))
+                if self.update_mode == "hash_mismatch":
+                    (runtime / "README.md").write_text("stale cached content\n", encoding="utf-8")
+                elif self.update_mode == "inactive":
+                    self.inventory["installed"][0]["enabled"] = False
+                elif self.update_mode == "wrong_marketplace":
+                    self.inventory["installed"][0]["marketplaceName"] = "untrusted-marketplace"
+        else:
+            assert command[-2] == "--plugin-root", f"unexpected command: {command}"
         return subprocess.CompletedProcess(command, 0, "{}", "")
 
     @property
     def mutations(self) -> list[list[str]]:
-        return [command for command in self.commands if command != LIST]
+        return [command for command in self.commands if command in (REMOVE, PIN, RESTORE, ADD)]
 
     def start(self, task_id: str = TASK, *, retry: bool = False, root: Path | None = None) -> dict[str, Any]:
         return task_start.ensure_task_started(
@@ -165,7 +193,7 @@ def test_outdated_plugin_updates_only_engineering_then_requires_restart(installe
     installed.remote = installed.manifest(NEXT)
 
     assert_result(installed.start(), "UPDATED_RESTART_REQUIRED")
-    assert installed.mutations == [UPGRADE, ADD]
+    assert installed.mutations == [REMOVE, PIN, ADD]
     assert installed.inventory["installed"][0]["version"] == NEXT
     assert json.loads(installed.state_path().read_text())["status"] == "UPDATED_RESTART_REQUIRED"
     # The old process is no longer bound to the active installation. It may
@@ -175,7 +203,7 @@ def test_outdated_plugin_updates_only_engineering_then_requires_restart(installe
         assert old_runtime["blocking"] is True
         assert old_runtime["status"] in {"UPDATED_RESTART_REQUIRED", "INSTALL_FAMILY_INVALID"}
     assert installed.fetches == 1
-    assert installed.mutations == [UPGRADE, ADD]
+    assert installed.mutations == [REMOVE, PIN, ADD]
 
 
 def test_restarted_updated_runtime_can_recheck_the_same_task(installed: FakeInstallation) -> None:
@@ -185,7 +213,7 @@ def test_restarted_updated_runtime_can_recheck_the_same_task(installed: FakeInst
     assert_result(installed.start(root=installed.cache / NEXT), "PASS")
     assert_result(installed.start(root=installed.cache / NEXT), "PASS", reused=True)
     assert installed.fetches == 2
-    assert installed.mutations == [UPGRADE, ADD]
+    assert installed.mutations == [REMOVE, PIN, ADD]
     assert installed.start()["blocking"] is True
     assert installed.fetches == 2
 
@@ -249,7 +277,7 @@ def test_invalid_remote_manifest_blocks_before_plugin_commands(
     assert installed.mutations == []
 
 
-@pytest.mark.parametrize("command", [UPGRADE, ADD], ids=["marketplace-upgrade", "plugin-add"])
+@pytest.mark.parametrize("command", [PIN, ADD], ids=["marketplace-pin", "plugin-add"])
 def test_upgrade_command_failure_blocks_and_retry_is_explicit(
     installed: FakeInstallation, command: list[str],
 ) -> None:
@@ -257,13 +285,14 @@ def test_upgrade_command_failure_blocks_and_retry_is_explicit(
     installed.command_failure = command
 
     assert_result(installed.start(), "UPDATE_FAILED")
-    expected = [UPGRADE] if command == UPGRADE else [UPGRADE, ADD]
+    expected = ([REMOVE, PIN, RESTORE, ADD] if command == PIN else
+                [REMOVE, PIN, ADD, REMOVE, RESTORE, ADD])
     assert installed.mutations == expected
     installed.command_failure = None
     assert_result(installed.start(), "UPDATE_FAILED", reused=True)
     assert installed.mutations == expected
     assert_result(installed.start(retry=True), "UPDATED_RESTART_REQUIRED")
-    assert installed.mutations == expected + [UPGRADE, ADD]
+    assert installed.mutations == expected + [REMOVE, PIN, ADD]
 
 
 def test_plugin_command_timeout_blocks_without_dispatching_add(
@@ -271,13 +300,14 @@ def test_plugin_command_timeout_blocks_without_dispatching_add(
 ) -> None:
     installed.remote = installed.manifest(NEXT)
 
-    def timed_out(command: list[str]) -> subprocess.CompletedProcess[str]:
+    def timed_out(command: list[str], **_options: Any) -> subprocess.CompletedProcess[str]:
         installed.commands.append(command)
         raise subprocess.TimeoutExpired(command, 30)
 
     monkeypatch.setattr(task_start, "run_codex", timed_out)
     assert_result(installed.start(), "UPDATE_FAILED")
-    assert installed.mutations == [UPGRADE]
+    assert installed.mutations == []
+    assert installed.commands == [CATALOG]
 
 
 @pytest.mark.parametrize("update_mode", ["no_effect", "hash_mismatch", "inactive", "wrong_marketplace"])
@@ -288,7 +318,8 @@ def test_successful_commands_cannot_replace_active_identity_and_content_verifica
     installed.update_mode = update_mode
 
     assert_result(installed.start(), "UPDATE_FAILED")
-    assert installed.mutations == [UPGRADE, ADD]
+    assert installed.mutations == [REMOVE, PIN, ADD, REMOVE, RESTORE, ADD]
+    assert installed.inventory["installed"][0]["version"] == CURRENT
     assert json.loads(installed.state_path().read_text())["status"] == "UPDATE_FAILED"
 
 
@@ -363,10 +394,10 @@ def test_concurrent_update_returns_busy_without_reentering_install(
         assert_result(first.result(timeout=10), "UPDATED_RESTART_REQUIRED")
 
     assert installed.fetches == 1
-    assert installed.mutations == [UPGRADE, ADD]
+    assert installed.mutations == [REMOVE, PIN, ADD]
     assert installed.start(retry=True)["blocking"] is True
     assert installed.fetches == 1
-    assert installed.mutations == [UPGRADE, ADD]
+    assert installed.mutations == [REMOVE, PIN, ADD]
 
 
 def test_other_task_cannot_update_while_a_startup_check_holds_the_shared_lock(

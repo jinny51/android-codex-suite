@@ -13,15 +13,16 @@ import math
 import os
 import platform
 import re
-import shlex
 import shutil
 import subprocess
 import socket
 import ssl
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -213,59 +214,125 @@ def _output(value: Any) -> str:
     return str(value or "").strip()[:MAX_COMMAND_OUTPUT_CHARS]
 
 
-def update_plugin(
-    plugin_name: str,
-    *,
-    run_command: Callable[..., Any],
-    verify_install: Callable[[], Mapping[str, Any]],
-    expected_version: str | None = None,
-) -> dict[str, Any]:
-    """Refresh the official marketplace, install one plugin, then verify it.
+OFFICIAL_REPOSITORY = "https://github.com/jinny51/android-codex-suite.git"
+EXACT_RELEASE = re.compile(r"[0-9a-f]{40}")
+PLUGIN_CACHE_RELATIVE = Path("plugins/cache") / MARKETPLACE
 
-The verifier must inspect fresh active inventory and the exact installed cache,
-returning installed_plugin_active/version/path only after local identity and
-content checks pass. A command returning zero is never installation evidence.
-"""
-    result: dict[str, Any] = {"attempted": False, "status": "FAIL", "restart_required": False}
-    if plugin_name not in UPDATABLE_PLUGINS:
-        return {**result, "reason": "unsupported_plugin", "message": "Unsupported plugin update target."}
-    if expected_version is not None:
+
+class UpdateError(RuntimeError):
+    def __init__(self, reason: str, message: str):
+        super().__init__(message)
+        self.reason = reason
+
+
+def _command(run_command: Callable[..., Any], stage: str, *command: str, env: dict[str, str] | None = None) -> str:
+    options: dict[str, Any] = {"timeout": UPDATE_COMMAND_TIMEOUT}
+    if env is not None:
+        options["env"] = env
+    try:
+        result = run_command(list(command), **options)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise UpdateError(f"{stage}_command_failed", str(exc)) from exc
+    if result.returncode != 0:
+        raise UpdateError(f"{stage}_command_failed", _output(result.stderr) or _output(result.stdout) or stage)
+    output = result.stdout
+    return output.decode("utf-8") if isinstance(output, bytes) else output
+
+
+def _catalog(run_command: Callable[..., Any]) -> Mapping[str, Any] | None:
+    rows = json.loads(_command(run_command, "inventory", "codex", "plugin", "marketplace", "list", "--json"))["marketplaces"]
+    matches = [row for row in rows if row.get("name") == MARKETPLACE]
+    if len(matches) > 1:
+        raise UpdateError("ambiguous_marketplace", "The official marketplace is registered more than once.")
+    return matches[0] if matches else None
+
+
+def _installed(run_command: Callable[..., Any]) -> dict[str, str]:
+    rows = json.loads(_command(run_command, "inventory", "codex", "plugin", "list", "--marketplace", MARKETPLACE, "--json"))["installed"]
+    result: dict[str, str] = {}
+    for row in rows:
+        if row.get("installed") is not True or row.get("enabled") is not True:
+            continue
+        name, _, market = str(row.get("pluginId", "")).partition("@")
+        if market != MARKETPLACE:
+            continue
+        if name in result or not re.fullmatch(r"[a-z0-9][a-z0-9.-]*", name):
+            raise UpdateError("invalid_inventory", "The marketplace has ambiguous enabled plugins.")
+        version = row.get("version")
+        version_parts(version)
+        result[name] = version
+    return result
+
+
+@contextmanager
+def _update_lock(home: Path):
+    # Both copies of this module must serialize the same Codex back end.
+    path = home / ".akbs-marketplace-update.lock"
+    if path.is_symlink():
+        raise UpdateError("invalid_update_lock", "The marketplace update lock is not a regular file.")
+    fd = os.open(path, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    with os.fdopen(fd, "r+b") as stream:
         try:
-            version_parts(expected_version)
-        except ValueError as exc:
-            return {**result, "reason": "invalid_expected_version", "message": str(exc)}
-    upgrade = ["codex", "plugin", "marketplace", "upgrade", MARKETPLACE, "--json"]
-    install = ["codex", "plugin", "add", f"{plugin_name}@{MARKETPLACE}", "--json"]
-    result.update({"attempted": True, "upgrade_command": shlex.join(upgrade)})
-    for stage, command in (("marketplace", upgrade), ("install", install)):
-        if stage == "install":
-            result["install_command"] = shlex.join(install)
-        try:
-            completed = run_command(command, timeout=UPDATE_COMMAND_TIMEOUT)
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            result.update(
-                {"reason": f"{stage}_command_failed", "message": str(exc),
-                 "stdout": _output(getattr(exc, "stdout", "")),
-                 "stderr": _output(getattr(exc, "stderr", ""))}
-            )
-            return result
-        if completed.returncode != 0:
-            result.update(
-                {"reason": f"{stage}_command_failed", "stdout": _output(completed.stdout),
-                 "stderr": _output(completed.stderr)}
-            )
-            return result
-        result[f"{stage}_stdout"] = _output(completed.stdout)
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            raise UpdateError("update_busy", "Another AKBS plugin update is in progress.") from exc
+        yield
+
+
+def _mirror_transport(repo: str, mirror: Path) -> dict[str, str]:
+    env = dict(os.environ)
+    index = int(env.get("GIT_CONFIG_COUNT", "0"))
+    if index < 0:
+        raise ValueError("invalid Git configuration count")
+    env.update({
+        "GIT_CONFIG_COUNT": str(index + 1),
+        f"GIT_CONFIG_KEY_{index}": f"url.{mirror.as_uri()}.insteadOf",
+        f"GIT_CONFIG_VALUE_{index}": repo,
+        "GIT_ALLOW_PROTOCOL": "file",
+        "GIT_TERMINAL_PROMPT": "0",
+    })
+    return env
+
+
+def _pin_catalog(run_command: Callable[..., Any], repo: str, ref: str, env: dict[str, str]) -> None:
+    if _catalog(run_command) is not None:
+        _command(run_command, "marketplace_remove", "codex", "plugin", "marketplace", "remove", MARKETPLACE, "--json", env=env)
+    _command(run_command, "marketplace_add", "codex", "plugin", "marketplace", "add", repo, "--ref", ref, "--json", env=env)
+
+
+def _install(run_command: Callable[..., Any], names: list[str], env: dict[str, str]) -> None:
+    for name in names:
+        _command(run_command, "install", "codex", "plugin", "add", f"{name}@{MARKETPLACE}", "--json", env=env)
+
+
+def _verify_enabled(run_command: Callable[..., Any], home: Path, versions: dict[str, str], *, skip: str = "") -> None:
+    if _installed(run_command) != versions:
+        raise UpdateError("installed_version_mismatch", "Codex did not select all intended installed versions.")
+    for name in sorted((versions.keys() & UPDATABLE_PLUGINS) - {skip}):
+        root = home / PLUGIN_CACHE_RELATIVE / name / versions[name]
+        if name == "akbs-member-ops":
+            args = [str(root / "skills/akbs-member-setup/scripts/akbs_member_setup.py"), "preflight-install-family"]
+        else:
+            args = [str(root / "lib/android_engineering_ops/install_family.py"), "--plugin-root", str(root)]
+        _command(run_command, "install_verification", sys.executable, "-B", *args)
+
+
+def _verified_evidence(
+    verify_install: Callable[[], Mapping[str, Any]], version: str,
+) -> dict[str, Any]:
     try:
         installation = verify_install()
     except Exception as exc:
-        return {**result, "reason": "install_verification_failed", "message": str(exc)}
+        raise UpdateError("install_verification_failed", str(exc)) from exc
     if not isinstance(installation, Mapping):
-        return {**result, "reason": "install_verification_failed", "message": "Installation verifier returned no metadata."}
-    # Copy installation evidence without allowing it to overwrite update status.
-    result.update({key: value for key, value in installation.items() if key.startswith("installed_plugin_")})
-    if isinstance(installation.get("install_family"), Mapping):
-        result["install_family"] = dict(installation["install_family"])
+        raise UpdateError("install_verification_failed", "Installation verifier returned no metadata.")
     family = installation.get("install_family")
     if (
         installation.get("blocking")
@@ -276,18 +343,115 @@ content checks pass. A command returning zero is never installation evidence.
         or installation.get("installed_plugin_ambiguous")
         or not installation.get("installed_plugin_path")
     ):
-        return {**result, "reason": "install_verification_failed", "message": str(installation.get("message") or "Updated plugin is not a verified active installation.")}
-    version = installation.get("installed_plugin_version")
+        raise UpdateError("install_verification_failed", str(installation.get("message") or "Plugin is not a verified active installation."))
+    if installation.get("installed_plugin_version") != version:
+        raise UpdateError("installed_version_mismatch", f"Verified plugin version differs from staged version {version}.")
+    evidence = {key: value for key, value in installation.items() if key.startswith("installed_plugin_")}
+    if isinstance(family, Mapping):
+        evidence["install_family"] = dict(family)
+    return evidence
+
+
+def _stage_release(
+    run_command: Callable[..., Any], mirror: Path, source: Path, repo: str, versions: dict[str, str],
+) -> tuple[str, str, dict[str, str]]:
+    _command(run_command, "stage", "git", "init", "--bare", str(mirror))
+    def git(*args: str) -> str:
+        return _command(run_command, "stage", "git", "-C", str(mirror), *args).strip()
+
+    git("fetch", "--no-tags", "--depth=1", str(source), "HEAD:refs/heads/previous")
+    git("fetch", "--no-tags", "--depth=1", repo, "refs/heads/main:refs/heads/release")
+    previous = git("rev-parse", "refs/heads/previous")
+    release = git("rev-parse", "refs/heads/release")
+    if not EXACT_RELEASE.fullmatch(previous) or not EXACT_RELEASE.fullmatch(release):
+        raise UpdateError("invalid_release_commit", "Git returned an invalid publication identity.")
+
+    target = versions.copy()
+    for name, old in versions.items():
+        path = f"plugins/{name}"
+        manifest_path = f"{path}/.codex-plugin/plugin.json"
+        manifest = json.loads(git("show", f"{previous}:{manifest_path}"))
+        if manifest.get("name") != name or manifest.get("version") != old:
+            raise UpdateError("inconsistent_previous_install", f"The current publication does not match installed {name} {old}.")
+        if git("rev-parse", f"{previous}:{path}") == git("rev-parse", f"{release}:{path}"):
+            continue
+        if name not in UPDATABLE_PLUGINS:
+            raise UpdateError("unsupported_companion_update", f"Enabled plugin {name} also changed and requires its ordinary update.")
+        manifest = json.loads(git("show", f"{release}:{manifest_path}"))
+        new = manifest.get("version")
+        if manifest.get("name") != name or compare_versions(new, old) <= 0:
+            raise UpdateError("invalid_release_version", f"The new publication of {name} lacks a newer valid version.")
+        target[name] = new
+    return previous, release, target
+
+
+def update_plugin(
+    plugin_name: str,
+    *,
+    run_command: Callable[..., Any],
+    verify_install: Callable[[], Mapping[str, Any]],
+    expected_version: str | None = None,
+    codex_home: Path | None = None,
+) -> dict[str, Any]:
+    """Stage two official snapshots before touching the installed marketplace."""
+    result: dict[str, Any] = {"attempted": False, "status": "FAIL", "restart_required": False}
+    if plugin_name not in UPDATABLE_PLUGINS:
+        return {**result, "reason": "unsupported_plugin", "message": "Unsupported plugin update target."}
+    if expected_version is not None:
+        try:
+            version_parts(expected_version)
+        except ValueError as exc:
+            return {**result, "reason": "invalid_expected_version", "message": str(exc)}
+
+    home = Path(codex_home or os.environ.get("CODEX_HOME") or Path.home() / ".codex").expanduser()
     try:
-        if not isinstance(version, str):
-            raise ValueError("updated plugin has no installed version")
-        version_parts(version)
-        if expected_version is not None and compare_versions(version, expected_version) < 0:
-            raise ValueError(f"installed plugin {version} is older than expected {expected_version}")
-    except ValueError as exc:
-        return {**result, "reason": "installed_version_mismatch", "message": str(exc)}
-    result.update(
-        {"status": "PASS", "restart_required": True,
-         "message": "Plugin files were updated and verified. Restart the task/session to load the updated Skill instructions."}
-    )
-    return result
+        with _update_lock(home):
+            current = _catalog(run_command)
+            source = current.get("marketplaceSource", {}) if current else {}
+            repo = source.get("source", "")
+            if (source.get("sourceType") != "git"
+                    or github_manifest_url(repo, plugin_name) != github_manifest_url(OFFICIAL_REPOSITORY, plugin_name)):
+                raise UpdateError("unsupported_marketplace", "Automatic updates require the official Git marketplace.")
+            old = _installed(run_command)
+            if plugin_name not in old:
+                raise UpdateError("invalid_inventory", "The requested plugin is not an enabled installation.")
+            checkout = Path(current["root"]).resolve(strict=True)
+            if not (checkout / ".git").exists():
+                raise UpdateError("unavailable_marketplace_snapshot", "The current Git marketplace snapshot is missing.")
+
+            result["attempted"] = True
+            stage = Path(tempfile.mkdtemp(prefix="akbs-plugin-release-")).resolve()
+            mirror = stage / "release.git"
+            keep_stage = False
+            try:
+                previous, release, target = _stage_release(run_command, mirror, checkout, repo, old)
+                if expected_version is not None and compare_versions(target[plugin_name], expected_version) < 0:
+                    raise UpdateError("release_not_ready", "The Git release is older than the advertised plugin version.")
+                changes = sorted(name for name in target if target[name] != old[name])
+                env = _mirror_transport(repo, mirror)
+                try:
+                    if changes:
+                        _pin_catalog(run_command, repo, release, env)
+                        _install(run_command, changes, env)
+                    _verify_enabled(run_command, home, target, skip=plugin_name)
+                    result.update(_verified_evidence(verify_install, target[plugin_name]))
+                except (Exception, KeyboardInterrupt) as update_error:
+                    if changes:
+                        try:
+                            _pin_catalog(run_command, repo, previous, env)
+                            _install(run_command, changes, env)
+                            _verify_enabled(run_command, home, old)
+                            result["rolled_back"] = True
+                        except Exception as rollback_error:
+                            keep_stage = True
+                            return {**result, "reason": "rollback_failed", "message": str(rollback_error),
+                                    "update_error": str(update_error), "previous_ref": previous, "recovery_mirror": str(mirror)}
+                    raise
+                return {**result, "status": "PASS", "restart_required": True, "plugins_updated": changes,
+                        "release_commit": release if changes else previous,
+                        "message": "Plugin files were updated and verified. Restart the task/session to load the updated Skills."}
+            finally:
+                if not keep_stage:
+                    shutil.rmtree(stage, ignore_errors=True)
+    except (Exception, KeyboardInterrupt) as exc:
+        return {**result, "reason": getattr(exc, "reason", "update_failed"), "message": str(exc)}

@@ -55,6 +55,7 @@ def run(
     check: bool = False,
     cwd: Path | None = None,
     timeout: float | None = None,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     if cmd and cmd[0] == "codex":
         cmd = [_plugin_update.resolve_codex_executable(), *cmd[1:]]
@@ -67,6 +68,7 @@ def run(
         stderr=subprocess.PIPE,
         errors="replace",
         timeout=timeout,
+        env=env,
     )
     if check and cp.returncode != 0:
         detail = cp.stderr.strip() or cp.stdout.strip()
@@ -1037,7 +1039,9 @@ def packaged_plugin_freshness(
     if remote_version and not PLUGIN_VERSION_RE.fullmatch(remote_version):
         return plugin_update_unknown("远端插件版本格式非法，不能确认是否有更新。", require)
     if remote_version and compare_versions(local_version, remote_version) < 0:
-        auto_update = auto_update_packaged_plugin(str(metadata.get("plugin_name") or "akbs-member-ops"))
+        auto_update = auto_update_packaged_plugin(
+            str(metadata.get("plugin_name") or "akbs-member-ops"), expected_version=remote_version,
+        )
         if auto_update.get("status") == "PASS":
             actual_version = str(auto_update.get("installed_plugin_version") or "")
             if not PLUGIN_VERSION_RE.fullmatch(actual_version) or compare_versions(actual_version, remote_version) < 0:
@@ -1113,7 +1117,7 @@ def _verify_updated_member_install(plugin_name: str) -> dict[str, Any]:
     return {**metadata, "install_family": family, "blocking": family.get("blocking", True)}
 
 
-def auto_update_packaged_plugin(plugin_name: str) -> dict[str, Any]:
+def auto_update_packaged_plugin(plugin_name: str, *, expected_version: str | None = None) -> dict[str, Any]:
     family = installed_plugin_family_status()
     if family.get("blocking"):
         return {
@@ -1129,6 +1133,8 @@ def auto_update_packaged_plugin(plugin_name: str) -> dict[str, Any]:
         plugin_name,
         run_command=run,
         verify_install=lambda: _verify_updated_member_install(plugin_name),
+        codex_home=Path(default_codex_home()),
+        expected_version=expected_version,
     )
 
 

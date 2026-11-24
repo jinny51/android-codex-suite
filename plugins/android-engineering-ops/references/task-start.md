@@ -12,7 +12,8 @@ host just because the desktop UI is there.
 Run the shared engineering startup entry once before starting a new engineering task,
 whether the user enters the full workflow or directly asks for source access, a build,
 change review, or capture. It first checks the active installation, then checks the
-official engineering release and updates only this plugin when needed.
+official engineering release. When an update is needed, stage one official Git
+publication and refresh both enabled core plugins if both changed.
 
 ```bash
 python3 "$PLUGIN_ROOT/lib/android_engineering_ops/task_start.py" \
@@ -54,6 +55,7 @@ guard or silently switching this task's execution version.
 The generic release lookup, version comparison and marketplace update implementation
 is maintained at `shared/codex_plugin_update.py` in the source repository and packaged
 identically in both plugins. This startup entry owns only engineering task timing and
-state. It does not import AKBS member code, install the member plugin, or change an
-optional orchestration extension. Existing users must install this release once before this
+state. The shared updater verifies all enabled core plugins against one
+publication. It leaves uninstalled plugins alone and restores the previous
+publication if an installation or verification fails. Existing users must install this release once before this
 automatic engineering startup behavior becomes available.

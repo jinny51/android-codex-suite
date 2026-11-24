@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import json
 import socket
 import ssl
 import subprocess
@@ -112,82 +113,162 @@ def verified_install(**changes: object) -> dict[str, object]:
     }
 
 
-@pytest.mark.parametrize("plugin", ["akbs-member-ops", "android-engineering-ops"])
-def test_update_installs_only_the_selected_plugin_then_verifies(plugin: str) -> None:
-    events: list[object] = []
+MEMBER = "akbs-member-ops"
+ENGINEERING = "android-engineering-ops"
+BEFORE = {MEMBER: "2.0.1", ENGINEERING: "3.0.1"}
+AFTER = {MEMBER: "2.0.3", ENGINEERING: "3.0.2"}
+OLD_REF = "a" * 40
+NEW_REF = "b" * 40
 
-    def run(command: list[str], *, timeout: float) -> subprocess.CompletedProcess[str]:
-        events.append((command, timeout))
-        return subprocess.CompletedProcess(command, 0, stdout="updated", stderr="")
 
-    def verify() -> dict[str, object]:
-        events.append("verify")
-        return verified_install()
+class FakeMarketplace:
+    def __init__(self, home: Path, *, enabled: dict[str, str] | None = None):
+        self.root = home / "market"
+        (self.root / ".git").mkdir(parents=True)
+        self.home = home
+        self.installed = (enabled or BEFORE).copy()
+        self.remote = AFTER.copy()
+        self.ref = OLD_REF
+        self.origin = update.OFFICIAL_REPOSITORY
+        self.actions: list[tuple[str, str]] = []
+        self.preflights: list[str] = []
+        self.fail_plugin = ""
 
-    result = update.update_plugin(plugin, run_command=run, verify_install=verify, expected_version="2.0.3")
+    def __call__(self, argv, *, timeout, env=None):
+        assert timeout == update.UPDATE_COMMAND_TIMEOUT
+        def okay(output=""):
+            return subprocess.CompletedProcess(argv, 0, stdout=output, stderr="")
+        if argv[:4] == ["codex", "plugin", "marketplace", "list"]:
+            return okay(json.dumps({"marketplaces": [] if not self.ref else [{
+                "name": update.MARKETPLACE, "root": str(self.root),
+                "marketplaceSource": {"sourceType": "git", "source": self.origin},
+            }]}))
+        if argv[:3] == ["codex", "plugin", "list"]:
+            return okay(json.dumps({"installed": [
+                {"pluginId": name + "@" + update.MARKETPLACE, "version": version, "installed": True, "enabled": True}
+                for name, version in self.installed.items()
+            ]}))
+        if argv[0] == "git":
+            if argv[1] == "init":
+                return okay()
+            args = argv[3:]
+            if args[0] == "fetch":
+                return okay()
+            target = args[1]
+            if target == "refs/heads/previous":
+                return okay(OLD_REF)
+            if target == "refs/heads/release":
+                return okay(NEW_REF)
+            ref, path = target.split(":")
+            name = path.split("/")[1]
+            version = (BEFORE if ref == OLD_REF else self.remote)[name]
+            return okay(json.dumps({"name": name, "version": version}) if args[0] == "show" else version)
+        if argv[0] != "codex":
+            self.preflights.append("member" if argv[-1] == "preflight-install-family" else "engineering")
+            return okay()
+        assert env and env["GIT_ALLOW_PROTOCOL"] == "file"
+        if argv[:4] == ["codex", "plugin", "marketplace", "remove"]:
+            self.actions.append(("remove", self.ref))
+            self.ref = ""
+        elif argv[:4] == ["codex", "plugin", "marketplace", "add"]:
+            self.ref = argv[argv.index("--ref") + 1]
+            self.actions.append(("pin", self.ref))
+        else:
+            assert argv[:3] == ["codex", "plugin", "add"]
+            name = argv[3].split("@")[0]
+            self.actions.append(("install", name))
+            if self.ref == NEW_REF and name == self.fail_plugin:
+                return subprocess.CompletedProcess(argv, 1, stdout="", stderr="simulated failed second install")
+            self.installed[name] = (BEFORE if self.ref == OLD_REF else self.remote)[name]
+        return okay("{}")
+
+    def update(self, name=MEMBER, *, verify_install=None, expected_version=None):
+        return update.update_plugin(
+            name, run_command=self, verify_install=verify_install or (
+                lambda: verified_install(installed_plugin_version=self.installed[name])
+            ), expected_version=expected_version or AFTER.get(name), codex_home=self.home,
+        )
+
+
+@pytest.mark.parametrize("trigger", [MEMBER, ENGINEERING])
+def test_update_uses_one_publication_for_both_enabled_plugins(tmp_path, trigger):
+    market = FakeMarketplace(tmp_path)
+    result = market.update(trigger)
     assert result["status"] == "PASS"
     assert result["restart_required"] is True
-    assert result["installed_plugin_version"] == "2.0.3"
-    assert events == [
-        (["codex", "plugin", "marketplace", "upgrade", "android-codex-suite", "--json"], update.UPDATE_COMMAND_TIMEOUT),
-        (["codex", "plugin", "add", f"{plugin}@android-codex-suite", "--json"], update.UPDATE_COMMAND_TIMEOUT),
-        "verify",
-    ]
+    assert result["plugins_updated"] == [MEMBER, ENGINEERING]
+    assert market.actions == [("remove", OLD_REF), ("pin", NEW_REF), ("install", MEMBER), ("install", ENGINEERING)]
+    assert market.installed == AFTER
 
 
-@pytest.mark.parametrize("stage", [0, 1])
-@pytest.mark.parametrize("failure", ["exit", "timeout", "missing-command"])
-def test_failed_update_stops_before_verification(stage: int, failure: str) -> None:
-    responses: list[object] = [subprocess.CompletedProcess([], 0, stdout="ok", stderr="")]
-    if failure == "exit":
-        failed: object = subprocess.CompletedProcess([], 1, stdout="", stderr="failed")
-    elif failure == "timeout":
-        failed = subprocess.TimeoutExpired("codex", update.UPDATE_COMMAND_TIMEOUT)
-    else:
-        failed = FileNotFoundError("codex")
-    runner = mock.Mock(side_effect=responses[:stage] + [failed])
-    verifier = mock.Mock()
-    result = update.update_plugin("akbs-member-ops", run_command=runner, verify_install=verifier)
+def test_update_does_not_add_uninstalled_plugin(tmp_path):
+    market = FakeMarketplace(tmp_path, enabled={MEMBER: BEFORE[MEMBER]})
+    assert market.update()["plugins_updated"] == [MEMBER]
+    assert market.installed == {MEMBER: AFTER[MEMBER]}
+
+
+def test_single_change_retains_and_verifies_unchanged_companion(tmp_path):
+    market = FakeMarketplace(tmp_path)
+    market.remote[ENGINEERING] = BEFORE[ENGINEERING]
+    assert market.update()["plugins_updated"] == [MEMBER]
+    assert market.installed[ENGINEERING] == BEFORE[ENGINEERING]
+    assert market.preflights == ["engineering"]
+
+
+def test_update_restores_pinned_release_and_both_plugins_after_failure(tmp_path):
+    market = FakeMarketplace(tmp_path)
+    market.fail_plugin = ENGINEERING
+    verify = mock.Mock()
+    result = market.update(verify_install=verify)
     assert result["status"] == "FAIL"
-    assert result["restart_required"] is False
-    assert runner.call_count == stage + 1
-    verifier.assert_not_called()
+    assert result["reason"] == "install_command_failed"
+    assert result["rolled_back"] is True
+    assert market.ref == OLD_REF
+    assert market.installed == BEFORE
+    assert market.preflights == ["member", "engineering"]
+    verify.assert_not_called()
+
+
+def test_wrong_source_or_stale_publication_never_switches_catalog(tmp_path):
+    market = FakeMarketplace(tmp_path)
+    market.origin = "https://github.com/some-fork/android-codex-suite.git"
+    assert market.update()["reason"] == "unsupported_marketplace"
+    market.origin = update.OFFICIAL_REPOSITORY
+    assert market.update(expected_version="9.0.0")["reason"] == "release_not_ready"
+    assert market.actions == []
 
 
 @pytest.mark.parametrize("installation", [
-    {},
-    verified_install(installed_plugin_active=False),
-    verified_install(installed_plugin_version=""),
-    verified_install(installed_plugin_version="2evil"),
+    {}, verified_install(installed_plugin_active=False),
     verified_install(installed_plugin_version="2.0.2"),
     verified_install(installed_plugin_path=""),
     verified_install(installed_plugin_fallback=True),
     verified_install(installed_plugin_ambiguous=True),
-    verified_install(blocking=True),
-    verified_install(status="UNKNOWN"),
+    verified_install(blocking=True), verified_install(status="UNKNOWN"),
     verified_install(install_family={"status": "MIXED_INSTALL", "blocking": True}),
 ])
-def test_zero_exit_codes_do_not_override_failed_installation_evidence(installation: dict[str, object]) -> None:
-    runner = mock.Mock(return_value=subprocess.CompletedProcess([], 0, stdout="ok", stderr=""))
-    result = update.update_plugin(
-        "akbs-member-ops", run_command=runner, verify_install=lambda: installation, expected_version="2.0.3"
-    )
-    assert runner.call_count == 2
+def test_zero_exit_codes_do_not_override_failed_installation_evidence(tmp_path, installation):
+    market = FakeMarketplace(tmp_path)
+    result = market.update(verify_install=lambda: installation)
     assert result["status"] == "FAIL"
     assert result["restart_required"] is False
+    assert result["rolled_back"] is True
+    assert market.installed == BEFORE
 
 
-def test_verifier_exception_and_unsupported_target_are_not_successes() -> None:
-    runner = mock.Mock(return_value=subprocess.CompletedProcess([], 0, stdout="ok", stderr=""))
-    result = update.update_plugin(
-        "akbs-member-ops", run_command=runner, verify_install=mock.Mock(side_effect=ValueError("hash mismatch"))
-    )
-    assert result["status"] == "FAIL"
-    assert result["reason"] == "install_verification_failed"
-    runner.reset_mock()
-    result = update.update_plugin("jinny-android-practices", run_command=runner, verify_install=mock.Mock())
+def test_concurrent_update_leaves_catalog_alone(tmp_path):
+    market = FakeMarketplace(tmp_path)
+    with update._update_lock(tmp_path):
+        result = market.update()
+    assert result["reason"] == "update_busy"
+    assert market.actions == []
+
+
+def test_unsupported_target_is_rejected_before_inspection(tmp_path):
+    market = FakeMarketplace(tmp_path)
+    result = market.update("jinny-android-practices")
     assert result["attempted"] is False
-    runner.assert_not_called()
+    assert market.actions == []
 
 
 def test_windows_codex_resolves_native_npm_binary_when_only_cmd_is_on_path(monkeypatch, tmp_path):

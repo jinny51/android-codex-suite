@@ -44,10 +44,10 @@ def fetch_remote_manifest() -> dict[str, Any]:
     return fetch_manifest(MANIFEST_URL, timeout=10)
 
 
-def run_codex(command: list[str]) -> subprocess.CompletedProcess[str]:
+def run_codex(command: list[str], *, timeout: float = 60, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [resolve_codex_executable(command[0]), *command[1:]], stdin=subprocess.DEVNULL, capture_output=True,
-        text=True, check=False, timeout=60,
+        text=True, check=False, timeout=timeout, env=env,
     )
 
 
@@ -175,7 +175,8 @@ def ensure_task_started(
                 else:
                     updated = update_plugin(
                         TARGET_PLUGIN,
-                        run_command=lambda command, timeout: run_codex(command),
+                        run_command=run_codex,
+                        codex_home=home,
                         verify_install=lambda: _verify_updated_install(home, remote_version),
                         expected_version=remote_version,
                     )

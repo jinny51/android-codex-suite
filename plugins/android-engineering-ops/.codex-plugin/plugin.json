@@ -1,6 +1,6 @@
 {
   "name": "android-engineering-ops",
-  "version": "3.3.13",
+  "version": "3.3.14",
   "description": "Standalone Android engineering core with an optional orchestration extension protocol.",
   "author": {
     "name": "Jinny Android Team",

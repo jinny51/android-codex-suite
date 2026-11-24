@@ -54,7 +54,8 @@ Use `scripts/extract_video_frames.py` to sample frames when `ffmpeg` is availabl
 
 ## Dumpsys Capture
 
-Use `scripts/collect_diagnostics.sh` or direct `adb shell dumpsys` for targeted snapshots:
+On native Windows, run `adb shell dumpsys` directly from PowerShell for targeted snapshots.
+On WSL and macOS, use `scripts/collect_diagnostics.sh` or direct `adb shell dumpsys`. Useful sections include:
 
 - `activity activities`, `activity displays`, `activity service`, or `activity recents`.
 - `window`, `input`, `SurfaceFlinger`, `display`, `package <pkg>`.

@@ -259,7 +259,7 @@ remote_v2_build() {
     eval "module=\${ARTIFACT_MODULE_$i}; relative=\${ARTIFACT_REL_$i}; destination=\${ARTIFACT_DEST_$i}"
     artifact_path="$REMOTE_V2_PROJECT_ROOT/$relative"
     manifest_file="$manifest_dir/$i.json"
-    python3 "$REMOTE_V2_SCRIPT_DIR/remote_artifact_manifest_cli.py" \
+    python3 -B "$REMOTE_V2_SCRIPT_DIR/remote_artifact_manifest_cli.py" \
       --artifact "$artifact_path" --remote-root "$REMOTE_V2_PROJECT_ROOT" \
       --module "$module" --profile "$profile" --workspace-id "$workspace_id" \
       --command-id "$command_id" --build-started-ns "$start_ns" \

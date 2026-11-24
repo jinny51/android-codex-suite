@@ -1,4 +1,4 @@
 interface:
   display_name: "Android Source Access"
-  short_description: "Auto-detect WSL or macOS and use one source-access owner"
-  default_prompt: "Use $android-source-access to detect this host, preserve existing source-access state, and run only the matching WSL or macOS adapter."
+  short_description: "Auto-detect Windows, WSL, or macOS and use one source-access owner"
+  default_prompt: "Use $android-source-access to detect this host, preserve existing source-access state, and run only the matching Windows, WSL, or macOS adapter."

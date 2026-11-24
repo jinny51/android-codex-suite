@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Mapping
 
 
-SUPPORTED_HOSTS = ("wsl", "macos")
+SUPPORTED_HOSTS = ("windows", "wsl", "macos")
 
 
 class UnsupportedSourceAccessHost(RuntimeError):
@@ -45,6 +45,15 @@ def detect_source_access_host(
     actual_release = (release if release is not None else platform.release()).strip()
     actual_version = (version if version is not None else platform.version()).strip()
     environment = os.environ if environ is None else environ
+
+    if actual_system == "Windows":
+        return SourceAccessHost(
+            host="windows",
+            system=actual_system,
+            release=actual_release,
+            version=actual_version,
+            evidence=("platform.system=Windows",),
+        )
 
     if actual_system == "Darwin":
         return SourceAccessHost(
@@ -82,7 +91,7 @@ def detect_source_access_host(
             )
 
     raise UnsupportedSourceAccessHost(
-        "android-source-access supports WSL and macOS only; "
+        "android-source-access supports WSL, macOS, and Windows only; "
         f"detected system={actual_system or '<empty>'} release={actual_release or '<empty>'}"
     )
 

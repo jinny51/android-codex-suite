@@ -214,7 +214,7 @@ def stage_verified_artifacts(
 
 def adb_command() -> list[str]:
     value = os.environ.get("ADB", "adb").strip()
-    command = shlex.split(value) if value else ["adb"]
+    command = [value.strip('"') or "adb"] if os.name == "nt" else (shlex.split(value) if value else ["adb"])
     executable = command[0]
     if not (Path(executable).is_file() or shutil.which(executable)):
         raise SystemExit("adb not found; set ADB to the local adb executable")
@@ -222,7 +222,7 @@ def adb_command() -> list[str]:
 
 
 def path_for_adb(path: Path, command: list[str]) -> str:
-    if command[0].lower().endswith(".exe") and shutil.which("wslpath"):
+    if os.name != "nt" and command[0].lower().endswith(".exe") and shutil.which("wslpath"):
         converted = subprocess.run(
             ["wslpath", "-w", str(path)],
             check=True,

@@ -49,6 +49,8 @@ def expand_home_path(value: str) -> str:
 def path_strings_overlap(left: str, right: str) -> bool:
     left = left.replace("\\", "/").rstrip("/")
     right = right.replace("\\", "/").rstrip("/")
+    if os.name == "nt":
+        left, right = left.casefold(), right.casefold()
     if not left or not right:
         return False
     return left == right or left.startswith(right + "/") or right.startswith(left + "/")
@@ -123,7 +125,7 @@ def json_registry_entries(path: Path) -> list[dict[str, str]]:
                 "sdk_name": str(project_name).strip(),
                 "ssh_host": ssh_host,
                 "project_id": str(raw_project.get("project_id") or "").strip(),
-                "mount_transport": "smbfs",
+                "mount_transport": str(raw_project.get("mount_transport") or raw_share.get("mount_transport") or "smbfs").strip(),
             }
             entry["project_id"] = derive_project_id(entry)
             entries.append({key: value for key, value in entry.items() if value})

@@ -29,7 +29,7 @@ def test_mac_validator_keeps_public_platform_guard_without_rejecting_readonly_in
     assert 'restore-project-mount.sh" --list' not in script
 
 
-def test_host_detection_selects_wsl_or_macos_without_user_choice() -> None:
+def test_host_detection_selects_the_installed_os_adapter() -> None:
     assert detect_source_access_host(
         system="Linux",
         release="6.6.87.2-microsoft-standard-WSL2",
@@ -41,11 +41,12 @@ def test_host_detection_selects_wsl_or_macos_without_user_choice() -> None:
     assert detect_source_access_host(
         system="Darwin", release="25.0.0", version="Darwin Kernel", environ={}
     ).host == "macos"
+    assert detect_source_access_host(system="Windows", release="11", environ={}).host == "windows"
 
 
-@pytest.mark.parametrize("system", ["Linux", "Windows", "FreeBSD", ""])
+@pytest.mark.parametrize("system", ["Linux", "FreeBSD", ""])
 def test_wrong_host_fails_closed_before_an_adapter(system: str) -> None:
-    with pytest.raises(UnsupportedSourceAccessHost, match="supports WSL and macOS only"):
+    with pytest.raises(UnsupportedSourceAccessHost, match="supports WSL, macOS, and Windows only"):
         detect_source_access_host(
             system=system,
             release="6.8.0-generic",
@@ -57,7 +58,7 @@ def test_wrong_host_fails_closed_before_an_adapter(system: str) -> None:
 
 
 def test_generic_linux_with_forged_wsl_environment_fails_closed() -> None:
-    with pytest.raises(UnsupportedSourceAccessHost, match="supports WSL and macOS only"):
+    with pytest.raises(UnsupportedSourceAccessHost, match="supports WSL, macOS, and Windows only"):
         detect_source_access_host(
             system="Linux",
             release="6.8.0-generic",
@@ -79,22 +80,24 @@ def test_contract_and_public_entry_have_one_owner() -> None:
     assert contract["public_entry_plugins"] == {
         "wsl": "android-engineering-ops",
         "macos": "android-engineering-ops",
+        "windows": "android-engineering-ops",
     }
     assert (PLUGIN / "skills/android-source-access/SKILL.md").is_file()
 
 
-@pytest.mark.parametrize("host", ["wsl", "macos"])
+@pytest.mark.parametrize("host", ["wsl", "macos", "windows"])
 def test_packaged_adapter_contains_every_declared_command(host: str) -> None:
     root = adapter_root(PLUGIN, host)
     scripts = root / "skills/android-source-access/scripts"
     for command in ADAPTER_COMMANDS[host]:
-        assert (scripts / command).is_file()
+        entry = f"{command}.py" if host == "windows" else command
+        assert (scripts / entry).is_file()
 
 
 def test_public_shell_entries_are_thin_identical_dispatchers() -> None:
     scripts = PLUGIN / "skills/android-source-access/scripts"
     entry = (scripts / "_command_entry.sh").read_bytes()
-    for command in sorted(set().union(*ADAPTER_COMMANDS.values())):
+    for command in sorted(ADAPTER_COMMANDS["wsl"] | ADAPTER_COMMANDS["macos"]):
         assert (scripts / command).read_bytes() == entry
 
 
@@ -220,3 +223,36 @@ def test_cross_host_command_is_rejected_before_exec() -> None:
             execve=lambda *_: object(),
             base_environment={},
         )
+
+
+def test_windows_registration_binds_host_share_and_project_path(monkeypatch) -> None:
+    import importlib.util
+    from pathlib import PureWindowsPath
+
+    script = (
+        PLUGIN / "adapters/source-access/windows/skills/android-source-access"
+        / "scripts/register-project.py"
+    )
+    spec = importlib.util.spec_from_file_location("windows_source_registry", script)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    replies = {
+        ("-G", "builder"): "hostname 192.0.2.1\n",
+        ("builder", "testparm -s --section-name work --parameter-name path"): "/srv/work",
+        ("builder", "realpath -e -- '/srv/work/rk/Project One'"): "/srv/sdk/project",
+    }
+    monkeypatch.setattr(module, "_ssh_output", lambda *args: replies[args])
+    monkeypatch.setattr(module, "_host_addresses", lambda host: {host})
+    project = PureWindowsPath(r"\\?\UNC\192.0.2.1\work\rk\Project One")
+    module.require_smb_project_binding(project, "builder", "WORK", "/srv/sdk/project")
+    with pytest.raises(ValueError, match="--share"):
+        module.require_smb_project_binding(project, "builder", "wrong", "/srv/sdk/project")
+    with pytest.raises(ValueError, match="SSH 服务器"):
+        module.require_smb_project_binding(
+            PureWindowsPath(r"\\192.0.2.2\work\rk\Project One"),
+            "builder", "work", "/srv/sdk/project",
+        )
+    with pytest.raises(ValueError, match="项目根不一致"):
+        module.require_smb_project_binding(project, "builder", "work", "/srv/sdk/other")

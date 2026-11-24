@@ -5,10 +5,14 @@ import argparse
 import os
 import re
 import shlex
-import subprocess
 import sys
 import uuid
 from pathlib import Path
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from android_engineering_ops.local_host import run_channel
 
 
 PROJECT_IDENTITY_SCHEMA = "android-remote-project-identity-v1"
@@ -163,12 +167,11 @@ def main() -> int:
         "--",
         remote_command(args),
     ]
-    result = subprocess.run(
-        command,
+    result = run_channel(
+        Path(command[0]), *command[1:],
         check=False,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        encoding="utf-8",
+        capture_output=True,
     )
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip()

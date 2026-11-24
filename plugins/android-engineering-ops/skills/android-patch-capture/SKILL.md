@@ -15,6 +15,9 @@ the source route and required profile are available. They do not establish featu
 verification or authorize uploading it as `validated`. No separate stage format is
 introduced, and unsupported current local-Git capture remains unsupported.
 
+
+On Windows, invoke `capture_remote_snapshot.py` with native `python`. It uses the bundled Windows channel entry and packages the verified remote evidence locally.
+
 ## Task startup
 
 Before a new engineering task starts, set `PLUGIN_ROOT` to the directory two levels

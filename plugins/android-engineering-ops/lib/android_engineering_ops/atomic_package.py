@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import ctypes
 import errno
-import fcntl
 import os
 import secrets
+import shutil
+import tempfile
 import stat
 from pathlib import Path
 
@@ -196,12 +197,90 @@ def _rename_noreplace(parent_fd: int, source: str, destination: str) -> None:
     )
 
 
+def _windows_path_info(path: Path) -> os.stat_result:
+    info = path.lstat()
+    if info.st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+        raise AtomicPackageError(f"package path contains a reparse point: {path}")
+    return info
+
+
+def _windows_directory_chain(path: Path, *, create: bool) -> os.stat_result:
+    current = Path(path.anchor)
+    info = _windows_path_info(current)
+    if not stat.S_ISDIR(info.st_mode):
+        raise AtomicPackageError(f"package directory anchor is invalid: {current}")
+    for part in path.parts[1:]:
+        current /= part
+        if create:
+            current.mkdir(exist_ok=True)
+        info = _windows_path_info(current)
+        if not stat.S_ISDIR(info.st_mode):
+            raise AtomicPackageError(f"package directory chain is invalid: {current}")
+    return info
+
+
+def _copy_windows_tree(source: Path, stage: Path) -> None:
+    before = _windows_path_info(source)
+    for child in source.iterdir():
+        info = _windows_path_info(child)
+        target = stage / child.name
+        if stat.S_ISDIR(info.st_mode):
+            target.mkdir()
+            _copy_windows_tree(child, target)
+        elif stat.S_ISREG(info.st_mode):
+            with child.open("rb") as current, target.open("xb") as destination:
+                if _identity(info) != _identity(os.fstat(current.fileno())):
+                    raise AtomicPackageError(f"package source was replaced before copy: {child}")
+                shutil.copyfileobj(current, destination, length=1024 * 1024)
+                destination.flush()
+                os.fsync(destination.fileno())
+                if _identity(info) != _identity(os.fstat(current.fileno())):
+                    raise AtomicPackageError(f"package source changed during copy: {child}")
+            if _identity(info) != _identity(_windows_path_info(child)):
+                raise AtomicPackageError(f"package source was replaced during copy: {child}")
+        else:
+            raise AtomicPackageError(f"package contains a non-regular source entry: {child}")
+    if _identity(before) != _identity(_windows_path_info(source)):
+        raise AtomicPackageError(f"package source directory changed during copy: {source}")
+
+
+def _publish_windows(source: Path, destination: Path) -> Path:
+    _windows_directory_chain(source, create=False)
+    parent = _windows_directory_chain(destination.parent, create=True)
+    stage = Path(tempfile.mkdtemp(prefix=f".{destination.name}.staging-", dir=destination.parent))
+    staged = _windows_path_info(stage)
+    try:
+        _copy_windows_tree(source, stage)
+        if not os.path.samestat(parent, _windows_directory_chain(destination.parent, create=False)):
+            raise AtomicPackageError(f"package parent path identity changed: {destination.parent}")
+        if not os.path.samestat(staged, _windows_path_info(stage)):
+            raise AtomicPackageError(f"package staging path identity changed: {stage}")
+        # Windows rename without replacement is atomic within the same directory.
+        os.rename(stage, destination)
+        return destination
+    except FileExistsError as exc:
+        raise AtomicPackageError(f"package destination already exists: {destination}") from exc
+    finally:
+        if stage.exists() and os.path.samestat(staged, _windows_path_info(stage)):
+            shutil.rmtree(stage)
+
+
 def publish_tree_atomic(source: Path, destination: Path) -> Path:
     """Copy `source` into same-parent staging, fsync, then atomically install it."""
     source_path = Path(os.path.abspath(os.fspath(source.expanduser())))
     destination_path = Path(os.path.abspath(os.fspath(destination.expanduser())))
     if not destination_path.name or destination_path.name in {".", ".."}:
         raise AtomicPackageError(f"invalid package destination: {destination_path}")
+    if os.name == "nt":
+        if destination_path.is_relative_to(source_path):
+            raise AtomicPackageError("package destination must be outside the source tree")
+        try:
+            return _publish_windows(source_path, destination_path)
+        except OSError as exc:
+            raise AtomicPackageError(f"Windows package publication failed: {exc}") from exc
+
+    import fcntl
+
     source_fd = _open_directory_chain(source_path, create=False)
     parent_fd = _open_directory_chain(destination_path.parent, create=True)
     stage_fd = -1

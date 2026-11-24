@@ -239,6 +239,25 @@ def run_channel(
     )
 
 
+def test_native_stdin_preserves_the_payload_across_reconnect(tmp_path: Path) -> None:
+    env, remote_root = make_fake_remote(tmp_path)
+    payload = "# " + "padding " * 5500 + "\n" + "printf '中文 here\\n' >> counter\n"
+    args = [
+        str(SCRIPT), "--ssh-host", "fake-alias", "--remote-root", str(remote_root),
+        "run", "--lock", "exclusive", "--command-id", "native-stdin", "--stdin",
+    ]
+    try:
+        first = subprocess.run(args, input=payload, encoding="utf-8", capture_output=True, env=env)
+        assert first.returncode == 0, first.stderr
+        retry = subprocess.run(args, input=payload, encoding="utf-8", capture_output=True, env=env)
+        assert retry.returncode == 0, retry.stderr
+        assert (remote_root / "counter").read_text(encoding="utf-8") == "中文 here\n"
+        line, = (state_root(tmp_path) / "commands").glob("native-stdin.line")
+        assert line.read_bytes() == payload.encode("utf-8")
+    finally:
+        stop_runner(env, remote_root)
+
+
 def state_root(root: Path) -> Path:
     roots = list((root / "remote-home" / ".codex" / "android-remote-sessions").iterdir())
     if len(roots) != 1:

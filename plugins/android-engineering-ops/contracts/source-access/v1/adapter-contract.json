@@ -5,13 +5,15 @@
   "core_public_skill": true,
   "public_entry_plugins": {
     "wsl": "android-engineering-ops",
-    "macos": "android-engineering-ops"
+    "macos": "android-engineering-ops",
+    "windows": "android-engineering-ops"
   },
   "host_detection": {
     "automatic": true,
     "supported_hosts": [
       "wsl",
-      "macos"
+      "macos",
+      "windows"
     ],
     "unsupported_host_behavior": "fail_closed_without_running_an_adapter"
   },
@@ -26,6 +28,12 @@
       "root": "adapters/source-access/macos",
       "transport": "smbfs",
       "credential_store": "macos_keychain",
+      "public_entry_plugin": "android-engineering-ops"
+    },
+    "windows": {
+      "root": "adapters/source-access/windows",
+      "transport": "windows-smb",
+      "credential_store": "windows_current_user",
       "public_entry_plugin": "android-engineering-ops"
     }
   },

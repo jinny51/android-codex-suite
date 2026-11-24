@@ -12,14 +12,21 @@ import argparse
 import hashlib
 import json
 import os
+from queue import Empty, Queue
 import re
 import select
 import stat
 import subprocess
 import sys
+from threading import Thread
 import time
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, BinaryIO, Mapping
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from codex_plugin_update import resolve_codex_executable
 
 
 TARGET_PLUGIN = "android-engineering-ops"
@@ -59,8 +66,36 @@ def _strict_inventory_json(raw: bytes) -> Mapping[str, Any]:
     return value
 
 
+def _windows_pipe_line(stream: BinaryIO, timeout: float) -> bytes:
+    """Wait on a subprocess pipe, which Windows select() cannot monitor."""
+    messages: Queue[bytes | OSError] = Queue(maxsize=1)
+
+    def read() -> None:
+        try:
+            messages.put(stream.readline(MAX_RPC_LINE_BYTES + 2))
+        except OSError as exc:
+            messages.put(exc)
+
+    Thread(target=read, daemon=True).start()
+    try:
+        value = messages.get(timeout=timeout)
+    except Empty as exc:
+        raise InstallFamilyError("Codex installed plugin inventory timed out") from exc
+    if isinstance(value, OSError):
+        raise value
+    if not value:
+        raise InstallFamilyError("Codex app-server closed before answering plugin/installed")
+    if len(value) > MAX_RPC_LINE_BYTES + 1:
+        raise InstallFamilyError("Codex plugin inventory response is too large")
+    if not value.endswith(b"\n"):
+        raise InstallFamilyError("Codex plugin inventory response did not end in a newline")
+    return value[:-1]
+
+
 def _rpc_line(process: subprocess.Popen[bytes], deadline: float, pending: bytearray) -> Mapping[str, Any]:
     assert process.stdout is not None
+    if os.name == "nt":
+        return _strict_inventory_json(_windows_pipe_line(process.stdout, max(0.0, deadline - time.monotonic())))
     while True:
         newline = pending.find(b"\n")
         if newline >= 0:
@@ -172,7 +207,7 @@ def _read_active_inventory(
         if not effective_cwd.is_dir():
             raise InstallFamilyError("Codex plugin inventory cwd is not a directory")
         process = subprocess.Popen(
-            [codex_executable, "app-server", "--stdio"],
+            [resolve_codex_executable(codex_executable), "app-server", "--stdio"],
             cwd=effective_cwd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -264,7 +299,7 @@ def _absolute_without_symlinks(path: Path, *, label: str) -> Path:
         for part in absolute.parts[1:]:
             current = current / part
             info = current.lstat()
-            if stat.S_ISLNK(info.st_mode):
+            if stat.S_ISLNK(info.st_mode) or (getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)):
                 raise InstallFamilyError(f"{label} contains a symlink: {current}")
     except OSError as exc:
         raise InstallFamilyError(f"cannot inspect {label}: {current}: {exc}") from exc
@@ -274,7 +309,7 @@ def _absolute_without_symlinks(path: Path, *, label: str) -> Path:
 def _stable_bytes(path: Path, *, label: str) -> bytes:
     safe = _absolute_without_symlinks(path, label=label)
     descriptor = -1
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
     try:
         descriptor = os.open(safe, flags)
         before = os.fstat(descriptor)
@@ -309,7 +344,7 @@ def _tree_digest_once(root: Path, *, label: str) -> tuple[str, tuple[int, int, i
         if "__pycache__" in relative.parts or path.suffix == ".pyc":
             continue
         info = path.lstat()
-        if stat.S_ISLNK(info.st_mode):
+        if stat.S_ISLNK(info.st_mode) or (getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)):
             raise InstallFamilyError(f"{label} contains a symlink: {relative.as_posix()}")
         if stat.S_ISDIR(info.st_mode):
             digest.update(b"D\0" + relative.as_posix().encode("utf-8") + b"\0")

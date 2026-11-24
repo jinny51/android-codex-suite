@@ -8,6 +8,9 @@ description: "Use when implementing, diagnosing, modifying, or verifying Android
 Use this Skill as the end-to-end engineering workflow for Android source work.
 Framework work belongs to the `platform` layer; Framework is not a product boundary.
 
+
+On Windows, use native Python and the PowerShell entry in android-remote-channel. The remote project commands still run in the existing server channel.
+
 ## Task Startup
 
 Before a new engineering task starts, set `PLUGIN_ROOT` to the directory two levels
@@ -154,7 +157,7 @@ For independent App work, do not invent a Patch layer for search.
 
 For a `registered_remote_tree`, use the host platform's `android-source-access` entry
 when mount or registry preparation is needed. It routes to the single core
-implementation and verifies WSL or macOS before side effects; then use
+implementation and verifies Windows, WSL, or macOS before side effects; then use
 `android-remote-channel` for all source and build operations. For a `local_project`,
 verify its real Git root and project instructions, then use normal local project tools.
 

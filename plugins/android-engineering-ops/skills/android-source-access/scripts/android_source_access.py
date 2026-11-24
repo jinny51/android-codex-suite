@@ -29,7 +29,7 @@ from android_engineering_ops.install_family import (  # noqa: E402
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Route source access by local host.")
-    parser.add_argument("--expected-host", choices=("wsl", "macos"))
+    parser.add_argument("--expected-host", choices=("windows", "wsl", "macos"))
     subparsers = parser.add_subparsers(dest="action", required=True)
     detect = subparsers.add_parser("detect")
     detect.add_argument("--print-field", choices=("host", "adapter_skill_dir", "adapter_scripts_dir"))
@@ -75,8 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         arguments = list(args.arguments)
         if arguments[:1] == ["--"]:
             arguments = arguments[1:]
-        dispatch_adapter_command(PLUGIN_ROOT, host, args.command, arguments)
-        return 0  # pragma: no cover - os.execve replaces the process
+        return dispatch_adapter_command(PLUGIN_ROOT, host, args.command, arguments)
     except InstallFamilyError as exc:
         print(f"ANDROID_ENGINEERING_INSTALL_FAMILY_INVALID: {exc}", file=sys.stderr)
         return 78

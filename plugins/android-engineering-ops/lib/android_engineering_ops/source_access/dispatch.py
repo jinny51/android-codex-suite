@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
@@ -10,6 +12,7 @@ from .host import SourceAccessHost, UnsupportedSourceAccessHost, adapter_root
 
 
 ADAPTER_COMMANDS = {
+    "windows": {"register-project"},
     "wsl": {
         "discover-samba-share.sh",
         "ensure-samba-share.sh",
@@ -47,7 +50,8 @@ def resolve_adapter_command(plugin_root: Path, host: SourceAccessHost, command: 
         raise UnsupportedSourceAccessHost(
             f"source-access command {command!r} is not available on host {host.host}"
         )
-    script = adapter_skill_root(plugin_root, host.host) / "scripts" / command
+    entry = f"{command}.py" if host.host == "windows" else command
+    script = adapter_skill_root(plugin_root, host.host) / "scripts" / entry
     if not script.is_file():
         raise UnsupportedSourceAccessHost(f"source-access adapter command is missing: {script}")
     return script
@@ -89,4 +93,6 @@ def dispatch_adapter_command(
             )
     script = resolve_adapter_command(plugin_root, host, command)
     environment = adapter_environment(plugin_root, host, base_environment)
+    if host.host == "windows":
+        return subprocess.call([sys.executable, str(script), *arguments], env=environment)
     return execve(str(script), [str(script), *arguments], environment)

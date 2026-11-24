@@ -1,15 +1,15 @@
 # Android Engineering Ops
 
-`android-engineering-ops` 3.3.12 是独立的 Android 工程核心。默认不需要任何
+`android-engineering-ops` 3.3.13 是独立的 Android 工程核心。默认不需要任何
 编排插件：没有配置扩展时，当前任务直接使用核心 Skill 完成工作。
 
-本次 patch 版本收紧导入采集：只整理既有 patch 文件，不再用导入模式生成当前 Git
-改动；成员新开发继续正常工作流，真实旧材料由现有管理员入口补录。
+本版本在同一插件内支持原生 Windows、WSL 和 macOS。原生 Windows 使用 Python、
+Git for Windows、Windows OpenSSH 和已可访问的 SMB 项目桥接，再通过工程插件登记并执行远端命令。
 
 | Skill | 职责 |
 | --- | --- |
 | `android-change-workflow` | Android 工程总流程、共享策略应用、集成和最终验收 |
-| `android-source-access` | 自动识别 WSL/macOS 并分派平台 adapter |
+| `android-source-access` | 自动识别 Windows、WSL、macOS 并分派平台 adapter |
 | `android-remote-channel` | 远端 source/build 命令、锁和恢复 |
 | `android-remote-build-deploy` | 受控 build、artifact 校验和 adb 交付 |
 | `android-patch-capture` | 采集七层 component 标注的 Android 变更和证据 |
@@ -122,8 +122,8 @@ Codex 编写的当前源码变更使用 `capture_remote_snapshot.py --package` �
 ## Source access
 
 公开入口只有 `android-source-access`。`android_source_access.py` 先以本机事实识别
-WSL 或 macOS，再执行插件内对应 adapter；普通 Linux 和错误主机命令均在副作用前失败。
-既有 `$HOME/.servers`、macOS Keychain 与 `$HOME/work` 身份原地读取，不复制凭据。
+Windows、WSL 或 macOS，再执行插件内对应 adapter；普通 Linux 和错误主机命令均在副作用前失败。
+既有 Windows OpenSSH 身份、`$HOME/.servers`、macOS Keychain 与 `$HOME/work` 身份原地读取，不复制凭据。
 
 五个公开核心 Skill 共用 `lib/android_engineering_ops/task_start.py` 做一次任务启动和
 安装检查。可选编排扩展不参与核心插件安装族校验，也不会因安装而改变默认行为。

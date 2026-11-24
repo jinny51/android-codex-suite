@@ -19,6 +19,9 @@ PLUGIN_LIB = PLUGIN_ROOT / "lib"
 if str(PLUGIN_LIB) not in sys.path:
     sys.path.insert(0, str(PLUGIN_LIB))
 
+from android_engineering_ops.local_host import openssh_command, run_channel  # noqa: E402
+
+
 from android_engineering_ops.artifact_paths import require_safe_artifact_path
 from android_engineering_ops.remote_patch_snapshot import (
     RemotePatchSnapshotError,
@@ -62,6 +65,8 @@ _PACKAGER_OWNED_OPTIONS = (
 
 def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
     try:
+        if Path(command[0]) == CHANNEL_SCRIPT:
+            return run_channel(Path(command[0]), *command[1:], encoding="utf-8", capture_output=True, check=False)
         return subprocess.run(
             command,
             check=False,
@@ -273,7 +278,7 @@ def main() -> int:
     try:
         transfer = _run(
             [
-                "scp",
+                openssh_command("scp"),
                 "-q",
                 f"{args.ssh_host}:{handoff['SNAPSHOT_REMOTE_PATH']}",
                 str(temporary),
@@ -299,9 +304,15 @@ def main() -> int:
                     raise RemotePatchSnapshotError("snapshot includes files outside the requested selection")
         except RemotePatchSnapshotError as exc:
             raise SystemExit(f"本地 snapshot 验证失败: {exc}") from exc
-        os.chmod(temporary, 0o400)
         try:
-            os.link(temporary, target)
+            if os.name == "nt":
+                # A Windows read-only file cannot be unlinked afterwards, even
+                # when another hard link has the same identity.
+                os.rename(temporary, target)
+                os.chmod(target, 0o400)
+            else:
+                os.chmod(temporary, 0o400)
+                os.link(temporary, target)
         except FileExistsError as exc:
             raise SystemExit(f"本地 immutable snapshot 已存在: {target}") from exc
     finally:

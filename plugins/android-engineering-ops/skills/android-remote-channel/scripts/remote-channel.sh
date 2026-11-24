@@ -21,6 +21,7 @@ Actions:
   stop                  Kill the remote session.
 
 Run options:
+  --stdin               Read the command payload from standard input.
   --lock none|exclusive Default: none. Use exclusive for edits, git writes, and builds.
   --no-wait             Return after dispatching the command.
   --command-id ID       Optional stable command id.
@@ -78,25 +79,29 @@ prepare_ssh_opts() {
   fi
 }
 
+run_ssh() {
+  "${CODEX_REMOTE_CHANNEL_WINDOWS_SSH:-ssh}" "$@"
+}
+
 ssh_run() {
   local cmd="$1"
-  ssh "${SSH_OPTS[@]}" "$SSH_HOST" "$cmd"
+  run_ssh "${SSH_OPTS[@]}" "$SSH_HOST" "$cmd"
 }
 
 ssh_run_capture() {
   local cmd="$1"
-  ssh "${SSH_OPTS[@]}" "$SSH_HOST" "$cmd" 2>&1
+  run_ssh "${SSH_OPTS[@]}" "$SSH_HOST" "$cmd" 2>&1
 }
 
 ssh_run_capture_with_stdin() {
   local cmd="$1"
   local input="$2"
-  printf "%s\n" "$input" | ssh "${SSH_OPTS[@]}" "$SSH_HOST" "$cmd" 2>&1
+  printf "%s\n" "$input" | run_ssh "${SSH_OPTS[@]}" "$SSH_HOST" "$cmd" 2>&1
 }
 
 ssh_run_with_stdin() {
   local cmd="$1"
-  ssh "${SSH_OPTS[@]}" "$SSH_HOST" "$cmd"
+  run_ssh "${SSH_OPTS[@]}" "$SSH_HOST" "$cmd"
 }
 
 SSH_HOST=""
@@ -125,6 +130,20 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Read a caller-provided payload before the first SSH process can read stdin.
+if [[ "$ACTION" == run && $# -gt 0 && "${!#}" == --stdin ]]; then
+  stdin_requested=true
+  for argument in "$@"; do
+    if [[ "$argument" == -- ]]; then stdin_requested=false; break; fi
+  done
+  if $stdin_requested; then
+    IFS= read -r -d '' stdin_command && die "run --stdin does not accept NUL characters"
+    [[ -n "$stdin_command" ]] || die "run --stdin requires a command"
+    set -- "${@:1:$(($# - 1))}" -- "$stdin_command"
+    unset stdin_command
+  fi
+fi
+
 [[ -n "$SSH_HOST" ]] || die "--ssh-host is required"
 [[ -n "$REMOTE_ROOT" ]] || die "--remote-root is required"
 [[ -n "$ACTION" ]] || die "action is required"
@@ -138,7 +157,11 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-python3 "$PLUGIN_ROOT/lib/android_engineering_ops/install_family.py"
+if [[ -n "${CODEX_REMOTE_CHANNEL_WINDOWS_PYTHON:-}" ]]; then
+  "$CODEX_REMOTE_CHANNEL_WINDOWS_PYTHON" "$(cygpath -m -- "$PLUGIN_ROOT/lib/android_engineering_ops/install_family.py")"
+else
+  python3 "$PLUGIN_ROOT/lib/android_engineering_ops/install_family.py"
+fi
 
 prepare_ssh_opts
 
@@ -301,7 +324,7 @@ ssh_account_password_file() {
       user) ssh_user="$value" ;;
       hostname) ssh_hostname="$value" ;;
     esac
-  done < <(ssh -G "$SSH_HOST" 2>/dev/null || true)
+  done < <(run_ssh -G "$SSH_HOST" 2>/dev/null || true)
   [[ -n "$ssh_user" && -n "$ssh_hostname" ]] || return 1
   credentials_dir="${ANDROID_WSL_SOURCE_ACCESS_CREDENTIALS_DIR:-$HOME/.servers/credentials}"
   printf '%s/%s.passwords.env' "$credentials_dir" "$(account_hash "$ssh_user" "$ssh_hostname")"

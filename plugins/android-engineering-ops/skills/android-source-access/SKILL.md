@@ -1,11 +1,11 @@
 ---
 name: android-source-access
-description: "Use when mounting, restoring, diagnosing, or registering an Android remote source project from WSL or macOS. Detects the actual host first, preserves existing .servers and Keychain identities, and dispatches exactly one in-plugin platform adapter."
+description: "Use when mounting, restoring, diagnosing, or registering an Android remote source project from Windows, WSL, or macOS. Detects the actual host first, preserves existing .servers and Keychain identities, and dispatches exactly one in-plugin platform adapter."
 ---
 
 # Android Source Access
 
-Use this single public Skill for WSL/CIFS and macOS/SMB source access. The implementation
+Use this public Skill for Windows SMB, WSL/CIFS, and macOS/SMB source access. The implementation
 is owned by `android-engineering-ops`; no host plugin is required.
 
 ## Remote-Only Source Contract
@@ -36,7 +36,11 @@ python3 "$PLUGIN_ROOT/lib/android_engineering_ops/install_family.py" \
 A nonzero result is a hard stop. Do not use a source checkout, a mixed legacy/target
 installation, or a worker assertion as a substitute for this target-only receipt.
 
-Always detect the real local host before selecting a command:
+Detect the host that runs this chat's commands before selecting a command.
+For a desktop connection to WSL, run this from that Ubuntu project with Linux
+Python and the installed Skill from that connection. Choose the Windows native
+route only for a chat executing on Windows. The Android build server remains a
+separate registered target reached through the remote channel.
 
 ```bash
 python3 "scripts/android_source_access.py" detect
@@ -55,10 +59,28 @@ python3 "scripts/android_source_access.py" run mount-from-remote-path.sh -- \
   --remote-root /home/<remote-user>/work/<platform>/<project>
 ```
 
+## Windows project registration
+
+Use the native Windows Python command `python` for the dispatcher. Confirm the
+SMB bridge for this project is accessible in Explorer and Windows OpenSSH
+resolves the registered server alias. Use a project-specific UNC path or a
+Windows mapped project directory. Run in PowerShell:
+
+```powershell
+python "$SkillDir/scripts/android_source_access.py" detect
+python "$SkillDir/scripts/android_source_access.py" run register-project -- --ssh-host $SshHost --remote-root $RemoteRoot --local-path $LocalProjectPath --share $Share --project $SdkName --platform $Platform --project-id $ProjectId
+```
+
+The command checks the SSH channel identity, the actual SMB server and share,
+and the canonical server-side directory before saving the mapping in
+`$env:USERPROFILE/.servers/projects/<ssh-alias>.json`. Reuse the original project
+ID when migrating. Remote source commands continue through `android-remote-channel`.
+
 ## Stable state
 
 Read and update the existing identities in place:
 
+- Windows registry: `$env:USERPROFILE/.servers/projects` and the existing Windows SSH identity.
 - WSL and shared registry: `$HOME/.servers/projects`, `$HOME/.servers/credentials`
 - macOS credentials: existing Keychain service identities
 - human source and artifact bridge: `$HOME/work/<platform>/<project>`

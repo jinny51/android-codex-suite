@@ -1,6 +1,6 @@
 ---
 name: android-remote-build-deploy
-description: "Use after Android source access has registered a remote Linux project that builds through AOSP Soong/Make modules or an explicitly configured vendor full-build entry. Owns channel-v2 discovery, profiles, checkpoints, supported builds, artifact manifests, mounted artifact verification, and local adb delivery on WSL or macOS."
+description: "Use after Android source access has registered a remote Linux project that builds through AOSP Soong/Make modules or an explicitly configured vendor full-build entry. Owns channel-v2 discovery, profiles, checkpoints, supported builds, artifact manifests, mounted artifact verification, and local adb delivery on Windows, WSL, or macOS."
 ---
 
 # Android Remote Build Deploy
@@ -13,6 +13,9 @@ through `android-remote-channel` under `android-change-workflow`.
 Linux remains authoritative for source, Git/repo state, build configuration, build
 execution, and artifact identity. The administrator workstation owns only registry
 resolution, the narrow artifact bridge, and local adb.
+
+
+On Windows, invoke the same Python build and delivery scripts with `python` in PowerShell. Use a registered Windows SMB bridge for verified output and native Windows adb for delivery.
 
 ## Task Startup
 
@@ -224,7 +227,7 @@ python3 "<skill>/scripts/push_artifacts.py" \
   --adb-serial "$ADB_SERIAL"
 ```
 
-`ADB` may name Windows `adb.exe` under WSL; macOS uses native adb. Unverified
+`ADB` uses native Windows adb on Windows, may name Windows `adb.exe` under WSL, and uses native adb on macOS. Unverified
 legacy artifacts are accepted only with `--compat-unverified --dry-run`; that
 mode cannot invoke adb or produce a delivery PASS.
 

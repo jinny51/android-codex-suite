@@ -112,6 +112,24 @@ enables it and an unhandled failure exits the runner, the existing exit handler
 records that command as failed with its exit code. Ensure can then restart the
 runner for queued work; shell state from the terminated lifetime is not preserved.
 
+## Windows entry
+
+Use native Windows Python in PowerShell:
+
+```powershell
+$Channel = "$PluginRoot/skills/android-remote-channel/scripts/remote-channel.py"
+python $Channel --ssh-host $SshHost --remote-root $RemoteRoot check
+python $Channel --ssh-host $SshHost --remote-root $RemoteRoot ensure
+python $Channel --ssh-host $SshHost --remote-root $RemoteRoot run --lock none --command-id $CommandId -- 'git status --short'
+```
+
+Use Git for Windows and the Windows OpenSSH client on the workstation. The Python
+entry selects the Bash interpreter from Git for Windows and uses the existing
+remote channel implementation with the native SSH executable. The Linux runner,
+workspace identity, locks, command IDs, and logs are shared with other hosts.
+For a multi-line command larger than the Windows command-line limit, pass the
+command as UTF-8 standard input with `run --stdin`.
+
 ## WSL/macOS Entry
 
 ```bash

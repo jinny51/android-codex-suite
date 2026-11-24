@@ -444,6 +444,19 @@ def test_real_inventory_source_and_runtime_executable_mode_are_hash_bound(
         )
 
 
+def wsl_source_access_command(script: Path, *arguments: str) -> list[str]:
+    # Simulate kernel facts without bypassing the real dispatcher/install gate.
+    launcher = """import platform, runpy, sys
+sys.path.insert(0, sys.argv[1])
+from android_engineering_ops.source_access import host
+platform.system = lambda: 'Linux'
+host._read_kernel_fact = lambda unused: 'microsoft-standard-WSL2'
+sys.argv = sys.argv[2:]
+runpy.run_path(sys.argv[0], run_name='__main__')
+"""
+    return [sys.executable, "-c", launcher, str(PLUGIN / "lib"), str(script), *arguments]
+
+
 def test_real_source_access_action_stops_before_adapter_when_family_is_mixed(
     tmp_path: Path,
 ) -> None:
@@ -453,7 +466,7 @@ def test_real_source_access_action_stops_before_adapter_when_family_is_mixed(
     fake_codex_app_server(codex, [entry("android-engineering-ops"), entry("android-framework-ops")])
     script = PLUGIN / "skills/android-source-access/scripts/android_source_access.py"
     result = subprocess.run(
-        [sys.executable, str(script), "run", "inspect-android-sdk.sh"],
+        wsl_source_access_command(script, "run", "inspect-android-sdk.sh"),
         check=False,
         text=True,
         stdout=subprocess.PIPE,
@@ -527,7 +540,7 @@ def test_help_and_pure_host_detection_do_not_require_inventory() -> None:
     )
     assert help_result.returncode == 0
     detect_result = subprocess.run(
-        [sys.executable, str(script), "detect", "--print-field", "host"],
+        wsl_source_access_command(script, "detect", "--print-field", "host"),
         check=False,
         text=True,
         stdout=subprocess.PIPE,

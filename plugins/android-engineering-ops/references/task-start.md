@@ -1,5 +1,14 @@
 # Engineering task startup
 
+Resolve the plugin root from the Skill loaded by this chat. A Windows desktop can
+open a Windows local project or connect to an Ubuntu/WSL project. The latter runs
+its commands inside the connected distro, with that Codex runtime's configuration,
+plugin inventory, home and SSH setup. Run this startup there. A Mac local project
+uses the Mac runtime. In Linux, the inventory and update commands reuse the
+ancestor Codex app-server executable when present; a standalone CLI can still
+use its own PATH. Never take the plugin cache or credential store from a different
+host just because the desktop UI is there.
+
 Run the shared engineering startup entry once before starting a new engineering task,
 whether the user enters the full workflow or directly asks for source access, a build,
 change review, or capture. It first checks the active installation, then checks the

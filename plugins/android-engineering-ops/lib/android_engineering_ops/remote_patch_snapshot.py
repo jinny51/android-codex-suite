@@ -648,9 +648,15 @@ def write_immutable_remote_snapshot(payload: Mapping[str, Any]) -> Path:
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
-        os.chmod(temporary, 0o400)
         try:
-            os.link(temporary, target)
+            if os.name == "nt":
+                # A Windows read-only file cannot be unlinked afterwards, even
+                # when another hard link has the same identity.
+                os.rename(temporary, target)
+                os.chmod(target, 0o400)
+            else:
+                os.chmod(temporary, 0o400)
+                os.link(temporary, target)
         except FileExistsError as exc:
             raise RemotePatchSnapshotError(f"immutable snapshot already exists: {target}") from exc
     finally:

@@ -8,7 +8,7 @@ summary = "以七层 component 模型统筹实现与验收，并自动应用共�
 [[skills]]
 name = "android-source-access"
 category = "Source Access"
-summary = "自动识别 WSL 或 macOS，并使用唯一内置 adapter 访问 Android 远端源码"
+summary = "自动识别原生 Windows、WSL 或 macOS，并使用插件内对应适配器接入 Android 远端源码"
 
 [[skills]]
 name = "android-remote-channel"

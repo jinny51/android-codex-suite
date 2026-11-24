@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import fcntl
 import hashlib
 import json
 import os
@@ -28,8 +27,10 @@ from android_engineering_ops.install_family import (
     _strict_json_file,
     assert_target_install_family,
 )
+from android_engineering_ops.local_host import try_lock_file
 from codex_plugin_update import (
     compare_versions, fetch_manifest, github_manifest_url, manifest_transport_unavailable,
+    resolve_codex_executable,
     update_plugin, version_parts,
 )
 
@@ -45,7 +46,7 @@ def fetch_remote_manifest() -> dict[str, Any]:
 
 def run_codex(command: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        command, stdin=subprocess.DEVNULL, capture_output=True,
+        [resolve_codex_executable(command[0]), *command[1:]], stdin=subprocess.DEVNULL, capture_output=True,
         text=True, check=False, timeout=60,
     )
 
@@ -131,9 +132,7 @@ def ensure_task_started(
     try:
         descriptor = os.open(directory / ".update.lock", os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
         with os.fdopen(descriptor, "a+") as lock:
-            try:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
+            if not try_lock_file(lock):
                 return _result("STARTUP_BUSY", "另一个工程任务正在检查或更新插件；本次未开始业务操作。", **binding)
 
             # Inventory may have changed while entering the startup boundary.

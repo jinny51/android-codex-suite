@@ -25,6 +25,9 @@ PLUGIN_LIB = PLUGIN_ROOT / "lib"
 if str(PLUGIN_LIB) not in sys.path:
     sys.path.insert(0, str(PLUGIN_LIB))
 
+from android_engineering_ops.local_host import run_channel  # noqa: E402
+
+
 from android_engineering_ops.remote_artifact_manifest import (  # noqa: E402
     RemoteArtifactManifestError,
     validate_remote_artifact_manifest,
@@ -118,10 +121,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def run_process(command: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        command,
+    return run_channel(
+        Path(command[0]), *command[1:],
         check=False,
-        text=True,
+        encoding="utf-8",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )

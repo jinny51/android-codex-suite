@@ -74,10 +74,12 @@ def make_fake_channel(root: Path) -> Path:
                 rc = int(exit_file.read_text())
                 print(f"__CODEX_CMD_DONE id={command_id} rc={rc}")
                 raise SystemExit(rc)
+            remote_env = os.environ.copy()
+            remote_env.pop("PYTHONDONTWRITEBYTECODE", None)
             result = subprocess.run(
                 ["bash", "-c", command],
                 cwd=root,
-                env=os.environ.copy(),
+                env=remote_env,
                 check=False,
                 text=True,
                 stdout=subprocess.PIPE,

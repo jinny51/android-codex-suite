@@ -8,7 +8,6 @@ import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import shlex
-import subprocess
 import sys
 import time
 
@@ -18,6 +17,9 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 PLUGIN_LIB = PLUGIN_ROOT / "lib"
 if str(PLUGIN_LIB) not in sys.path:
     sys.path.insert(0, str(PLUGIN_LIB))
+
+from android_engineering_ops.local_host import run_channel  # noqa: E402
+
 
 from android_engineering_ops.install_family import require_target_install_family  # noqa: E402
 
@@ -137,23 +139,21 @@ def main() -> int:
         + REMOTE_SCANNER
         + "\nPY"
     )
-    completed = subprocess.run(
-        [
-            str(DEFAULT_CHANNEL),
-            "--ssh-host",
-            args.ssh_host,
-            "--remote-root",
-            args.remote_root,
-            "run",
-            "--lock",
-            "none",
-            "--command-id",
-            command_id,
-            "--wait-timeout",
-            str(args.wait_timeout),
-            "--",
-            remote_command,
-        ],
+    completed = run_channel(
+        DEFAULT_CHANNEL,
+        "--ssh-host",
+        args.ssh_host,
+        "--remote-root",
+        args.remote_root,
+        "run",
+        "--lock",
+        "none",
+        "--command-id",
+        command_id,
+        "--wait-timeout",
+        str(args.wait_timeout),
+        "--",
+        remote_command,
         check=False,
         text=True,
     )
